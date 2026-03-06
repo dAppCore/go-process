@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"forge.lthn.ai/core/go/pkg/framework"
+	"forge.lthn.ai/core/go/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,12 +53,12 @@ func TestGlobal_SetDefault(t *testing.T) {
 			}
 		}()
 
-		core, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
+		core, err := core.New(
+			core.WithName("process", NewService(Options{})),
 		)
 		require.NoError(t, err)
 
-		svc, err := framework.ServiceFor[*Service](core, "process")
+		svc, err := core.ServiceFor[*Service](core, "process")
 		require.NoError(t, err)
 
 		SetDefault(svc)
@@ -81,12 +81,12 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 		}
 	}()
 
-	core, err := framework.New(
-		framework.WithName("process", NewService(Options{})),
+	core, err := core.New(
+		core.WithName("process", NewService(Options{})),
 	)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](core, "process")
+	svc, err := core.ServiceFor[*Service](core, "process")
 	require.NoError(t, err)
 
 	SetDefault(svc)
@@ -117,12 +117,12 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 	// Create multiple services
 	var services []*Service
 	for i := 0; i < 10; i++ {
-		core, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
+		core, err := core.New(
+			core.WithName("process", NewService(Options{})),
 		)
 		require.NoError(t, err)
 
-		svc, err := framework.ServiceFor[*Service](core, "process")
+		svc, err := core.ServiceFor[*Service](core, "process")
 		require.NoError(t, err)
 		services = append(services, svc)
 	}
@@ -161,12 +161,12 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		}
 	}()
 
-	core, err := framework.New(
-		framework.WithName("process", NewService(Options{})),
+	core, err := core.New(
+		core.WithName("process", NewService(Options{})),
 	)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](core, "process")
+	svc, err := core.ServiceFor[*Service](core, "process")
 	require.NoError(t, err)
 
 	SetDefault(svc)

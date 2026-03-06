@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"forge.lthn.ai/core/go/pkg/framework"
+	"forge.lthn.ai/core/go/pkg/core"
 )
 
 // Global default service (follows i18n pattern).
@@ -32,7 +32,7 @@ func SetDefault(s *Service) {
 
 // Init initializes the default global service with a Core instance.
 // This is typically called during application startup.
-func Init(c *framework.Core) error {
+func Init(c *core.Core) error {
 	defaultOnce.Do(func() {
 		factory := NewService(Options{})
 		svc, err := factory(c)

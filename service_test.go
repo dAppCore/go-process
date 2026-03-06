@@ -7,20 +7,20 @@ import (
 	"testing"
 	"time"
 
-	"forge.lthn.ai/core/go/pkg/framework"
+	"forge.lthn.ai/core/go/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestService(t *testing.T) (*Service, *framework.Core) {
+func newTestService(t *testing.T) (*Service, *core.Core) {
 	t.Helper()
 
-	core, err := framework.New(
-		framework.WithName("process", NewService(Options{BufferSize: 1024})),
+	core, err := core.New(
+		core.WithName("process", NewService(Options{BufferSize: 1024})),
 	)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](core, "process")
+	svc, err := core.ServiceFor[*Service](core, "process")
 	require.NoError(t, err)
 
 	return svc, core
@@ -120,8 +120,8 @@ func TestService_Run(t *testing.T) {
 
 func TestService_Actions(t *testing.T) {
 	t.Run("broadcasts events", func(t *testing.T) {
-		core, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
+		core, err := core.New(
+			core.WithName("process", NewService(Options{})),
 		)
 		require.NoError(t, err)
 
@@ -130,7 +130,7 @@ func TestService_Actions(t *testing.T) {
 		var exited []ActionProcessExited
 		var mu sync.Mutex
 
-		core.RegisterAction(func(c *framework.Core, msg framework.Message) error {
+		core.RegisterAction(func(c *core.Core, msg core.Message) error {
 			mu.Lock()
 			defer mu.Unlock()
 			switch m := msg.(type) {
@@ -144,7 +144,7 @@ func TestService_Actions(t *testing.T) {
 			return nil
 		})
 
-		svc, _ := framework.ServiceFor[*Service](core, "process")
+		svc, _ := core.ServiceFor[*Service](core, "process")
 		proc, err := svc.Start(context.Background(), "echo", "test")
 		require.NoError(t, err)
 

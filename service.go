@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"forge.lthn.ai/core/go/pkg/framework"
+	"forge.lthn.ai/core/go/pkg/core"
 )
 
 // Default buffer size for process output (1MB).
@@ -26,7 +26,7 @@ var (
 
 // Service manages process execution with Core IPC integration.
 type Service struct {
-	*framework.ServiceRuntime[Options]
+	*core.ServiceRuntime[Options]
 
 	processes map[string]*Process
 	mu        sync.RWMutex
@@ -43,16 +43,16 @@ type Options struct {
 
 // NewService creates a process service factory for Core registration.
 //
-//	core, _ := framework.New(
-//	    framework.WithName("process", process.NewService(process.Options{})),
+//	core, _ := core.New(
+//	    core.WithName("process", process.NewService(process.Options{})),
 //	)
-func NewService(opts Options) func(*framework.Core) (any, error) {
-	return func(c *framework.Core) (any, error) {
+func NewService(opts Options) func(*core.Core) (any, error) {
+	return func(c *core.Core) (any, error) {
 		if opts.BufferSize == 0 {
 			opts.BufferSize = DefaultBufferSize
 		}
 		svc := &Service{
-			ServiceRuntime: framework.NewServiceRuntime(c, opts),
+			ServiceRuntime: core.NewServiceRuntime(c, opts),
 			processes:      make(map[string]*Process),
 			bufSize:        opts.BufferSize,
 		}
@@ -60,12 +60,12 @@ func NewService(opts Options) func(*framework.Core) (any, error) {
 	}
 }
 
-// OnStartup implements framework.Startable.
+// OnStartup implements core.Startable.
 func (s *Service) OnStartup(ctx context.Context) error {
 	return nil
 }
 
-// OnShutdown implements framework.Stoppable.
+// OnShutdown implements core.Stoppable.
 // Kills all running processes on shutdown.
 func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RLock()
