@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"forge.lthn.ai/core/go/pkg/core"
+	framework "forge.lthn.ai/core/go/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,12 +12,12 @@ import (
 func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
 
-	core, err := core.New(
-		core.WithName("process", NewService(Options{})),
+	c, err := framework.New(
+		framework.WithName("process", NewService(Options{})),
 	)
 	require.NoError(t, err)
 
-	svc, err := core.ServiceFor[*Service](core, "process")
+	svc, err := framework.ServiceFor[*Service](c, "process")
 	require.NoError(t, err)
 
 	return NewRunner(svc)
