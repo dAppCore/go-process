@@ -26,6 +26,13 @@ type DaemonOptions struct {
 
 	// HealthChecks are additional health check functions.
 	HealthChecks []HealthCheck
+
+	// Registry for tracking this daemon. Leave nil to skip registration.
+	Registry *Registry
+
+	// RegistryEntry provides the code and daemon name for registration.
+	// PID, Health, and Started are filled automatically.
+	RegistryEntry DaemonEntry
 }
 
 // Daemon manages daemon lifecycle: PID file, health server, graceful shutdown.
@@ -84,6 +91,19 @@ func (d *Daemon) Start() error {
 	}
 
 	d.running = true
+
+	// Auto-register if registry is set
+	if d.opts.Registry != nil {
+		entry := d.opts.RegistryEntry
+		entry.PID = os.Getpid()
+		if d.health != nil {
+			entry.Health = d.health.Addr()
+		}
+		if err := d.opts.Registry.Register(entry); err != nil {
+			return fmt.Errorf("registry: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -126,6 +146,11 @@ func (d *Daemon) Stop() error {
 		if err := d.pid.Release(); err != nil && !os.IsNotExist(err) {
 			errs = append(errs, fmt.Errorf("pid file: %w", err))
 		}
+	}
+
+	// Auto-unregister
+	if d.opts.Registry != nil {
+		_ = d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon)
 	}
 
 	d.running = false

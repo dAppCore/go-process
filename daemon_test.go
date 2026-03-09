@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -90,4 +91,34 @@ func TestDaemon_NoHealthAddrReturnsEmpty(t *testing.T) {
 func TestDaemon_DefaultShutdownTimeout(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 	assert.Equal(t, 30*time.Second, d.opts.ShutdownTimeout)
+}
+
+func TestDaemon_AutoRegisters(t *testing.T) {
+	dir := t.TempDir()
+	reg := NewRegistry(filepath.Join(dir, "daemons"))
+
+	d := NewDaemon(DaemonOptions{
+		HealthAddr: "127.0.0.1:0",
+		Registry:   reg,
+		RegistryEntry: DaemonEntry{
+			Code:   "test-app",
+			Daemon: "serve",
+		},
+	})
+
+	err := d.Start()
+	require.NoError(t, err)
+
+	// Should be registered
+	entry, ok := reg.Get("test-app", "serve")
+	require.True(t, ok)
+	assert.Equal(t, os.Getpid(), entry.PID)
+	assert.NotEmpty(t, entry.Health)
+
+	// Stop should unregister
+	err = d.Stop()
+	require.NoError(t, err)
+
+	_, ok = reg.Get("test-app", "serve")
+	assert.False(t, ok)
 }
