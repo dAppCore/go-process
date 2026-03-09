@@ -117,8 +117,10 @@ func WaitForHealth(addr string, timeoutMs int) bool {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	url := fmt.Sprintf("http://%s/health", addr)
 
+	client := &http.Client{Timeout: 2 * time.Second}
+
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
+		resp, err := client.Get(url)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {

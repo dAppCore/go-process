@@ -26,10 +26,6 @@ type DaemonOptions struct {
 
 	// HealthChecks are additional health check functions.
 	HealthChecks []HealthCheck
-
-	// OnReload is called when SIGHUP is received.
-	// Use for config reloading. Leave nil to ignore SIGHUP.
-	OnReload func() error
 }
 
 // Daemon manages daemon lifecycle: PID file, health server, graceful shutdown.
@@ -135,7 +131,7 @@ func (d *Daemon) Stop() error {
 	d.running = false
 
 	if len(errs) > 0 {
-		return fmt.Errorf("shutdown errors: %v", errs)
+		return errors.Join(errs...)
 	}
 	return nil
 }
