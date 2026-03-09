@@ -2,7 +2,9 @@ package process
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -84,11 +86,14 @@ func (p *Process) Wait() error {
 	<-p.done
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if p.Status == StatusFailed || p.Status == StatusKilled {
-		return &exec.ExitError{}
+	if p.Status == StatusFailed {
+		return fmt.Errorf("process failed to start: %s", p.ID)
+	}
+	if p.Status == StatusKilled {
+		return fmt.Errorf("process was killed: %s", p.ID)
 	}
 	if p.ExitCode != 0 {
-		return &exec.ExitError{}
+		return fmt.Errorf("process exited with code %d", p.ExitCode)
 	}
 	return nil
 }
@@ -115,24 +120,19 @@ func (p *Process) Kill() error {
 }
 
 // Signal sends a signal to the process.
-func (p *Process) Signal(sig interface{ Signal() }) error {
+func (p *Process) Signal(sig os.Signal) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.Status != StatusRunning {
-		return nil
+		return ErrProcessNotRunning
 	}
 
 	if p.cmd == nil || p.cmd.Process == nil {
 		return nil
 	}
 
-	// Type assert to os.Signal for Process.Signal
-	if osSig, ok := sig.(interface{ String() string }); ok {
-		_ = osSig // Satisfy linter
-	}
-
-	return p.cmd.Process.Kill() // Simplified - would use Signal in full impl
+	return p.cmd.Process.Signal(sig)
 }
 
 // SendInput writes to the process stdin.

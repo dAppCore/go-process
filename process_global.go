@@ -23,11 +23,12 @@ func Default() *Service {
 
 // SetDefault sets the global process service.
 // Thread-safe: can be called concurrently with Default().
-func SetDefault(s *Service) {
+func SetDefault(s *Service) error {
 	if s == nil {
-		panic("process: SetDefault called with nil service")
+		return &ServiceError{msg: "process: SetDefault called with nil service"}
 	}
 	defaultService.Store(s)
+	return nil
 }
 
 // Init initializes the default global service with a Core instance.
@@ -120,7 +121,7 @@ func Running() []*Process {
 }
 
 // ErrServiceNotInitialized is returned when the service is not initialized.
-var ErrServiceNotInitialized = &ServiceError{msg: "process: service not initialized"}
+var ErrServiceNotInitialized = &ServiceError{msg: "process: service not initialized; call process.Init(core) first"}
 
 // ServiceError represents a service-level error.
 type ServiceError struct {
