@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	goapi "forge.lthn.ai/core/go-api"
+	goapi "forge.lthn.ai/core/api"
 	process "forge.lthn.ai/core/go-process"
 	processapi "forge.lthn.ai/core/go-process/pkg/api"
 	"github.com/gin-gonic/gin"

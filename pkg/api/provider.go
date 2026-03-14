@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"forge.lthn.ai/core/go-api"
-	"forge.lthn.ai/core/go-api/pkg/provider"
+	"forge.lthn.ai/core/api"
+	"forge.lthn.ai/core/api/pkg/provider"
 	process "forge.lthn.ai/core/go-process"
 	"forge.lthn.ai/core/go-ws"
 	"github.com/gin-gonic/gin"
