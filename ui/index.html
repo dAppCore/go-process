@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Core Process — Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #f3f4f6;
+        padding: 2rem;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+        colour: #111827;
+      }
+
+      .demo-panel {
+        width: 100%;
+        max-width: 960px;
+        margin: 0 auto;
+        height: 80vh;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        overflow: hidden;
+      }
+
+      h2 {
+        font-size: 1.125rem;
+        margin: 2rem auto 1rem;
+        max-width: 960px;
+        colour: #374151;
+      }
+
+      .standalone {
+        max-width: 960px;
+        margin: 0 auto 2rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: #fff;
+      }
+    </style>
+    <script type="module" src="./src/index.ts"></script>
+  </head>
+  <body>
+    <h1>Core Process — Custom Element Demo</h1>
+
+    <div class="demo-panel">
+      <core-process-panel api-url=""></core-process-panel>
+    </div>
+
+    <h2>Standalone Elements</h2>
+
+    <div class="standalone">
+      <core-process-daemons api-url=""></core-process-daemons>
+    </div>
+
+    <div class="standalone">
+      <core-process-list api-url=""></core-process-list>
+    </div>
+
+    <div class="standalone">
+      <core-process-output api-url="" process-id=""></core-process-output>
+    </div>
+
+    <div class="standalone">
+      <core-process-runner api-url=""></core-process-runner>
+    </div>
+  </body>
+</html>

@@ -18,7 +18,8 @@ import (
 )
 
 // ProcessProvider wraps the go-process daemon Registry as a service provider.
-// It implements provider.Provider, provider.Streamable, and provider.Describable.
+// It implements provider.Provider, provider.Streamable, provider.Describable,
+// and provider.Renderable.
 type ProcessProvider struct {
 	registry *process.Registry
 	hub      *ws.Hub
@@ -29,6 +30,7 @@ var (
 	_ provider.Provider    = (*ProcessProvider)(nil)
 	_ provider.Streamable  = (*ProcessProvider)(nil)
 	_ provider.Describable = (*ProcessProvider)(nil)
+	_ provider.Renderable  = (*ProcessProvider)(nil)
 )
 
 // NewProvider creates a process provider backed by the given daemon registry.
@@ -50,12 +52,24 @@ func (p *ProcessProvider) Name() string { return "process" }
 // BasePath implements api.RouteGroup.
 func (p *ProcessProvider) BasePath() string { return "/api/process" }
 
+// Element implements provider.Renderable.
+func (p *ProcessProvider) Element() provider.ElementSpec {
+	return provider.ElementSpec{
+		Tag:    "core-process-panel",
+		Source: "/assets/core-process.js",
+	}
+}
+
 // Channels implements provider.Streamable.
 func (p *ProcessProvider) Channels() []string {
 	return []string{
 		"process.daemon.started",
 		"process.daemon.stopped",
 		"process.daemon.health",
+		"process.started",
+		"process.output",
+		"process.exited",
+		"process.killed",
 	}
 }
 
