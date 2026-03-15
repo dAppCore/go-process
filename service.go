@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"forge.lthn.ai/core/go/pkg/core"
@@ -96,7 +97,12 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
 
-	procCtx, cancel := context.WithCancel(ctx)
+	// Detached processes use Background context so they survive parent death
+	parentCtx := ctx
+	if opts.Detach {
+		parentCtx = context.Background()
+	}
+	procCtx, cancel := context.WithCancel(parentCtx)
 	cmd := exec.CommandContext(procCtx, opts.Command, opts.Args...)
 
 	if opts.Dir != "" {
@@ -104,6 +110,11 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	}
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Environ(), opts.Env...)
+	}
+
+	// Detached processes get their own process group
+	if opts.Detach {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
 
 	// Set up pipes

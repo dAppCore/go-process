@@ -73,6 +73,10 @@ type RunOptions struct {
 	// DisableCapture disables output buffering.
 	// By default, output is captured to a ring buffer.
 	DisableCapture bool
+	// Detach creates the process in its own process group (Setpgid).
+	// Detached processes survive parent death and context cancellation.
+	// The context is replaced with context.Background() when Detach is true.
+	Detach bool
 }
 
 // Info provides a snapshot of process state without internal fields.
