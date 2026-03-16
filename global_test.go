@@ -65,10 +65,9 @@ func TestGlobal_SetDefault(t *testing.T) {
 		assert.Equal(t, svc, Default())
 	})
 
-	t.Run("panics on nil", func(t *testing.T) {
-		assert.Panics(t, func() {
-			SetDefault(nil)
-		})
+	t.Run("errors on nil", func(t *testing.T) {
+		err := SetDefault(nil)
+		assert.Error(t, err)
 	})
 }
 
