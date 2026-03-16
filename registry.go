@@ -7,6 +7,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	coreio "forge.lthn.ai/core/go-io"
 )
 
 // DaemonEntry records a running daemon in the registry.
@@ -47,7 +49,7 @@ func (r *Registry) Register(entry DaemonEntry) error {
 		entry.Started = time.Now()
 	}
 
-	if err := os.MkdirAll(r.dir, 0755); err != nil {
+	if err := coreio.Local.EnsureDir(r.dir); err != nil {
 		return err
 	}
 
@@ -56,12 +58,12 @@ func (r *Registry) Register(entry DaemonEntry) error {
 		return err
 	}
 
-	return os.WriteFile(r.entryPath(entry.Code, entry.Daemon), data, 0644)
+	return coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data))
 }
 
 // Unregister removes a daemon entry from the registry.
 func (r *Registry) Unregister(code, daemon string) error {
-	return os.Remove(r.entryPath(code, daemon))
+	return coreio.Local.Delete(r.entryPath(code, daemon))
 }
 
 // Get reads a single daemon entry and checks whether its process is alive.
@@ -69,19 +71,19 @@ func (r *Registry) Unregister(code, daemon string) error {
 func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	path := r.entryPath(code, daemon)
 
-	data, err := os.ReadFile(path)
+	data, err := coreio.Local.Read(path)
 	if err != nil {
 		return nil, false
 	}
 
 	var entry DaemonEntry
-	if err := json.Unmarshal(data, &entry); err != nil {
-		_ = os.Remove(path)
+	if err := json.Unmarshal([]byte(data), &entry); err != nil {
+		_ = coreio.Local.Delete(path)
 		return nil, false
 	}
 
 	if !isAlive(entry.PID) {
-		_ = os.Remove(path)
+		_ = coreio.Local.Delete(path)
 		return nil, false
 	}
 
@@ -97,19 +99,19 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 
 	var alive []DaemonEntry
 	for _, path := range matches {
-		data, err := os.ReadFile(path)
+		data, err := coreio.Local.Read(path)
 		if err != nil {
 			continue
 		}
 
 		var entry DaemonEntry
-		if err := json.Unmarshal(data, &entry); err != nil {
-			_ = os.Remove(path)
+		if err := json.Unmarshal([]byte(data), &entry); err != nil {
+			_ = coreio.Local.Delete(path)
 			continue
 		}
 
 		if !isAlive(entry.PID) {
-			_ = os.Remove(path)
+			_ = coreio.Local.Delete(path)
 			continue
 		}
 

@@ -11,6 +11,8 @@ require (
 )
 
 require (
+	forge.lthn.ai/core/go-io v0.1.2 // indirect
+	forge.lthn.ai/core/go-log v0.0.2 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect

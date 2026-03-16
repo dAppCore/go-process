@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	coreio "forge.lthn.ai/core/go-io"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
@@ -27,8 +29,8 @@ func (p *PIDFile) Acquire() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if data, err := os.ReadFile(p.path); err == nil {
-		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if data, err := coreio.Local.Read(p.path); err == nil {
+		pid, err := strconv.Atoi(strings.TrimSpace(data))
 		if err == nil && pid > 0 {
 			if proc, err := os.FindProcess(pid); err == nil {
 				if err := proc.Signal(syscall.Signal(0)); err == nil {
@@ -36,17 +38,17 @@ func (p *PIDFile) Acquire() error {
 				}
 			}
 		}
-		_ = os.Remove(p.path)
+		_ = coreio.Local.Delete(p.path)
 	}
 
 	if dir := filepath.Dir(p.path); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := coreio.Local.EnsureDir(dir); err != nil {
 			return fmt.Errorf("failed to create PID directory: %w", err)
 		}
 	}
 
 	pid := os.Getpid()
-	if err := os.WriteFile(p.path, []byte(strconv.Itoa(pid)), 0644); err != nil {
+	if err := coreio.Local.Write(p.path, strconv.Itoa(pid)); err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 
@@ -57,7 +59,7 @@ func (p *PIDFile) Acquire() error {
 func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return os.Remove(p.path)
+	return coreio.Local.Delete(p.path)
 }
 
 // Path returns the PID file path.
@@ -69,12 +71,12 @@ func (p *PIDFile) Path() string {
 // Returns (pid, true) if the process is alive, (pid, false) if dead/stale,
 // or (0, false) if the file doesn't exist or is invalid.
 func ReadPID(path string) (int, bool) {
-	data, err := os.ReadFile(path)
+	data, err := coreio.Local.Read(path)
 	if err != nil {
 		return 0, false
 	}
 
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	pid, err := strconv.Atoi(strings.TrimSpace(data))
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
