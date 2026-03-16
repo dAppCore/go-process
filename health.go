@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // HealthCheck is a function that returns nil if healthy.
@@ -82,7 +84,7 @@ func (h *HealthServer) Start() error {
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", h.addr, err)
+		return coreerr.E("HealthServer.Start", fmt.Sprintf("failed to listen on %s", h.addr), err)
 	}
 
 	h.listener = listener

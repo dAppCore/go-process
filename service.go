@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"forge.lthn.ai/core/go/pkg/core"
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // Default buffer size for process output (1MB).
@@ -20,9 +21,9 @@ const DefaultBufferSize = 1024 * 1024
 
 // Errors
 var (
-	ErrProcessNotFound   = errors.New("process not found")
-	ErrProcessNotRunning = errors.New("process is not running")
-	ErrStdinNotAvailable = errors.New("stdin not available")
+	ErrProcessNotFound   = coreerr.E("", "process not found", nil)
+	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
+	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
 )
 
 // Service manages process execution with Core IPC integration.
@@ -121,19 +122,19 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stdout pipe", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stderr pipe", err)
 	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stdin pipe", err)
 	}
 
 	// Create output buffer (enabled by default)
@@ -161,7 +162,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	// Start the process
 	if err := cmd.Start(); err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to start process: %w", err)
+		return nil, coreerr.E("Service.StartWithOptions", "failed to start process", err)
 	}
 
 	// Store process
@@ -327,7 +328,7 @@ func (s *Service) Remove(id string) error {
 	}
 
 	if proc.IsRunning() {
-		return errors.New("cannot remove running process")
+		return coreerr.E("Service.Remove", "cannot remove running process", nil)
 	}
 
 	delete(s.processes, id)
@@ -367,7 +368,7 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) (stri
 
 	output := proc.Output()
 	if proc.ExitCode != 0 {
-		return output, fmt.Errorf("process exited with code %d", proc.ExitCode)
+		return output, coreerr.E("Service.Run", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }
@@ -383,7 +384,7 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 
 	output := proc.Output()
 	if proc.ExitCode != 0 {
-		return output, fmt.Errorf("process exited with code %d", proc.ExitCode)
+		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }

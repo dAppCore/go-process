@@ -6,13 +6,13 @@ require (
 	forge.lthn.ai/core/api v0.1.2
 	forge.lthn.ai/core/go v0.3.1
 	forge.lthn.ai/core/go-io v0.1.2
+	forge.lthn.ai/core/go-log v0.0.2
 	forge.lthn.ai/core/go-ws v0.2.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	forge.lthn.ai/core/go-log v0.0.2 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect

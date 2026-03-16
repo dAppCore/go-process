@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	coreio "forge.lthn.ai/core/go-io"
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
@@ -34,7 +35,7 @@ func (p *PIDFile) Acquire() error {
 		if err == nil && pid > 0 {
 			if proc, err := os.FindProcess(pid); err == nil {
 				if err := proc.Signal(syscall.Signal(0)); err == nil {
-					return fmt.Errorf("another instance is running (PID %d)", pid)
+					return coreerr.E("PIDFile.Acquire", fmt.Sprintf("another instance is running (PID %d)", pid), nil)
 				}
 			}
 		}
@@ -43,13 +44,13 @@ func (p *PIDFile) Acquire() error {
 
 	if dir := filepath.Dir(p.path); dir != "." {
 		if err := coreio.Local.EnsureDir(dir); err != nil {
-			return fmt.Errorf("failed to create PID directory: %w", err)
+			return coreerr.E("PIDFile.Acquire", "failed to create PID directory", err)
 		}
 	}
 
 	pid := os.Getpid()
 	if err := coreio.Local.Write(p.path, strconv.Itoa(pid)); err != nil {
-		return fmt.Errorf("failed to write PID file: %w", err)
+		return coreerr.E("PIDFile.Acquire", "failed to write PID file", err)
 	}
 
 	return nil

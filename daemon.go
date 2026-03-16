@@ -3,10 +3,11 @@ package process
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"time"
+
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // DaemonOptions configures daemon mode execution.
@@ -72,7 +73,7 @@ func (d *Daemon) Start() error {
 	defer d.mu.Unlock()
 
 	if d.running {
-		return errors.New("daemon already running")
+		return coreerr.E("Daemon.Start", "daemon already running", nil)
 	}
 
 	if d.pid != nil {
@@ -100,7 +101,7 @@ func (d *Daemon) Start() error {
 			entry.Health = d.health.Addr()
 		}
 		if err := d.opts.Registry.Register(entry); err != nil {
-			return fmt.Errorf("registry: %w", err)
+			return coreerr.E("Daemon.Start", "registry", err)
 		}
 	}
 
@@ -112,7 +113,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Lock()
 	if !d.running {
 		d.mu.Unlock()
-		return errors.New("daemon not started - call Start() first")
+		return coreerr.E("Daemon.Run", "daemon not started - call Start() first", nil)
 	}
 	d.mu.Unlock()
 
@@ -138,13 +139,13 @@ func (d *Daemon) Stop() error {
 	if d.health != nil {
 		d.health.SetReady(false)
 		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, fmt.Errorf("health server: %w", err))
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
 		}
 	}
 
 	if d.pid != nil {
 		if err := d.pid.Release(); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, fmt.Errorf("pid file: %w", err))
+			errs = append(errs, coreerr.E("Daemon.Stop", "pid file", err))
 		}
 	}
 

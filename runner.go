@@ -2,9 +2,10 @@ package process
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
+
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // Runner orchestrates multiple processes with dependencies.
@@ -104,7 +105,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 					Name:    name,
 					Spec:    remaining[name],
 					Skipped: true,
-					Error:   errors.New("circular dependency or missing dependency"),
+					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				})
 			}
 			break
@@ -136,7 +137,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 						Name:    spec.Name,
 						Spec:    spec,
 						Skipped: true,
-						Error:   errors.New("skipped due to dependency failure"),
+						Error:   coreerr.E("Runner.RunAll", "skipped due to dependency failure", nil),
 					}
 				} else {
 					result = r.runSpec(ctx, spec)

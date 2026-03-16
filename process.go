@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // Process represents a managed external process.
@@ -87,13 +89,13 @@ func (p *Process) Wait() error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
-		return fmt.Errorf("process failed to start: %s", p.ID)
+		return coreerr.E("Process.Wait", fmt.Sprintf("process failed to start: %s", p.ID), nil)
 	}
 	if p.Status == StatusKilled {
-		return fmt.Errorf("process was killed: %s", p.ID)
+		return coreerr.E("Process.Wait", fmt.Sprintf("process was killed: %s", p.ID), nil)
 	}
 	if p.ExitCode != 0 {
-		return fmt.Errorf("process exited with code %d", p.ExitCode)
+		return coreerr.E("Process.Wait", fmt.Sprintf("process exited with code %d", p.ExitCode), nil)
 	}
 	return nil
 }

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // Options configuration for command execution
@@ -147,7 +149,7 @@ func RunQuiet(ctx context.Context, name string, args ...string) error {
 	cmd := Command(ctx, name, args...).WithStderr(&stderr)
 	if err := cmd.Run(); err != nil {
 		// Include stderr in error message
-		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		return coreerr.E("RunQuiet", strings.TrimSpace(stderr.String()), err)
 	}
 	return nil
 }
@@ -155,9 +157,9 @@ func RunQuiet(ctx context.Context, name string, args ...string) error {
 func wrapError(err error, name string, args []string) error {
 	cmdStr := name + " " + strings.Join(args, " ")
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		return fmt.Errorf("command %q failed with exit code %d: %w", cmdStr, exitErr.ExitCode(), err)
+		return coreerr.E("wrapError", fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
 	}
-	return fmt.Errorf("failed to execute %q: %w", cmdStr, err)
+	return coreerr.E("wrapError", fmt.Sprintf("failed to execute %q", cmdStr), err)
 }
 
 func (c *Cmd) getLogger() Logger {
