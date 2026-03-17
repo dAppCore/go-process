@@ -61,7 +61,8 @@ func TestGlobal_SetDefault(t *testing.T) {
 		svc, err := framework.ServiceFor[*Service](c, "process")
 		require.NoError(t, err)
 
-		SetDefault(svc)
+		err = SetDefault(svc)
+		require.NoError(t, err)
 		assert.Equal(t, svc, Default())
 	})
 
@@ -88,7 +89,8 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 	svc, err := framework.ServiceFor[*Service](c, "process")
 	require.NoError(t, err)
 
-	SetDefault(svc)
+	err = SetDefault(svc)
+	require.NoError(t, err)
 
 	// Concurrent reads of Default()
 	var wg sync.WaitGroup
@@ -132,7 +134,7 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 		wg.Add(1)
 		go func(s *Service) {
 			defer wg.Done()
-			SetDefault(s)
+			_ = SetDefault(s)
 		}(svc)
 	}
 	wg.Wait()
@@ -168,7 +170,8 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 	svc, err := framework.ServiceFor[*Service](c, "process")
 	require.NoError(t, err)
 
-	SetDefault(svc)
+	err = SetDefault(svc)
+	require.NoError(t, err)
 
 	// Concurrent Start, List, Get operations
 	var wg sync.WaitGroup

@@ -86,7 +86,7 @@ func (c *Cmd) Run() error {
 	c.logDebug("executing command")
 
 	if err := c.cmd.Run(); err != nil {
-		wrapped := wrapError(err, c.name, c.args)
+		wrapped := wrapError("Cmd.Run", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return wrapped
 	}
@@ -100,7 +100,7 @@ func (c *Cmd) Output() ([]byte, error) {
 
 	out, err := c.cmd.Output()
 	if err != nil {
-		wrapped := wrapError(err, c.name, c.args)
+		wrapped := wrapError("Cmd.Output", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return nil, wrapped
 	}
@@ -114,7 +114,7 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 
 	out, err := c.cmd.CombinedOutput()
 	if err != nil {
-		wrapped := wrapError(err, c.name, c.args)
+		wrapped := wrapError("Cmd.CombinedOutput", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return out, wrapped
 	}
@@ -154,12 +154,12 @@ func RunQuiet(ctx context.Context, name string, args ...string) error {
 	return nil
 }
 
-func wrapError(err error, name string, args []string) error {
+func wrapError(caller string, err error, name string, args []string) error {
 	cmdStr := name + " " + strings.Join(args, " ")
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		return coreerr.E("wrapError", fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
+		return coreerr.E(caller, fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
 	}
-	return coreerr.E("wrapError", fmt.Sprintf("failed to execute %q", cmdStr), err)
+	return coreerr.E(caller, fmt.Sprintf("failed to execute %q", cmdStr), err)
 }
 
 func (c *Cmd) getLogger() Logger {
