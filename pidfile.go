@@ -60,7 +60,10 @@ func (p *PIDFile) Acquire() error {
 func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return coreio.Local.Delete(p.path)
+	if err := coreio.Local.Delete(p.path); err != nil {
+		return coreerr.E("PIDFile.Release", "failed to remove PID file", err)
+	}
+	return nil
 }
 
 // Path returns the PID file path.
