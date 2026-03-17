@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -185,6 +186,39 @@ func TestProcess_SendInput(t *testing.T) {
 		<-proc.Done()
 
 		err = proc.SendInput("test")
+		assert.ErrorIs(t, err, ErrProcessNotRunning)
+	})
+}
+
+func TestProcess_Signal(t *testing.T) {
+	t.Run("sends signal to running process", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		err = proc.Signal(os.Interrupt)
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Process terminated by signal
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been terminated by signal")
+		}
+	})
+
+	t.Run("error on completed process", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "echo", "done")
+		require.NoError(t, err)
+		<-proc.Done()
+
+		err = proc.Signal(os.Interrupt)
 		assert.ErrorIs(t, err, ErrProcessNotRunning)
 	})
 }

@@ -93,6 +93,47 @@ func TestDaemon_DefaultShutdownTimeout(t *testing.T) {
 	assert.Equal(t, 30*time.Second, d.opts.ShutdownTimeout)
 }
 
+func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
+	d := NewDaemon(DaemonOptions{
+		HealthAddr: "127.0.0.1:0",
+	})
+
+	err := d.Start()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- d.Run(ctx)
+	}()
+
+	// Run should be blocking
+	select {
+	case <-done:
+		t.Fatal("Run should block until context is cancelled")
+	case <-time.After(50 * time.Millisecond):
+		// Expected — still blocking
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run should return after context cancellation")
+	}
+}
+
+func TestDaemon_StopIdempotent(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+
+	// Stop without Start should be a no-op
+	err := d.Stop()
+	assert.NoError(t, err)
+}
+
 func TestDaemon_AutoRegisters(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(filepath.Join(dir, "daemons"))

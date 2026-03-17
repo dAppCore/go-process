@@ -46,13 +46,19 @@ Builder-pattern wrapper around `os/exec` with structured logging via a pluggable
 ## Key Patterns
 
 - **Core integration**: `Service` embeds `*core.ServiceRuntime[Options]` and uses `s.Core().ACTION(...)` to broadcast typed action messages. Tests create a Core instance via `framework.New(framework.WithName("process", NewService(...)))`.
-- **Output capture**: All process output goes through a fixed-size `RingBuffer` (default 1MB). Oldest data is silently overwritten when full.
+- **Output capture**: All process output goes through a fixed-size `RingBuffer` (default 1MB). Oldest data is silently overwritten when full. Set `RunOptions.DisableCapture` to skip buffering for long-running processes where output is only streamed via IPC.
 - **Process lifecycle**: Status transitions are `StatusPending → StatusRunning → StatusExited|StatusFailed|StatusKilled`. The `done` channel closes on exit; use `<-proc.Done()` or `proc.Wait()`.
+- **Detach / process group isolation**: Set `RunOptions.Detach = true` to run the subprocess in its own process group (`Setpgid`). Detached processes use `context.Background()` so they survive parent context cancellation and parent death.
+- **Graceful shutdown**: `Service.OnShutdown` kills all running processes. `Daemon.Stop()` performs ordered teardown: sets health to not-ready → shuts down health server → releases PID file → unregisters from registry. `DaemonOptions.ShutdownTimeout` (default 30 s) bounds the shutdown context.
+- **Auto-registration**: Pass a `Registry` and `RegistryEntry` in `DaemonOptions` to automatically register the daemon on `Start()` and unregister on `Stop()`.
 - **PID liveness checks**: Both `PIDFile` and `Registry` use `proc.Signal(syscall.Signal(0))` to check if a PID is alive before trusting stored state.
+- **Error handling**: All errors MUST use `coreerr.E()` from `go-log` (imported as `coreerr`), never `fmt.Errorf` or `errors.New`. Sentinel errors are package-level vars created with `coreerr.E("", "message", nil)`.
 
 ## Dependencies
 
 - `forge.lthn.ai/core/go/pkg/core` — Core DI framework, IPC actions, `ServiceRuntime`
+- `forge.lthn.ai/core/go-log` — Structured error constructor (`coreerr.E()`)
+- `forge.lthn.ai/core/go-io` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
 - `github.com/stretchr/testify` — test assertions (require/assert)
 
 ## Testing

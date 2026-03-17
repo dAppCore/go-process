@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coreio "forge.lthn.ai/core/go-io"
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // DaemonEntry records a running daemon in the registry.
@@ -50,20 +51,26 @@ func (r *Registry) Register(entry DaemonEntry) error {
 	}
 
 	if err := coreio.Local.EnsureDir(r.dir); err != nil {
-		return err
+		return coreerr.E("Registry.Register", "failed to create registry directory", err)
 	}
 
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
-		return err
+		return coreerr.E("Registry.Register", "failed to marshal entry", err)
 	}
 
-	return coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data))
+	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data)); err != nil {
+		return coreerr.E("Registry.Register", "failed to write entry file", err)
+	}
+	return nil
 }
 
 // Unregister removes a daemon entry from the registry.
 func (r *Registry) Unregister(code, daemon string) error {
-	return coreio.Local.Delete(r.entryPath(code, daemon))
+	if err := coreio.Local.Delete(r.entryPath(code, daemon)); err != nil {
+		return coreerr.E("Registry.Unregister", "failed to delete entry file", err)
+	}
+	return nil
 }
 
 // Get reads a single daemon entry and checks whether its process is alive.

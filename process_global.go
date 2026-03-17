@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"forge.lthn.ai/core/go/pkg/core"
+	coreerr "forge.lthn.ai/core/go-log"
 )
 
 // Global default service (follows i18n pattern).
@@ -25,7 +26,7 @@ func Default() *Service {
 // Thread-safe: can be called concurrently with Default().
 func SetDefault(s *Service) error {
 	if s == nil {
-		return &ServiceError{msg: "process: SetDefault called with nil service"}
+		return ErrSetDefaultNil
 	}
 	defaultService.Store(s)
 	return nil
@@ -120,15 +121,10 @@ func Running() []*Process {
 	return svc.Running()
 }
 
-// ErrServiceNotInitialized is returned when the service is not initialized.
-var ErrServiceNotInitialized = &ServiceError{msg: "process: service not initialized; call process.Init(core) first"}
-
-// ServiceError represents a service-level error.
-type ServiceError struct {
-	msg string
-}
-
-// Error returns the service error message.
-func (e *ServiceError) Error() string {
-	return e.msg
-}
+// Errors
+var (
+	// ErrServiceNotInitialized is returned when the service is not initialized.
+	ErrServiceNotInitialized = coreerr.E("", "process: service not initialized; call process.Init(core) first", nil)
+	// ErrSetDefaultNil is returned when SetDefault is called with nil.
+	ErrSetDefaultNil = coreerr.E("", "process: SetDefault called with nil service", nil)
+)

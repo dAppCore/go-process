@@ -98,6 +98,60 @@ func TestService_Start(t *testing.T) {
 			t.Fatal("process should have been killed")
 		}
 	})
+
+	t.Run("disable capture", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:        "echo",
+			Args:           []string{"no-capture"},
+			DisableCapture: true,
+		})
+		require.NoError(t, err)
+		<-proc.Done()
+
+		assert.Equal(t, StatusExited, proc.Status)
+		assert.Equal(t, "", proc.Output(), "output should be empty when capture is disabled")
+	})
+
+	t.Run("with environment variables", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command: "sh",
+			Args:    []string{"-c", "echo $MY_TEST_VAR"},
+			Env:     []string{"MY_TEST_VAR=hello_env"},
+		})
+		require.NoError(t, err)
+		<-proc.Done()
+
+		assert.Contains(t, proc.Output(), "hello_env")
+	})
+
+	t.Run("detach survives parent context", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		proc, err := svc.StartWithOptions(ctx, RunOptions{
+			Command: "echo",
+			Args:    []string{"detached"},
+			Detach:  true,
+		})
+		require.NoError(t, err)
+
+		// Cancel the parent context
+		cancel()
+
+		// Detached process should still complete normally
+		select {
+		case <-proc.Done():
+			assert.Equal(t, StatusExited, proc.Status)
+			assert.Equal(t, 0, proc.ExitCode)
+		case <-time.After(2 * time.Second):
+			t.Fatal("detached process should have completed")
+		}
+	})
 }
 
 func TestService_Run(t *testing.T) {
@@ -253,5 +307,141 @@ func TestService_Clear(t *testing.T) {
 		svc.Clear()
 
 		assert.Len(t, svc.List(), 0)
+	})
+}
+
+func TestService_Kill(t *testing.T) {
+	t.Run("kills running process", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		err = svc.Kill(proc.ID)
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Process killed successfully
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been killed")
+		}
+	})
+
+	t.Run("error on unknown id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		err := svc.Kill("nonexistent")
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+}
+
+func TestService_Output(t *testing.T) {
+	t.Run("returns captured output", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "echo", "captured")
+		require.NoError(t, err)
+		<-proc.Done()
+
+		output, err := svc.Output(proc.ID)
+		require.NoError(t, err)
+		assert.Contains(t, output, "captured")
+	})
+
+	t.Run("error on unknown id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.Output("nonexistent")
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+}
+
+func TestService_OnShutdown(t *testing.T) {
+	t.Run("kills all running processes", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc1, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+		proc2, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		assert.True(t, proc1.IsRunning())
+		assert.True(t, proc2.IsRunning())
+
+		err = svc.OnShutdown(context.Background())
+		assert.NoError(t, err)
+
+		select {
+		case <-proc1.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("proc1 should have been killed")
+		}
+		select {
+		case <-proc2.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("proc2 should have been killed")
+		}
+	})
+}
+
+func TestService_OnStartup(t *testing.T) {
+	t.Run("returns nil", func(t *testing.T) {
+		svc, _ := newTestService(t)
+		err := svc.OnStartup(context.Background())
+		assert.NoError(t, err)
+	})
+}
+
+func TestService_RunWithOptions(t *testing.T) {
+	t.Run("returns output on success", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		output, err := svc.RunWithOptions(context.Background(), RunOptions{
+			Command: "echo",
+			Args:    []string{"opts-test"},
+		})
+		require.NoError(t, err)
+		assert.Contains(t, output, "opts-test")
+	})
+
+	t.Run("returns error on failure", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.RunWithOptions(context.Background(), RunOptions{
+			Command: "sh",
+			Args:    []string{"-c", "exit 2"},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "exited with code 2")
+	})
+}
+
+func TestService_Running(t *testing.T) {
+	t.Run("returns only running processes", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc1, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		proc2, err := svc.Start(context.Background(), "echo", "done")
+		require.NoError(t, err)
+		<-proc2.Done()
+
+		running := svc.Running()
+		assert.Len(t, running, 1)
+		assert.Equal(t, proc1.ID, running[0].ID)
+
+		cancel()
+		<-proc1.Done()
 	})
 }

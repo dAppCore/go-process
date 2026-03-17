@@ -146,3 +146,67 @@ func TestCommand_UsesDefaultLogger(t *testing.T) {
 		t.Errorf("expected default logger to receive 1 debug call, got %d", len(logger.debugCalls))
 	}
 }
+
+func TestCommand_WithDir(t *testing.T) {
+	ctx := context.Background()
+	out, err := exec.Command(ctx, "pwd").
+		WithDir("/tmp").
+		WithLogger(&mockLogger{}).
+		Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed != "/tmp" && trimmed != "/private/tmp" {
+		t.Errorf("expected /tmp or /private/tmp, got %q", trimmed)
+	}
+}
+
+func TestCommand_WithEnv(t *testing.T) {
+	ctx := context.Background()
+	out, err := exec.Command(ctx, "sh", "-c", "echo $TEST_EXEC_VAR").
+		WithEnv([]string{"TEST_EXEC_VAR=exec_val"}).
+		WithLogger(&mockLogger{}).
+		Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "exec_val" {
+		t.Errorf("expected 'exec_val', got %q", string(out))
+	}
+}
+
+func TestCommand_WithStdinStdoutStderr(t *testing.T) {
+	ctx := context.Background()
+	input := strings.NewReader("piped input\n")
+	var stdout, stderr strings.Builder
+
+	err := exec.Command(ctx, "cat").
+		WithStdin(input).
+		WithStdout(&stdout).
+		WithStderr(&stderr).
+		WithLogger(&mockLogger{}).
+		Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(stdout.String()) != "piped input" {
+		t.Errorf("expected 'piped input', got %q", stdout.String())
+	}
+}
+
+func TestRunQuiet_Good(t *testing.T) {
+	ctx := context.Background()
+	err := exec.RunQuiet(ctx, "echo", "quiet")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunQuiet_Bad(t *testing.T) {
+	ctx := context.Background()
+	err := exec.RunQuiet(ctx, "sh", "-c", "echo fail >&2; exit 1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
