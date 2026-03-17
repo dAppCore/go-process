@@ -3,11 +3,11 @@ module forge.lthn.ai/core/go-process
 go 1.26.0
 
 require (
-	forge.lthn.ai/core/api v0.1.3
-	forge.lthn.ai/core/go v0.3.1
-	forge.lthn.ai/core/go-io v0.1.5
+	forge.lthn.ai/core/api v0.1.5
+	forge.lthn.ai/core/go v0.3.2
+	forge.lthn.ai/core/go-io v0.1.6
 	forge.lthn.ai/core/go-log v0.0.4
-	forge.lthn.ai/core/go-ws v0.2.2
+	forge.lthn.ai/core/go-ws v0.2.4
 	github.com/gin-gonic/gin v1.12.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -18,7 +18,7 @@ require (
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
-	github.com/bytedance/gopkg v0.1.3 // indirect
+	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/casbin/casbin/v2 v2.135.0 // indirect
