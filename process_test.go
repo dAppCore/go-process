@@ -259,3 +259,134 @@ func TestProcess_CloseStdin(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+func TestProcess_Timeout(t *testing.T) {
+	t.Run("kills process after timeout", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command: "sleep",
+			Args:    []string{"60"},
+			Timeout: 200 * time.Millisecond,
+		})
+		require.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good — process was killed by timeout
+		case <-time.After(5 * time.Second):
+			t.Fatal("process should have been killed by timeout")
+		}
+
+		assert.False(t, proc.IsRunning())
+	})
+
+	t.Run("no timeout when zero", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command: "echo",
+			Args:    []string{"fast"},
+			Timeout: 0,
+		})
+		require.NoError(t, err)
+
+		<-proc.Done()
+		assert.Equal(t, 0, proc.ExitCode)
+	})
+}
+
+func TestProcess_Shutdown(t *testing.T) {
+	t.Run("graceful with grace period", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		// Use a process that traps SIGTERM
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:     "sleep",
+			Args:        []string{"60"},
+			GracePeriod: 100 * time.Millisecond,
+		})
+		require.NoError(t, err)
+
+		assert.True(t, proc.IsRunning())
+
+		err = proc.Shutdown()
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good
+		case <-time.After(5 * time.Second):
+			t.Fatal("shutdown should have completed")
+		}
+	})
+
+	t.Run("immediate kill without grace period", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command: "sleep",
+			Args:    []string{"60"},
+		})
+		require.NoError(t, err)
+
+		err = proc.Shutdown()
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good
+		case <-time.After(2 * time.Second):
+			t.Fatal("kill should be immediate")
+		}
+	})
+}
+
+func TestProcess_KillGroup(t *testing.T) {
+	t.Run("kills child processes", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		// Spawn a parent that spawns a child — KillGroup should kill both
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:   "sh",
+			Args:      []string{"-c", "sleep 60 & wait"},
+			Detach:    true,
+			KillGroup: true,
+		})
+		require.NoError(t, err)
+
+		// Give child time to spawn
+		time.Sleep(100 * time.Millisecond)
+
+		err = proc.Kill()
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good — whole group killed
+		case <-time.After(5 * time.Second):
+			t.Fatal("process group should have been killed")
+		}
+	})
+}
+
+func TestProcess_TimeoutWithGrace(t *testing.T) {
+	t.Run("timeout triggers graceful shutdown", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:     "sleep",
+			Args:        []string{"60"},
+			Timeout:     200 * time.Millisecond,
+			GracePeriod: 100 * time.Millisecond,
+		})
+		require.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good — timeout + grace triggered
+		case <-time.After(5 * time.Second):
+			t.Fatal("process should have been killed by timeout")
+		}
+	})
+}

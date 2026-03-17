@@ -68,7 +68,7 @@ func (s *Service) OnStartup(ctx context.Context) error {
 }
 
 // OnShutdown implements core.Stoppable.
-// Kills all running processes on shutdown.
+// Gracefully shuts down all running processes (SIGTERM → SIGKILL).
 func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RLock()
 	procs := make([]*Process, 0, len(s.processes))
@@ -80,7 +80,7 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	for _, p := range procs {
-		_ = p.Kill()
+		_ = p.Shutdown()
 	}
 
 	return nil
@@ -144,19 +144,21 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	}
 
 	proc := &Process{
-		ID:        id,
-		Command:   opts.Command,
-		Args:      opts.Args,
-		Dir:       opts.Dir,
-		Env:       opts.Env,
-		StartedAt: time.Now(),
-		Status:    StatusRunning,
-		cmd:       cmd,
-		ctx:       procCtx,
-		cancel:    cancel,
-		output:    output,
-		stdin:     stdin,
-		done:      make(chan struct{}),
+		ID:          id,
+		Command:     opts.Command,
+		Args:        opts.Args,
+		Dir:         opts.Dir,
+		Env:         opts.Env,
+		StartedAt:   time.Now(),
+		Status:      StatusRunning,
+		cmd:         cmd,
+		ctx:         procCtx,
+		cancel:      cancel,
+		output:      output,
+		stdin:       stdin,
+		done:        make(chan struct{}),
+		gracePeriod: opts.GracePeriod,
+		killGroup:   opts.KillGroup && opts.Detach,
 	}
 
 	// Start the process
@@ -169,6 +171,18 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	s.mu.Lock()
 	s.processes[id] = proc
 	s.mu.Unlock()
+
+	// Start timeout watchdog if configured
+	if opts.Timeout > 0 {
+		go func() {
+			select {
+			case <-proc.done:
+				// Process exited before timeout
+			case <-time.After(opts.Timeout):
+				proc.Shutdown()
+			}
+		}()
+	}
 
 	// Broadcast start
 	_ = s.Core().ACTION(ActionProcessStarted{

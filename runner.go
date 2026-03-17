@@ -99,13 +99,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 		}
 
 		if len(ready) == 0 && len(remaining) > 0 {
-			// Deadlock - circular dependency or missing specs
+			// Deadlock — circular dependency or missing specs. Mark as failed, not skipped.
 			for name := range remaining {
 				results = append(results, RunResult{
-					Name:    name,
-					Spec:    remaining[name],
-					Skipped: true,
-					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
+					Name:     name,
+					Spec:     remaining[name],
+					ExitCode: 1,
+					Error:    coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				})
 			}
 			break

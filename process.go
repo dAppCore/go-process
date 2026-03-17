@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	coreerr "forge.lthn.ai/core/go-log"
@@ -24,13 +25,15 @@ type Process struct {
 	ExitCode  int
 	Duration  time.Duration
 
-	cmd    *exec.Cmd
-	ctx    context.Context
-	cancel context.CancelFunc
-	output *RingBuffer
-	stdin  io.WriteCloser
-	done   chan struct{}
-	mu     sync.RWMutex
+	cmd         *exec.Cmd
+	ctx         context.Context
+	cancel      context.CancelFunc
+	output      *RingBuffer
+	stdin       io.WriteCloser
+	done        chan struct{}
+	mu          sync.RWMutex
+	gracePeriod time.Duration
+	killGroup   bool
 }
 
 // Info returns a snapshot of process state.
@@ -106,6 +109,7 @@ func (p *Process) Done() <-chan struct{} {
 }
 
 // Kill forcefully terminates the process.
+// If KillGroup is set, kills the entire process group.
 func (p *Process) Kill() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -118,7 +122,57 @@ func (p *Process) Kill() error {
 		return nil
 	}
 
+	if p.killGroup {
+		// Kill entire process group (negative PID)
+		return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+	}
 	return p.cmd.Process.Kill()
+}
+
+// Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.
+// If GracePeriod was not set (zero), falls back to immediate Kill().
+// If KillGroup is set, signals are sent to the entire process group.
+func (p *Process) Shutdown() error {
+	p.mu.RLock()
+	grace := p.gracePeriod
+	p.mu.RUnlock()
+
+	if grace <= 0 {
+		return p.Kill()
+	}
+
+	// Send SIGTERM
+	if err := p.terminate(); err != nil {
+		return p.Kill()
+	}
+
+	// Wait for exit or grace period
+	select {
+	case <-p.done:
+		return nil
+	case <-time.After(grace):
+		return p.Kill()
+	}
+}
+
+// terminate sends SIGTERM to the process (or process group if KillGroup is set).
+func (p *Process) terminate() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.Status != StatusRunning {
+		return nil
+	}
+
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
+
+	pid := p.cmd.Process.Pid
+	if p.killGroup {
+		pid = -pid
+	}
+	return syscall.Kill(pid, syscall.SIGTERM)
 }
 
 // Signal sends a signal to the process.

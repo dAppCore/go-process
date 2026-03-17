@@ -77,6 +77,18 @@ type RunOptions struct {
 	// Detached processes survive parent death and context cancellation.
 	// The context is replaced with context.Background() when Detach is true.
 	Detach bool
+	// Timeout is the maximum duration the process may run.
+	// After this duration, the process receives SIGTERM (or SIGKILL if
+	// GracePeriod is zero). Zero means no timeout.
+	Timeout time.Duration
+	// GracePeriod is the time between SIGTERM and SIGKILL when stopping
+	// a process (via timeout or Shutdown). Zero means immediate SIGKILL.
+	// Default: 0 (immediate kill for backwards compatibility).
+	GracePeriod time.Duration
+	// KillGroup kills the entire process group instead of just the leader.
+	// Requires Detach to be true (process must be its own group leader).
+	// This ensures child processes spawned by the command are also killed.
+	KillGroup bool
 }
 
 // Info provides a snapshot of process state without internal fields.

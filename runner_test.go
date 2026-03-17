@@ -153,6 +153,22 @@ func TestRunner_RunAll(t *testing.T) {
 	})
 }
 
+func TestRunner_RunAll_CircularDeps(t *testing.T) {
+	t.Run("circular dependency counts as failed", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		result, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "a", Command: "echo", Args: []string{"a"}, After: []string{"b"}},
+			{Name: "b", Command: "echo", Args: []string{"b"}, After: []string{"a"}},
+		})
+		require.NoError(t, err)
+
+		assert.False(t, result.Success())
+		assert.Equal(t, 2, result.Failed)
+		assert.Equal(t, 0, result.Skipped)
+	})
+}
+
 func TestRunResult_Passed(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		r := RunResult{ExitCode: 0}
