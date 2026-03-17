@@ -4,8 +4,8 @@ go 1.26.0
 
 require (
 	forge.lthn.ai/core/api v0.1.5
-	forge.lthn.ai/core/go v0.3.2
-	forge.lthn.ai/core/go-io v0.1.6
+	forge.lthn.ai/core/go v0.3.3
+	forge.lthn.ai/core/go-io v0.1.7
 	forge.lthn.ai/core/go-log v0.0.4
 	forge.lthn.ai/core/go-ws v0.2.4
 	github.com/gin-gonic/gin v1.12.0
