@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 
 	"dappco.re/go/core"
-	coreerr "forge.lthn.ai/core/go-log"
+	coreerr "dappco.re/go/core/log"
 )
 
 // Global default service (follows i18n pattern).

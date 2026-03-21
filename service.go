@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "forge.lthn.ai/core/go-log"
+	coreerr "dappco.re/go/core/log"
 )
 
 // Default buffer size for process output (1MB).

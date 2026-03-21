@@ -9,8 +9,8 @@ import (
 	"sync"
 	"syscall"
 
-	coreio "forge.lthn.ai/core/go-io"
-	coreerr "forge.lthn.ai/core/go-log"
+	coreio "dappco.re/go/core/io"
+	coreerr "dappco.re/go/core/log"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.

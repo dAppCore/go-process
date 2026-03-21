@@ -12,8 +12,8 @@ import (
 
 	"forge.lthn.ai/core/api"
 	"forge.lthn.ai/core/api/pkg/provider"
-	process "forge.lthn.ai/core/go-process"
-	"forge.lthn.ai/core/go-ws"
+	process "dappco.re/go/core/process"
+	"dappco.re/go/core/ws"
 	"github.com/gin-gonic/gin"
 )
 

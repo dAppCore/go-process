@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	process "forge.lthn.ai/core/go-process"
+	process "dappco.re/go/core/process"
 )
 
 func testCtx(t *testing.T) context.Context {

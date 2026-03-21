@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	coreerr "forge.lthn.ai/core/go-log"
+	coreerr "dappco.re/go/core/log"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.

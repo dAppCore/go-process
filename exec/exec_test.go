@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"forge.lthn.ai/core/go-process/exec"
+	"dappco.re/go/core/process/exec"
 )
 
 // mockLogger captures log calls for testing

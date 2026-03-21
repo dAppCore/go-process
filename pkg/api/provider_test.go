@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	goapi "forge.lthn.ai/core/api"
-	process "forge.lthn.ai/core/go-process"
-	processapi "forge.lthn.ai/core/go-process/pkg/api"
+	process "dappco.re/go/core/process"
+	processapi "dappco.re/go/core/process/pkg/api"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`forge.lthn.ai/core/go-process` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events broadcast via Core IPC actions.
+`dappco.re/go/core/process` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events broadcast via Core IPC actions.
 
 ## Commands
 
@@ -56,9 +56,9 @@ Builder-pattern wrapper around `os/exec` with structured logging via a pluggable
 
 ## Dependencies
 
-- `forge.lthn.ai/core/go/pkg/core` — Core DI framework, IPC actions, `ServiceRuntime`
-- `forge.lthn.ai/core/go-log` — Structured error constructor (`coreerr.E()`)
-- `forge.lthn.ai/core/go-io` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
+- `dappco.re/go/core` — Core DI framework, IPC actions, `ServiceRuntime`
+- `dappco.re/go/core/log` — Structured error constructor (`coreerr.E()`)
+- `dappco.re/go/core/io` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
 - `github.com/stretchr/testify` — test assertions (require/assert)
 
 ## Testing
