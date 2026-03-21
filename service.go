@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"forge.lthn.ai/core/go/pkg/core"
+	"dappco.re/go/core"
 	coreerr "forge.lthn.ai/core/go-log"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	framework "forge.lthn.ai/core/go/pkg/core"
+	framework "dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
