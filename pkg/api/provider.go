@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"forge.lthn.ai/core/api"
-	"forge.lthn.ai/core/api/pkg/provider"
+	"dappco.re/go/core/api"
+	"dappco.re/go/core/api/pkg/provider"
 	process "dappco.re/go/core/process"
 	"dappco.re/go/core/ws"
 	"github.com/gin-gonic/gin"

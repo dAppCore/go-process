@@ -3,17 +3,16 @@ module dappco.re/go/core/process
 go 1.26.0
 
 require (
-	dappco.re/go/core v0.4.7
-	dappco.re/go/core/io v0.1.7
-	dappco.re/go/core/log v0.0.4
-	dappco.re/go/core/ws v0.2.4
-	forge.lthn.ai/core/api v0.1.5
+	dappco.re/go/core v0.5.0
+	dappco.re/go/core/api v0.2.0
+	dappco.re/go/core/io v0.2.0
+	dappco.re/go/core/log v0.1.0
+	dappco.re/go/core/ws v0.3.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	forge.lthn.ai/core/go-io v0.1.5 // indirect
 	forge.lthn.ai/core/go-log v0.0.4 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
@@ -107,11 +106,4 @@ require (
 	golang.org/x/tools v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
-
-replace (
-	dappco.re/go/core => ../go
-	dappco.re/go/core/io => ../go-io
-	dappco.re/go/core/log => ../go-log
-	dappco.re/go/core/ws => ../go-ws
 )
