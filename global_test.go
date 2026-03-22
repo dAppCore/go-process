@@ -43,9 +43,17 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 }
 
+func newGlobalTestService(t *testing.T) *Service {
+	t.Helper()
+	c := framework.New()
+	factory := NewService(Options{})
+	raw, err := factory(c)
+	require.NoError(t, err)
+	return raw.(*Service)
+}
+
 func TestGlobal_SetDefault(t *testing.T) {
 	t.Run("sets and retrieves service", func(t *testing.T) {
-		// Reset global state
 		old := defaultService.Swap(nil)
 		defer func() {
 			if old != nil {
@@ -53,15 +61,9 @@ func TestGlobal_SetDefault(t *testing.T) {
 			}
 		}()
 
-		c, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
-		)
-		require.NoError(t, err)
+		svc := newGlobalTestService(t)
 
-		svc, err := framework.ServiceFor[*Service](c, "process")
-		require.NoError(t, err)
-
-		err = SetDefault(svc)
+		err := SetDefault(svc)
 		require.NoError(t, err)
 		assert.Equal(t, svc, Default())
 	})
@@ -73,7 +75,6 @@ func TestGlobal_SetDefault(t *testing.T) {
 }
 
 func TestGlobal_ConcurrentDefault(t *testing.T) {
-	// Reset global state
 	old := defaultService.Swap(nil)
 	defer func() {
 		if old != nil {
@@ -81,18 +82,11 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 		}
 	}()
 
-	c, err := framework.New(
-		framework.WithName("process", NewService(Options{})),
-	)
+	svc := newGlobalTestService(t)
+
+	err := SetDefault(svc)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](c, "process")
-	require.NoError(t, err)
-
-	err = SetDefault(svc)
-	require.NoError(t, err)
-
-	// Concurrent reads of Default()
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
@@ -107,7 +101,6 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 }
 
 func TestGlobal_ConcurrentSetDefault(t *testing.T) {
-	// Reset global state
 	old := defaultService.Swap(nil)
 	defer func() {
 		if old != nil {
@@ -115,20 +108,12 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 		}
 	}()
 
-	// Create multiple services
 	var services []*Service
 	for i := 0; i < 10; i++ {
-		c, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
-		)
-		require.NoError(t, err)
-
-		svc, err := framework.ServiceFor[*Service](c, "process")
-		require.NoError(t, err)
+		svc := newGlobalTestService(t)
 		services = append(services, svc)
 	}
 
-	// Concurrent SetDefault calls - should not panic or race
 	var wg sync.WaitGroup
 	for _, svc := range services {
 		wg.Add(1)
@@ -139,7 +124,6 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Final state should be one of the services
 	final := Default()
 	assert.NotNil(t, final)
 
@@ -154,7 +138,6 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 }
 
 func TestGlobal_ConcurrentOperations(t *testing.T) {
-	// Reset global state
 	old := defaultService.Swap(nil)
 	defer func() {
 		if old != nil {
@@ -162,23 +145,15 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		}
 	}()
 
-	c, err := framework.New(
-		framework.WithName("process", NewService(Options{})),
-	)
+	svc := newGlobalTestService(t)
+
+	err := SetDefault(svc)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](c, "process")
-	require.NoError(t, err)
-
-	err = SetDefault(svc)
-	require.NoError(t, err)
-
-	// Concurrent Start, List, Get operations
 	var wg sync.WaitGroup
 	var processes []*Process
 	var procMu sync.Mutex
 
-	// Start 20 processes concurrently
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
@@ -192,7 +167,6 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		}()
 	}
 
-	// Concurrent List calls while starting
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
@@ -204,17 +178,14 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 
 	wg.Wait()
 
-	// Wait for all processes to complete
 	procMu.Lock()
 	for _, p := range processes {
 		<-p.Done()
 	}
 	procMu.Unlock()
 
-	// All should have succeeded
 	assert.Len(t, processes, 20)
 
-	// Concurrent Get calls
 	var wg2 sync.WaitGroup
 	for _, p := range processes {
 		wg2.Add(1)
@@ -231,7 +202,6 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 func TestGlobal_StartWithOptions(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	// Set as default
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -254,7 +224,6 @@ func TestGlobal_StartWithOptions(t *testing.T) {
 func TestGlobal_RunWithOptions(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	// Set as default
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -273,7 +242,6 @@ func TestGlobal_RunWithOptions(t *testing.T) {
 func TestGlobal_Running(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	// Set as default
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -284,7 +252,6 @@ func TestGlobal_Running(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start a long-running process
 	proc, err := Start(ctx, "sleep", "60")
 	require.NoError(t, err)
 

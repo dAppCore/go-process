@@ -15,14 +15,12 @@ import (
 func newTestService(t *testing.T) (*Service, *framework.Core) {
 	t.Helper()
 
-	c, err := framework.New(
-		framework.WithName("process", NewService(Options{BufferSize: 1024})),
-	)
+	c := framework.New()
+	factory := NewService(Options{BufferSize: 1024})
+	raw, err := factory(c)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](c, "process")
-	require.NoError(t, err)
-
+	svc := raw.(*Service)
 	return svc, c
 }
 
@@ -174,17 +172,20 @@ func TestService_Run(t *testing.T) {
 
 func TestService_Actions(t *testing.T) {
 	t.Run("broadcasts events", func(t *testing.T) {
-		c, err := framework.New(
-			framework.WithName("process", NewService(Options{})),
-		)
+		c := framework.New()
+
+		// Register process service on Core
+		factory := NewService(Options{})
+		raw, err := factory(c)
 		require.NoError(t, err)
+		svc := raw.(*Service)
 
 		var started []ActionProcessStarted
 		var outputs []ActionProcessOutput
 		var exited []ActionProcessExited
 		var mu sync.Mutex
 
-		c.RegisterAction(func(cc *framework.Core, msg framework.Message) error {
+		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
 			mu.Lock()
 			defer mu.Unlock()
 			switch m := msg.(type) {
@@ -195,10 +196,8 @@ func TestService_Actions(t *testing.T) {
 			case ActionProcessExited:
 				exited = append(exited, m)
 			}
-			return nil
+			return framework.Result{OK: true}
 		})
-
-		svc, _ := framework.ServiceFor[*Service](c, "process")
 		proc, err := svc.Start(context.Background(), "echo", "test")
 		require.NoError(t, err)
 

@@ -12,15 +12,12 @@ import (
 func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
 
-	c, err := framework.New(
-		framework.WithName("process", NewService(Options{})),
-	)
+	c := framework.New()
+	factory := NewService(Options{})
+	raw, err := factory(c)
 	require.NoError(t, err)
 
-	svc, err := framework.ServiceFor[*Service](c, "process")
-	require.NoError(t, err)
-
-	return NewRunner(svc)
+	return NewRunner(raw.(*Service))
 }
 
 func TestRunner_RunSequential(t *testing.T) {
