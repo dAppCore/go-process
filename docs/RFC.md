@@ -24,6 +24,30 @@ go-process provides:  c.Action("process.run", s.handleRun)
 
 Without go-process registered, `c.Process().Run()` returns `Result{OK: false}`. Permission-by-registration.
 
+### Current State (2026-03-25)
+
+The codebase is PRE-migration. The RFC describes the v0.8.0 target. What exists today:
+
+- `service.go` — `NewService(opts) func(*Core) (any, error)` — **old factory signature**. Change to `Register(c *Core) core.Result`
+- `OnStartup() error` / `OnShutdown() error` — **Change** to return `core.Result`
+- `process.SetDefault(svc)` global singleton — **Remove**. Service registers in Core conclave
+- Own ID generation `fmt.Sprintf("proc-%d", ...)` — **Replace** with `core.ID()`
+- Custom `map[string]*ManagedProcess` — **Replace** with `core.Registry[*ManagedProcess]`
+- No named Actions registered — **Add** `process.run/start/kill/list/get` during OnStartup
+
+### File Layout
+
+```
+service.go        — main service (factory, lifecycle, process execution)
+registry.go       — daemon registry (PID files, health, restart)
+daemon.go         — DaemonEntry, managed daemon lifecycle
+health.go         — health check endpoints
+pidfile.go        — PID file management
+buffer.go         — output buffering
+actions.go        — WILL CONTAIN Action handlers after migration
+global.go         — global Default() singleton — DELETE after migration
+```
+
 ---
 
 ## 2. Registration
