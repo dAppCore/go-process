@@ -24,19 +24,23 @@ func newTestService(t *testing.T) (*Service, *framework.Core) {
 	return svc, c
 }
 
+func startProc(t *testing.T, svc *Service, ctx context.Context, command string, args ...string) *Process {
+	t.Helper()
+	r := svc.Start(ctx, command, args...)
+	require.True(t, r.OK)
+	return r.Value.(*Process)
+}
+
 func TestService_Start(t *testing.T) {
 	t.Run("echo command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "hello")
-		require.NoError(t, err)
-		require.NotNil(t, proc)
+		proc := startProc(t, svc, context.Background(), "echo", "hello")
 
 		assert.NotEmpty(t, proc.ID)
 		assert.Equal(t, "echo", proc.Command)
 		assert.Equal(t, []string{"hello"}, proc.Args)
 
-		// Wait for completion
 		<-proc.Done()
 
 		assert.Equal(t, StatusExited, proc.Status)
@@ -47,8 +51,7 @@ func TestService_Start(t *testing.T) {
 	t.Run("failing command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 42")
-		require.NoError(t, err)
+		proc := startProc(t, svc, context.Background(), "sh", "-c", "exit 42")
 
 		<-proc.Done()
 
@@ -59,22 +62,22 @@ func TestService_Start(t *testing.T) {
 	t.Run("non-existent command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Start(context.Background(), "nonexistent_command_xyz")
-		assert.Error(t, err)
+		r := svc.Start(context.Background(), "nonexistent_command_xyz")
+		assert.False(t, r.OK)
 	})
 
 	t.Run("with working directory", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "pwd",
 			Dir:     "/tmp",
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
 		<-proc.Done()
 
-		// On macOS /tmp is a symlink to /private/tmp
 		output := strings.TrimSpace(proc.Output())
 		assert.True(t, output == "/tmp" || output == "/private/tmp", "got: %s", output)
 	})
@@ -83,15 +86,12 @@ func TestService_Start(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		proc, err := svc.Start(ctx, "sleep", "10")
-		require.NoError(t, err)
+		proc := startProc(t, svc, ctx, "sleep", "10")
 
-		// Cancel immediately
 		cancel()
 
 		select {
 		case <-proc.Done():
-			// Good - process was killed
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been killed")
 		}
@@ -100,12 +100,13 @@ func TestService_Start(t *testing.T) {
 	t.Run("disable capture", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:        "echo",
 			Args:           []string{"no-capture"},
 			DisableCapture: true,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 		<-proc.Done()
 
 		assert.Equal(t, StatusExited, proc.Status)
@@ -115,12 +116,13 @@ func TestService_Start(t *testing.T) {
 	t.Run("with environment variables", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sh",
 			Args:    []string{"-c", "echo $MY_TEST_VAR"},
 			Env:     []string{"MY_TEST_VAR=hello_env"},
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 		<-proc.Done()
 
 		assert.Contains(t, proc.Output(), "hello_env")
@@ -131,17 +133,16 @@ func TestService_Start(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		proc, err := svc.StartWithOptions(ctx, RunOptions{
+		r := svc.StartWithOptions(ctx, RunOptions{
 			Command: "echo",
 			Args:    []string{"detached"},
 			Detach:  true,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
-		// Cancel the parent context
 		cancel()
 
-		// Detached process should still complete normally
 		select {
 		case <-proc.Done():
 			assert.Equal(t, StatusExited, proc.Status)
@@ -156,17 +157,16 @@ func TestService_Run(t *testing.T) {
 	t.Run("returns output", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		output, err := svc.Run(context.Background(), "echo", "hello world")
-		require.NoError(t, err)
-		assert.Contains(t, output, "hello world")
+		r := svc.Run(context.Background(), "echo", "hello world")
+		assert.True(t, r.OK)
+		assert.Contains(t, r.Value.(string), "hello world")
 	})
 
-	t.Run("returns error on failure", func(t *testing.T) {
+	t.Run("returns !OK on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Run(context.Background(), "sh", "-c", "exit 1")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "exited with code 1")
+		r := svc.Run(context.Background(), "sh", "-c", "exit 1")
+		assert.False(t, r.OK)
 	})
 }
 
@@ -174,7 +174,6 @@ func TestService_Actions(t *testing.T) {
 	t.Run("broadcasts events", func(t *testing.T) {
 		c := framework.New()
 
-		// Register process service on Core
 		factory := NewService(Options{})
 		raw, err := factory(c)
 		require.NoError(t, err)
@@ -198,12 +197,10 @@ func TestService_Actions(t *testing.T) {
 			}
 			return framework.Result{OK: true}
 		})
-		proc, err := svc.Start(context.Background(), "echo", "test")
-		require.NoError(t, err)
+		proc := startProc(t, svc, context.Background(), "echo", "test")
 
 		<-proc.Done()
 
-		// Give time for events to propagate
 		time.Sleep(10 * time.Millisecond)
 
 		mu.Lock()
@@ -232,8 +229,8 @@ func TestService_List(t *testing.T) {
 	t.Run("tracks processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc1, _ := svc.Start(context.Background(), "echo", "1")
-		proc2, _ := svc.Start(context.Background(), "echo", "2")
+		proc1 := startProc(t, svc, context.Background(), "echo", "1")
+		proc2 := startProc(t, svc, context.Background(), "echo", "2")
 
 		<-proc1.Done()
 		<-proc2.Done()
@@ -245,7 +242,7 @@ func TestService_List(t *testing.T) {
 	t.Run("get by id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, _ := svc.Start(context.Background(), "echo", "test")
+		proc := startProc(t, svc, context.Background(), "echo", "test")
 		<-proc.Done()
 
 		got, err := svc.Get(proc.ID)
@@ -265,7 +262,7 @@ func TestService_Remove(t *testing.T) {
 	t.Run("removes completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, _ := svc.Start(context.Background(), "echo", "test")
+		proc := startProc(t, svc, context.Background(), "echo", "test")
 		<-proc.Done()
 
 		err := svc.Remove(proc.ID)
@@ -281,7 +278,7 @@ func TestService_Remove(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, _ := svc.Start(ctx, "sleep", "10")
+		proc := startProc(t, svc, ctx, "sleep", "10")
 
 		err := svc.Remove(proc.ID)
 		assert.Error(t, err)
@@ -295,8 +292,8 @@ func TestService_Clear(t *testing.T) {
 	t.Run("clears completed processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc1, _ := svc.Start(context.Background(), "echo", "1")
-		proc2, _ := svc.Start(context.Background(), "echo", "2")
+		proc1 := startProc(t, svc, context.Background(), "echo", "1")
+		proc2 := startProc(t, svc, context.Background(), "echo", "2")
 
 		<-proc1.Done()
 		<-proc2.Done()
@@ -316,15 +313,13 @@ func TestService_Kill(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		proc := startProc(t, svc, ctx, "sleep", "60")
 
-		err = svc.Kill(proc.ID)
+		err := svc.Kill(proc.ID)
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Process killed successfully
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been killed")
 		}
@@ -342,8 +337,7 @@ func TestService_Output(t *testing.T) {
 	t.Run("returns captured output", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "captured")
-		require.NoError(t, err)
+		proc := startProc(t, svc, context.Background(), "echo", "captured")
 		<-proc.Done()
 
 		output, err := svc.Output(proc.ID)
@@ -366,16 +360,14 @@ func TestService_OnShutdown(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc1, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
-		proc2, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		proc1 := startProc(t, svc, ctx, "sleep", "60")
+		proc2 := startProc(t, svc, ctx, "sleep", "60")
 
 		assert.True(t, proc1.IsRunning())
 		assert.True(t, proc2.IsRunning())
 
-		err = svc.OnShutdown(context.Background())
-		assert.NoError(t, err)
+		r := svc.OnShutdown(context.Background())
+		assert.True(t, r.OK)
 
 		select {
 		case <-proc1.Done():
@@ -391,10 +383,16 @@ func TestService_OnShutdown(t *testing.T) {
 }
 
 func TestService_OnStartup(t *testing.T) {
-	t.Run("returns nil", func(t *testing.T) {
-		svc, _ := newTestService(t)
-		err := svc.OnStartup(context.Background())
-		assert.NoError(t, err)
+	t.Run("registers named actions", func(t *testing.T) {
+		svc, c := newTestService(t)
+		r := svc.OnStartup(context.Background())
+		assert.True(t, r.OK)
+
+		assert.True(t, c.Action("process.run").Exists())
+		assert.True(t, c.Action("process.start").Exists())
+		assert.True(t, c.Action("process.kill").Exists())
+		assert.True(t, c.Action("process.list").Exists())
+		assert.True(t, c.Action("process.get").Exists())
 	})
 }
 
@@ -402,23 +400,22 @@ func TestService_RunWithOptions(t *testing.T) {
 	t.Run("returns output on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		output, err := svc.RunWithOptions(context.Background(), RunOptions{
+		r := svc.RunWithOptions(context.Background(), RunOptions{
 			Command: "echo",
 			Args:    []string{"opts-test"},
 		})
-		require.NoError(t, err)
-		assert.Contains(t, output, "opts-test")
+		assert.True(t, r.OK)
+		assert.Contains(t, r.Value.(string), "opts-test")
 	})
 
-	t.Run("returns error on failure", func(t *testing.T) {
+	t.Run("returns !OK on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.RunWithOptions(context.Background(), RunOptions{
+		r := svc.RunWithOptions(context.Background(), RunOptions{
 			Command: "sh",
 			Args:    []string{"-c", "exit 2"},
 		})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "exited with code 2")
+		assert.False(t, r.OK)
 	})
 }
 
@@ -429,11 +426,8 @@ func TestService_Running(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc1, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
-
-		proc2, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
+		proc1 := startProc(t, svc, ctx, "sleep", "60")
+		proc2 := startProc(t, svc, context.Background(), "echo", "done")
 		<-proc2.Done()
 
 		running := svc.Running()

@@ -193,21 +193,21 @@ func (r *Runner) canRun(spec RunSpec, completed map[string]*RunResult) bool {
 func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	start := time.Now()
 
-	proc, err := r.service.StartWithOptions(ctx, RunOptions{
+	sr := r.service.StartWithOptions(ctx, RunOptions{
 		Command: spec.Command,
 		Args:    spec.Args,
 		Dir:     spec.Dir,
 		Env:     spec.Env,
 	})
-	if err != nil {
+	if !sr.OK {
 		return RunResult{
 			Name:     spec.Name,
 			Spec:     spec,
 			Duration: time.Since(start),
-			Error:    err,
 		}
 	}
 
+	proc := sr.Value.(*Process)
 	<-proc.Done()
 
 	return RunResult{

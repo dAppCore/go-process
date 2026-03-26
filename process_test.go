@@ -13,8 +13,7 @@ import (
 func TestProcess_Info(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	proc, err := svc.Start(context.Background(), "echo", "hello")
-	require.NoError(t, err)
+	proc := startProc(t, svc, context.Background(), "echo", "hello")
 
 	<-proc.Done()
 
@@ -30,24 +29,15 @@ func TestProcess_Info(t *testing.T) {
 func TestProcess_Output(t *testing.T) {
 	t.Run("captures stdout", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "hello world")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, context.Background(), "echo", "hello world")
 		<-proc.Done()
-
-		output := proc.Output()
-		assert.Contains(t, output, "hello world")
+		assert.Contains(t, proc.Output(), "hello world")
 	})
 
 	t.Run("OutputBytes returns copy", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "test")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, context.Background(), "echo", "test")
 		<-proc.Done()
-
 		bytes := proc.OutputBytes()
 		assert.NotNil(t, bytes)
 		assert.Contains(t, string(bytes), "test")
@@ -57,29 +47,21 @@ func TestProcess_Output(t *testing.T) {
 func TestProcess_IsRunning(t *testing.T) {
 	t.Run("true while running", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "10")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, ctx, "sleep", "10")
 		assert.True(t, proc.IsRunning())
 
 		cancel()
 		<-proc.Done()
-
 		assert.False(t, proc.IsRunning())
 	})
 
 	t.Run("false after completion", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, context.Background(), "echo", "done")
 		<-proc.Done()
-
 		assert.False(t, proc.IsRunning())
 	})
 }
@@ -87,21 +69,15 @@ func TestProcess_IsRunning(t *testing.T) {
 func TestProcess_Wait(t *testing.T) {
 	t.Run("returns nil on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "ok")
-		require.NoError(t, err)
-
-		err = proc.Wait()
+		proc := startProc(t, svc, context.Background(), "echo", "ok")
+		err := proc.Wait()
 		assert.NoError(t, err)
 	})
 
 	t.Run("returns error on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 1")
-		require.NoError(t, err)
-
-		err = proc.Wait()
+		proc := startProc(t, svc, context.Background(), "sh", "-c", "exit 1")
+		err := proc.Wait()
 		assert.Error(t, err)
 	})
 }
@@ -109,13 +85,10 @@ func TestProcess_Wait(t *testing.T) {
 func TestProcess_Done(t *testing.T) {
 	t.Run("channel closes on completion", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "test")
-		require.NoError(t, err)
+		proc := startProc(t, svc, context.Background(), "echo", "test")
 
 		select {
 		case <-proc.Done():
-			// Success - channel closed
 		case <-time.After(5 * time.Second):
 			t.Fatal("Done channel should have closed")
 		}
@@ -125,21 +98,17 @@ func TestProcess_Done(t *testing.T) {
 func TestProcess_Kill(t *testing.T) {
 	t.Run("terminates running process", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, ctx, "sleep", "60")
 		assert.True(t, proc.IsRunning())
 
-		err = proc.Kill()
+		err := proc.Kill()
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Good - process terminated
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been killed")
 		}
@@ -147,13 +116,9 @@ func TestProcess_Kill(t *testing.T) {
 
 	t.Run("noop on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, context.Background(), "echo", "done")
 		<-proc.Done()
-
-		err = proc.Kill()
+		err := proc.Kill()
 		assert.NoError(t, err)
 	})
 }
@@ -161,31 +126,21 @@ func TestProcess_Kill(t *testing.T) {
 func TestProcess_SendInput(t *testing.T) {
 	t.Run("writes to stdin", func(t *testing.T) {
 		svc, _ := newTestService(t)
+		proc := startProc(t, svc, context.Background(), "cat")
 
-		// Use cat to echo back stdin
-		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
-
-		err = proc.SendInput("hello\n")
+		err := proc.SendInput("hello\n")
 		assert.NoError(t, err)
-
 		err = proc.CloseStdin()
 		assert.NoError(t, err)
-
 		<-proc.Done()
-
 		assert.Contains(t, proc.Output(), "hello")
 	})
 
 	t.Run("error on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
-
+		proc := startProc(t, svc, context.Background(), "echo", "done")
 		<-proc.Done()
-
-		err = proc.SendInput("test")
+		err := proc.SendInput("test")
 		assert.ErrorIs(t, err, ErrProcessNotRunning)
 	})
 }
@@ -193,19 +148,15 @@ func TestProcess_SendInput(t *testing.T) {
 func TestProcess_Signal(t *testing.T) {
 	t.Run("sends signal to running process", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
-
-		err = proc.Signal(os.Interrupt)
+		proc := startProc(t, svc, ctx, "sleep", "60")
+		err := proc.Signal(os.Interrupt)
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Process terminated by signal
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been terminated by signal")
 		}
@@ -213,12 +164,9 @@ func TestProcess_Signal(t *testing.T) {
 
 	t.Run("error on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
+		proc := startProc(t, svc, context.Background(), "echo", "done")
 		<-proc.Done()
-
-		err = proc.Signal(os.Interrupt)
+		err := proc.Signal(os.Interrupt)
 		assert.ErrorIs(t, err, ErrProcessNotRunning)
 	})
 }
@@ -226,17 +174,12 @@ func TestProcess_Signal(t *testing.T) {
 func TestProcess_CloseStdin(t *testing.T) {
 	t.Run("closes stdin pipe", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
-
-		err = proc.CloseStdin()
+		proc := startProc(t, svc, context.Background(), "cat")
+		err := proc.CloseStdin()
 		assert.NoError(t, err)
 
-		// Process should exit now that stdin is closed
 		select {
 		case <-proc.Done():
-			// Good
 		case <-time.After(2 * time.Second):
 			t.Fatal("cat should exit when stdin is closed")
 		}
@@ -244,17 +187,10 @@ func TestProcess_CloseStdin(t *testing.T) {
 
 	t.Run("double close is safe", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
-
-		// First close
-		err = proc.CloseStdin()
+		proc := startProc(t, svc, context.Background(), "cat")
+		err := proc.CloseStdin()
 		assert.NoError(t, err)
-
 		<-proc.Done()
-
-		// Second close should be safe (stdin already nil)
 		err = proc.CloseStdin()
 		assert.NoError(t, err)
 	})
@@ -263,34 +199,31 @@ func TestProcess_CloseStdin(t *testing.T) {
 func TestProcess_Timeout(t *testing.T) {
 	t.Run("kills process after timeout", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sleep",
 			Args:    []string{"60"},
 			Timeout: 200 * time.Millisecond,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
 		select {
 		case <-proc.Done():
-			// Good — process was killed by timeout
 		case <-time.After(5 * time.Second):
 			t.Fatal("process should have been killed by timeout")
 		}
-
 		assert.False(t, proc.IsRunning())
 	})
 
 	t.Run("no timeout when zero", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "echo",
 			Args:    []string{"fast"},
 			Timeout: 0,
 		})
-		require.NoError(t, err)
-
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 		<-proc.Done()
 		assert.Equal(t, 0, proc.ExitCode)
 	})
@@ -299,23 +232,20 @@ func TestProcess_Timeout(t *testing.T) {
 func TestProcess_Shutdown(t *testing.T) {
 	t.Run("graceful with grace period", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		// Use a process that traps SIGTERM
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:     "sleep",
 			Args:        []string{"60"},
 			GracePeriod: 100 * time.Millisecond,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
 		assert.True(t, proc.IsRunning())
-
-		err = proc.Shutdown()
+		err := proc.Shutdown()
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Good
 		case <-time.After(5 * time.Second):
 			t.Fatal("shutdown should have completed")
 		}
@@ -323,19 +253,18 @@ func TestProcess_Shutdown(t *testing.T) {
 
 	t.Run("immediate kill without grace period", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sleep",
 			Args:    []string{"60"},
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
-		err = proc.Shutdown()
+		err := proc.Shutdown()
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Good
 		case <-time.After(2 * time.Second):
 			t.Fatal("kill should be immediate")
 		}
@@ -345,25 +274,21 @@ func TestProcess_Shutdown(t *testing.T) {
 func TestProcess_KillGroup(t *testing.T) {
 	t.Run("kills child processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		// Spawn a parent that spawns a child — KillGroup should kill both
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
 			Args:      []string{"-c", "sleep 60 & wait"},
 			Detach:    true,
 			KillGroup: true,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
-		// Give child time to spawn
 		time.Sleep(100 * time.Millisecond)
-
-		err = proc.Kill()
+		err := proc.Kill()
 		assert.NoError(t, err)
 
 		select {
 		case <-proc.Done():
-			// Good — whole group killed
 		case <-time.After(5 * time.Second):
 			t.Fatal("process group should have been killed")
 		}
@@ -373,18 +298,17 @@ func TestProcess_KillGroup(t *testing.T) {
 func TestProcess_TimeoutWithGrace(t *testing.T) {
 	t.Run("timeout triggers graceful shutdown", func(t *testing.T) {
 		svc, _ := newTestService(t)
-
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		r := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:     "sleep",
 			Args:        []string{"60"},
 			Timeout:     200 * time.Millisecond,
 			GracePeriod: 100 * time.Millisecond,
 		})
-		require.NoError(t, err)
+		require.True(t, r.OK)
+		proc := r.Value.(*Process)
 
 		select {
 		case <-proc.Done():
-			// Good — timeout + grace triggered
 		case <-time.After(5 * time.Second):
 			t.Fatal("process should have been killed by timeout")
 		}

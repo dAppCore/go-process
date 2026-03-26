@@ -50,19 +50,19 @@ func Init(c *core.Core) error {
 // --- Global convenience functions ---
 
 // Start spawns a new process using the default service.
-func Start(ctx context.Context, command string, args ...string) (*Process, error) {
+func Start(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Result{OK: false}
 	}
 	return svc.Start(ctx, command, args...)
 }
 
 // Run executes a command and waits for completion using the default service.
-func Run(ctx context.Context, command string, args ...string) (string, error) {
+func Run(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Result{Value: "", OK: false}
 	}
 	return svc.Run(ctx, command, args...)
 }
@@ -95,19 +95,19 @@ func Kill(id string) error {
 }
 
 // StartWithOptions spawns a process with full configuration using the default service.
-func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
+func StartWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Result{OK: false}
 	}
 	return svc.StartWithOptions(ctx, opts)
 }
 
 // RunWithOptions executes a command with options and waits using the default service.
-func RunWithOptions(ctx context.Context, opts RunOptions) (string, error) {
+func RunWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Result{Value: "", OK: false}
 	}
 	return svc.RunWithOptions(ctx, opts)
 }

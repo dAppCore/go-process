@@ -11,7 +11,6 @@ import (
 )
 
 func TestGlobal_DefaultNotInitialized(t *testing.T) {
-	// Reset global state for this test
 	old := defaultService.Swap(nil)
 	defer func() {
 		if old != nil {
@@ -21,13 +20,13 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 
 	assert.Nil(t, Default())
 
-	_, err := Start(context.Background(), "echo", "test")
-	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+	r := Start(context.Background(), "echo", "test")
+	assert.False(t, r.OK)
 
-	_, err = Run(context.Background(), "echo", "test")
-	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+	r = Run(context.Background(), "echo", "test")
+	assert.False(t, r.OK)
 
-	_, err = Get("proc-1")
+	_, err := Get("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
 	assert.Nil(t, List())
@@ -36,11 +35,11 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	err = Kill("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = StartWithOptions(context.Background(), RunOptions{Command: "echo"})
-	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+	r = StartWithOptions(context.Background(), RunOptions{Command: "echo"})
+	assert.False(t, r.OK)
 
-	_, err = RunWithOptions(context.Background(), RunOptions{Command: "echo"})
-	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+	r = RunWithOptions(context.Background(), RunOptions{Command: "echo"})
+	assert.False(t, r.OK)
 }
 
 func newGlobalTestService(t *testing.T) *Service {
@@ -62,7 +61,6 @@ func TestGlobal_SetDefault(t *testing.T) {
 		}()
 
 		svc := newGlobalTestService(t)
-
 		err := SetDefault(svc)
 		require.NoError(t, err)
 		assert.Equal(t, svc, Default())
@@ -83,7 +81,6 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 	}()
 
 	svc := newGlobalTestService(t)
-
 	err := SetDefault(svc)
 	require.NoError(t, err)
 
@@ -146,7 +143,6 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 	}()
 
 	svc := newGlobalTestService(t)
-
 	err := SetDefault(svc)
 	require.NoError(t, err)
 
@@ -158,10 +154,10 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			proc, err := Start(context.Background(), "echo", "concurrent")
-			if err == nil {
+			r := Start(context.Background(), "echo", "concurrent")
+			if r.OK {
 				procMu.Lock()
-				processes = append(processes, proc)
+				processes = append(processes, r.Value.(*Process))
 				procMu.Unlock()
 			}
 		}()
@@ -201,7 +197,6 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 
 func TestGlobal_StartWithOptions(t *testing.T) {
 	svc, _ := newTestService(t)
-
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -209,21 +204,20 @@ func TestGlobal_StartWithOptions(t *testing.T) {
 		}
 	}()
 
-	proc, err := StartWithOptions(context.Background(), RunOptions{
+	r := StartWithOptions(context.Background(), RunOptions{
 		Command: "echo",
 		Args:    []string{"with", "options"},
 	})
-	require.NoError(t, err)
+	require.True(t, r.OK)
+	proc := r.Value.(*Process)
 
 	<-proc.Done()
-
 	assert.Equal(t, 0, proc.ExitCode)
 	assert.Contains(t, proc.Output(), "with options")
 }
 
 func TestGlobal_RunWithOptions(t *testing.T) {
 	svc, _ := newTestService(t)
-
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -231,17 +225,16 @@ func TestGlobal_RunWithOptions(t *testing.T) {
 		}
 	}()
 
-	output, err := RunWithOptions(context.Background(), RunOptions{
+	r := RunWithOptions(context.Background(), RunOptions{
 		Command: "echo",
 		Args:    []string{"run", "options"},
 	})
-	require.NoError(t, err)
-	assert.Contains(t, output, "run options")
+	assert.True(t, r.OK)
+	assert.Contains(t, r.Value.(string), "run options")
 }
 
 func TestGlobal_Running(t *testing.T) {
 	svc, _ := newTestService(t)
-
 	old := defaultService.Swap(svc)
 	defer func() {
 		if old != nil {
@@ -252,8 +245,9 @@ func TestGlobal_Running(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proc, err := Start(ctx, "sleep", "60")
-	require.NoError(t, err)
+	r := Start(ctx, "sleep", "60")
+	require.True(t, r.OK)
+	proc := r.Value.(*Process)
 
 	running := Running()
 	assert.Len(t, running, 1)
