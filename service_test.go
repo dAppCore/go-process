@@ -374,8 +374,8 @@ func TestService_OnShutdown(t *testing.T) {
 		assert.True(t, proc1.IsRunning())
 		assert.True(t, proc2.IsRunning())
 
-		err = svc.OnShutdown(context.Background())
-		assert.NoError(t, err)
+		r := svc.OnShutdown(context.Background())
+		assert.True(t, r.OK)
 
 		select {
 		case <-proc1.Done():
@@ -393,8 +393,8 @@ func TestService_OnShutdown(t *testing.T) {
 func TestService_OnStartup(t *testing.T) {
 	t.Run("returns nil", func(t *testing.T) {
 		svc, _ := newTestService(t)
-		err := svc.OnStartup(context.Background())
-		assert.NoError(t, err)
+		r := svc.OnStartup(context.Background())
+		assert.True(t, r.OK)
 	})
 }
 

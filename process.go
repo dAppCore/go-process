@@ -16,6 +16,7 @@ import (
 // Process represents a managed external process.
 type Process struct {
 	ID        string
+	PID       int
 	Command   string
 	Args      []string
 	Dir       string
@@ -34,14 +35,18 @@ type Process struct {
 	mu          sync.RWMutex
 	gracePeriod time.Duration
 	killGroup   bool
+	lastSignal  string
 }
+
+// ManagedProcess is kept as a compatibility alias for legacy references.
+type ManagedProcess = Process
 
 // Info returns a snapshot of process state.
 func (p *Process) Info() Info {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	pid := 0
+	pid := p.PID
 	if p.cmd != nil && p.cmd.Process != nil {
 		pid = p.cmd.Process.Pid
 	}
@@ -122,6 +127,8 @@ func (p *Process) Kill() error {
 		return nil
 	}
 
+	p.lastSignal = "SIGKILL"
+
 	if p.killGroup {
 		// Kill entire process group (negative PID)
 		return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
@@ -169,6 +176,7 @@ func (p *Process) terminate() error {
 	}
 
 	pid := p.cmd.Process.Pid
+	p.lastSignal = "SIGTERM"
 	if p.killGroup {
 		pid = -pid
 	}
@@ -220,4 +228,10 @@ func (p *Process) CloseStdin() error {
 	err := p.stdin.Close()
 	p.stdin = nil
 	return err
+}
+
+func (p *Process) requestedSignal() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.lastSignal
 }
