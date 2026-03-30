@@ -2,10 +2,11 @@ package process_test
 
 import (
 	"context"
-	"path/filepath"
+	"os"
 	"testing"
 	"time"
 
+	"dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,25 +20,25 @@ func testCtx(t *testing.T) context.Context {
 	return ctx
 }
 
-func TestProgram_Find_KnownBinary(t *testing.T) {
+func TestProgram_Find_Good(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	require.NoError(t, p.Find())
 	assert.NotEmpty(t, p.Path)
 }
 
-func TestProgram_Find_UnknownBinary(t *testing.T) {
+func TestProgram_FindUnknown_Bad(t *testing.T) {
 	p := &process.Program{Name: "no-such-binary-xyzzy-42"}
 	err := p.Find()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, process.ErrProgramNotFound)
 }
 
-func TestProgram_Find_EmptyName(t *testing.T) {
+func TestProgram_FindEmpty_Bad(t *testing.T) {
 	p := &process.Program{}
 	require.Error(t, p.Find())
 }
 
-func TestProgram_Run_ReturnsOutput(t *testing.T) {
+func TestProgram_Run_Good(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	require.NoError(t, p.Find())
 
@@ -46,7 +47,7 @@ func TestProgram_Run_ReturnsOutput(t *testing.T) {
 	assert.Equal(t, "hello", out)
 }
 
-func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
+func TestProgram_RunFallback_Good(t *testing.T) {
 	// Path is empty; RunDir should fall back to Name for OS PATH resolution.
 	p := &process.Program{Name: "echo"}
 
@@ -55,7 +56,7 @@ func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	assert.Equal(t, "fallback", out)
 }
 
-func TestProgram_RunDir_UsesDirectory(t *testing.T) {
+func TestProgram_RunDir_Good(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
 	require.NoError(t, p.Find())
 
@@ -63,15 +64,14 @@ func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 
 	out, err := p.RunDir(testCtx(t), dir)
 	require.NoError(t, err)
-	// Resolve symlinks on both sides for portability (macOS uses /private/ prefix).
-	canonicalDir, err := filepath.EvalSymlinks(dir)
+	dirInfo, err := os.Stat(dir)
 	require.NoError(t, err)
-	canonicalOut, err := filepath.EvalSymlinks(out)
+	outInfo, err := os.Stat(core.Trim(out))
 	require.NoError(t, err)
-	assert.Equal(t, canonicalDir, canonicalOut)
+	assert.True(t, os.SameFile(dirInfo, outInfo))
 }
 
-func TestProgram_Run_FailingCommand(t *testing.T) {
+func TestProgram_RunFailure_Bad(t *testing.T) {
 	p := &process.Program{Name: "false"}
 	require.NoError(t, p.Find())
 

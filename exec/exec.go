@@ -3,27 +3,27 @@ package exec
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/core"
 )
 
-// Options configuration for command execution
+// Options configures command execution.
+//
+//	opts := exec.Options{Dir: "/workspace", Env: []string{"CI=1"}}
 type Options struct {
 	Dir    string
 	Env    []string
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
-	// If true, command will run in background (not implemented in this wrapper yet)
-	// Background bool
 }
 
-// Command wraps os/exec.Command with logging and context
+// Command wraps `os/exec.Command` with logging and context.
+//
+//	cmd := exec.Command(ctx, "git", "status").WithDir("/workspace")
 func Command(ctx context.Context, name string, args ...string) *Cmd {
 	return &Cmd{
 		name: name,
@@ -32,7 +32,7 @@ func Command(ctx context.Context, name string, args ...string) *Cmd {
 	}
 }
 
-// Cmd represents a wrapped command
+// Cmd represents a wrapped command.
 type Cmd struct {
 	name   string
 	args   []string
@@ -42,31 +42,31 @@ type Cmd struct {
 	logger Logger
 }
 
-// WithDir sets the working directory
+// WithDir sets the working directory.
 func (c *Cmd) WithDir(dir string) *Cmd {
 	c.opts.Dir = dir
 	return c
 }
 
-// WithEnv sets the environment variables
+// WithEnv sets the environment variables.
 func (c *Cmd) WithEnv(env []string) *Cmd {
 	c.opts.Env = env
 	return c
 }
 
-// WithStdin sets stdin
+// WithStdin sets stdin.
 func (c *Cmd) WithStdin(r io.Reader) *Cmd {
 	c.opts.Stdin = r
 	return c
 }
 
-// WithStdout sets stdout
+// WithStdout sets stdout.
 func (c *Cmd) WithStdout(w io.Writer) *Cmd {
 	c.opts.Stdout = w
 	return c
 }
 
-// WithStderr sets stderr
+// WithStderr sets stderr.
 func (c *Cmd) WithStderr(w io.Writer) *Cmd {
 	c.opts.Stderr = w
 	return c
@@ -122,15 +122,12 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 }
 
 func (c *Cmd) prepare() {
-	if c.ctx != nil {
-		c.cmd = exec.CommandContext(c.ctx, c.name, c.args...)
-	} else {
-		// Should we enforce context? The issue says "Enforce context usage".
-		// For now, let's allow nil but log a warning if we had a logger?
-		// Or strictly panic/error?
-		// Let's fallback to Background for now but maybe strict later.
-		c.cmd = exec.Command(c.name, c.args...)
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
+
+	c.cmd = exec.CommandContext(ctx, c.name, c.args...)
 
 	c.cmd.Dir = c.opts.Dir
 	if len(c.opts.Env) > 0 {
@@ -144,22 +141,23 @@ func (c *Cmd) prepare() {
 
 // RunQuiet executes the command suppressing stdout unless there is an error.
 // Useful for internal commands.
+//
+//	_ = exec.RunQuiet(ctx, "go", "test", "./...")
 func RunQuiet(ctx context.Context, name string, args ...string) error {
 	var stderr bytes.Buffer
 	cmd := Command(ctx, name, args...).WithStderr(&stderr)
 	if err := cmd.Run(); err != nil {
-		// Include stderr in error message
-		return coreerr.E("RunQuiet", strings.TrimSpace(stderr.String()), err)
+		return core.E("RunQuiet", core.Trim(stderr.String()), err)
 	}
 	return nil
 }
 
 func wrapError(caller string, err error, name string, args []string) error {
-	cmdStr := name + " " + strings.Join(args, " ")
+	cmdStr := commandString(name, args)
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		return coreerr.E(caller, fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
+		return core.E(caller, core.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
 	}
-	return coreerr.E(caller, fmt.Sprintf("failed to execute %q", cmdStr), err)
+	return core.E(caller, core.Sprintf("failed to execute %q", cmdStr), err)
 }
 
 func (c *Cmd) getLogger() Logger {
@@ -170,9 +168,17 @@ func (c *Cmd) getLogger() Logger {
 }
 
 func (c *Cmd) logDebug(msg string) {
-	c.getLogger().Debug(msg, "cmd", c.name, "args", strings.Join(c.args, " "))
+	c.getLogger().Debug(msg, "cmd", c.name, "args", core.Join(" ", c.args...))
 }
 
 func (c *Cmd) logError(msg string, err error) {
-	c.getLogger().Error(msg, "cmd", c.name, "args", strings.Join(c.args, " "), "err", err)
+	c.getLogger().Error(msg, "cmd", c.name, "args", core.Join(" ", c.args...), "err", err)
+}
+
+func commandString(name string, args []string) string {
+	if len(args) == 0 {
+		return name
+	}
+	parts := append([]string{name}, args...)
+	return core.Join(" ", parts...)
 }

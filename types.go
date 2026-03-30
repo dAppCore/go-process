@@ -5,30 +5,24 @@
 //
 // # Getting Started
 //
-//	// Register with Core
-//	core, _ := framework.New(
-//	    framework.WithName("process", process.NewService(process.Options{})),
-//	)
+//	c := core.New(core.WithService(process.Register))
+//	_ = c.ServiceStartup(ctx, nil)
 //
-//	// Get service and run a process
-//	svc, err := framework.ServiceFor[*process.Service](core, "process")
-//	if err != nil {
-//	    return err
-//	}
-//	proc, err := svc.Start(ctx, "go", "test", "./...")
+//	r := c.Process().Run(ctx, "go", "test", "./...")
+//	output := r.Value.(string)
 //
 // # Listening for Events
 //
 // Process events are broadcast via Core.ACTION:
 //
-//	core.RegisterAction(func(c *framework.Core, msg framework.Message) error {
+//	c.RegisterAction(func(c *core.Core, msg core.Message) core.Result {
 //	    switch m := msg.(type) {
 //	    case process.ActionProcessOutput:
 //	        fmt.Print(m.Line)
 //	    case process.ActionProcessExited:
 //	        fmt.Printf("Exit code: %d\n", m.ExitCode)
 //	    }
-//	    return nil
+//	    return core.Result{OK: true}
 //	})
 package process
 
@@ -91,15 +85,19 @@ type RunOptions struct {
 	KillGroup bool
 }
 
-// Info provides a snapshot of process state without internal fields.
-type Info struct {
+// ProcessInfo provides a snapshot of process state without internal fields.
+type ProcessInfo struct {
 	ID        string        `json:"id"`
 	Command   string        `json:"command"`
 	Args      []string      `json:"args"`
 	Dir       string        `json:"dir"`
 	StartedAt time.Time     `json:"startedAt"`
+	Running   bool          `json:"running"`
 	Status    Status        `json:"status"`
 	ExitCode  int           `json:"exitCode"`
 	Duration  time.Duration `json:"duration"`
 	PID       int           `json:"pid"`
 }
+
+// Info is kept as a compatibility alias for ProcessInfo.
+type Info = ProcessInfo

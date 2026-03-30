@@ -2,15 +2,15 @@ package process
 
 import (
 	"context"
-	"errors"
-	"os"
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/core"
 )
 
 // DaemonOptions configures daemon mode execution.
+//
+//	opts := process.DaemonOptions{PIDFile: "/tmp/process.pid", HealthAddr: "127.0.0.1:0"}
 type DaemonOptions struct {
 	// PIDFile path for single-instance enforcement.
 	// Leave empty to skip PID file management.
@@ -37,6 +37,8 @@ type DaemonOptions struct {
 }
 
 // Daemon manages daemon lifecycle: PID file, health server, graceful shutdown.
+//
+//	daemon := process.NewDaemon(process.DaemonOptions{HealthAddr: "127.0.0.1:0"})
 type Daemon struct {
 	opts    DaemonOptions
 	pid     *PIDFile
@@ -46,6 +48,8 @@ type Daemon struct {
 }
 
 // NewDaemon creates a daemon runner with the given options.
+//
+//	daemon := process.NewDaemon(process.DaemonOptions{PIDFile: "/tmp/process.pid"})
 func NewDaemon(opts DaemonOptions) *Daemon {
 	if opts.ShutdownTimeout == 0 {
 		opts.ShutdownTimeout = 30 * time.Second
@@ -73,7 +77,7 @@ func (d *Daemon) Start() error {
 	defer d.mu.Unlock()
 
 	if d.running {
-		return coreerr.E("Daemon.Start", "daemon already running", nil)
+		return core.E("daemon.start", "daemon already running", nil)
 	}
 
 	if d.pid != nil {
@@ -96,12 +100,21 @@ func (d *Daemon) Start() error {
 	// Auto-register if registry is set
 	if d.opts.Registry != nil {
 		entry := d.opts.RegistryEntry
-		entry.PID = os.Getpid()
+		entry.PID = currentPID()
 		if d.health != nil {
 			entry.Health = d.health.Addr()
 		}
 		if err := d.opts.Registry.Register(entry); err != nil {
-			return coreerr.E("Daemon.Start", "registry", err)
+			if d.health != nil {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), d.opts.ShutdownTimeout)
+				_ = d.health.Stop(shutdownCtx)
+				cancel()
+			}
+			if d.pid != nil {
+				_ = d.pid.Release()
+			}
+			d.running = false
+			return core.E("daemon.start", "registry", err)
 		}
 	}
 
@@ -113,7 +126,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Lock()
 	if !d.running {
 		d.mu.Unlock()
-		return coreerr.E("Daemon.Run", "daemon not started - call Start() first", nil)
+		return core.E("daemon.run", "daemon not started - call Start() first", nil)
 	}
 	d.mu.Unlock()
 
@@ -139,13 +152,13 @@ func (d *Daemon) Stop() error {
 	if d.health != nil {
 		d.health.SetReady(false)
 		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+			errs = append(errs, core.E("daemon.stop", "health server", err))
 		}
 	}
 
 	if d.pid != nil {
-		if err := d.pid.Release(); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, coreerr.E("Daemon.Stop", "pid file", err))
+		if err := d.pid.Release(); err != nil && !isNotExist(err) {
+			errs = append(errs, core.E("daemon.stop", "pid file", err))
 		}
 	}
 
@@ -157,7 +170,7 @@ func (d *Daemon) Stop() error {
 	d.running = false
 
 	if len(errs) > 0 {
-		return errors.Join(errs...)
+		return core.ErrorJoin(errs...)
 	}
 	return nil
 }

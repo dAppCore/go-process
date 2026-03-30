@@ -2,19 +2,21 @@ package process
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/core"
 )
 
-// Process represents a managed external process.
-type Process struct {
+type processStdin interface {
+	Write(p []byte) (n int, err error)
+	Close() error
+}
+
+// ManagedProcess represents a tracked external process started by the service.
+type ManagedProcess struct {
 	ID        string
 	PID       int
 	Command   string
@@ -26,11 +28,11 @@ type Process struct {
 	ExitCode  int
 	Duration  time.Duration
 
-	cmd         *exec.Cmd
+	cmd         *execCmd
 	ctx         context.Context
 	cancel      context.CancelFunc
 	output      *RingBuffer
-	stdin       io.WriteCloser
+	stdin       processStdin
 	done        chan struct{}
 	mu          sync.RWMutex
 	gracePeriod time.Duration
@@ -38,34 +40,30 @@ type Process struct {
 	lastSignal  string
 }
 
-// ManagedProcess is kept as a compatibility alias for legacy references.
-type ManagedProcess = Process
+// Process is kept as a compatibility alias for ManagedProcess.
+type Process = ManagedProcess
 
 // Info returns a snapshot of process state.
-func (p *Process) Info() Info {
+func (p *ManagedProcess) Info() ProcessInfo {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	pid := p.PID
-	if p.cmd != nil && p.cmd.Process != nil {
-		pid = p.cmd.Process.Pid
-	}
-
-	return Info{
+	return ProcessInfo{
 		ID:        p.ID,
 		Command:   p.Command,
-		Args:      p.Args,
+		Args:      append([]string(nil), p.Args...),
 		Dir:       p.Dir,
 		StartedAt: p.StartedAt,
+		Running:   p.Status == StatusRunning,
 		Status:    p.Status,
 		ExitCode:  p.ExitCode,
 		Duration:  p.Duration,
-		PID:       pid,
+		PID:       p.PID,
 	}
 }
 
 // Output returns the captured output as a string.
-func (p *Process) Output() string {
+func (p *ManagedProcess) Output() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.output == nil {
@@ -75,7 +73,7 @@ func (p *Process) Output() string {
 }
 
 // OutputBytes returns the captured output as bytes.
-func (p *Process) OutputBytes() []byte {
+func (p *ManagedProcess) OutputBytes() []byte {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.output == nil {
@@ -85,37 +83,40 @@ func (p *Process) OutputBytes() []byte {
 }
 
 // IsRunning returns true if the process is still executing.
-func (p *Process) IsRunning() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.Status == StatusRunning
+func (p *ManagedProcess) IsRunning() bool {
+	select {
+	case <-p.done:
+		return false
+	default:
+		return true
+	}
 }
 
 // Wait blocks until the process exits.
-func (p *Process) Wait() error {
+func (p *ManagedProcess) Wait() error {
 	<-p.done
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process failed to start: %s", p.ID), nil)
+		return core.E("process.wait", core.Concat("process failed to start: ", p.ID), nil)
 	}
 	if p.Status == StatusKilled {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process was killed: %s", p.ID), nil)
+		return core.E("process.wait", core.Concat("process was killed: ", p.ID), nil)
 	}
 	if p.ExitCode != 0 {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process exited with code %d", p.ExitCode), nil)
+		return core.E("process.wait", core.Concat("process exited with code ", strconv.Itoa(p.ExitCode)), nil)
 	}
 	return nil
 }
 
 // Done returns a channel that closes when the process exits.
-func (p *Process) Done() <-chan struct{} {
+func (p *ManagedProcess) Done() <-chan struct{} {
 	return p.done
 }
 
 // Kill forcefully terminates the process.
 // If KillGroup is set, kills the entire process group.
-func (p *Process) Kill() error {
+func (p *ManagedProcess) Kill() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -128,7 +129,6 @@ func (p *Process) Kill() error {
 	}
 
 	p.lastSignal = "SIGKILL"
-
 	if p.killGroup {
 		// Kill entire process group (negative PID)
 		return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
@@ -139,7 +139,7 @@ func (p *Process) Kill() error {
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.
 // If GracePeriod was not set (zero), falls back to immediate Kill().
 // If KillGroup is set, signals are sent to the entire process group.
-func (p *Process) Shutdown() error {
+func (p *ManagedProcess) Shutdown() error {
 	p.mu.RLock()
 	grace := p.gracePeriod
 	p.mu.RUnlock()
@@ -163,7 +163,7 @@ func (p *Process) Shutdown() error {
 }
 
 // terminate sends SIGTERM to the process (or process group if KillGroup is set).
-func (p *Process) terminate() error {
+func (p *ManagedProcess) terminate() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -176,31 +176,15 @@ func (p *Process) terminate() error {
 	}
 
 	pid := p.cmd.Process.Pid
-	p.lastSignal = "SIGTERM"
 	if p.killGroup {
 		pid = -pid
 	}
+	p.lastSignal = "SIGTERM"
 	return syscall.Kill(pid, syscall.SIGTERM)
 }
 
-// Signal sends a signal to the process.
-func (p *Process) Signal(sig os.Signal) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.Status != StatusRunning {
-		return ErrProcessNotRunning
-	}
-
-	if p.cmd == nil || p.cmd.Process == nil {
-		return nil
-	}
-
-	return p.cmd.Process.Signal(sig)
-}
-
 // SendInput writes to the process stdin.
-func (p *Process) SendInput(input string) error {
+func (p *ManagedProcess) SendInput(input string) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -217,7 +201,7 @@ func (p *Process) SendInput(input string) error {
 }
 
 // CloseStdin closes the process stdin pipe.
-func (p *Process) CloseStdin() error {
+func (p *ManagedProcess) CloseStdin() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -230,7 +214,7 @@ func (p *Process) CloseStdin() error {
 	return err
 }
 
-func (p *Process) requestedSignal() string {
+func (p *ManagedProcess) requestedSignal() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.lastSignal

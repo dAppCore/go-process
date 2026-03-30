@@ -2,9 +2,9 @@ package exec_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
+	"dappco.re/go/core"
 	"dappco.re/go/core/process/exec"
 )
 
@@ -27,7 +27,7 @@ func (m *mockLogger) Error(msg string, keyvals ...any) {
 	m.errorCalls = append(m.errorCalls, logCall{msg, keyvals})
 }
 
-func TestCommand_Run_Good_LogsDebug(t *testing.T) {
+func TestCommand_Run_Good(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
@@ -49,7 +49,7 @@ func TestCommand_Run_Good_LogsDebug(t *testing.T) {
 	}
 }
 
-func TestCommand_Run_Bad_LogsError(t *testing.T) {
+func TestCommand_Run_Bad(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
@@ -71,6 +71,14 @@ func TestCommand_Run_Bad_LogsError(t *testing.T) {
 	}
 }
 
+func TestCommand_Run_WithNilContext_Good(t *testing.T) {
+	var ctx context.Context
+
+	if err := exec.Command(ctx, "echo", "hello").Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestCommand_Output_Good(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
@@ -81,7 +89,7 @@ func TestCommand_Output_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "test" {
+	if core.Trim(string(out)) != "test" {
 		t.Errorf("expected 'test', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -99,7 +107,7 @@ func TestCommand_CombinedOutput_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "combined" {
+	if core.Trim(string(out)) != "combined" {
 		t.Errorf("expected 'combined', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -107,14 +115,14 @@ func TestCommand_CombinedOutput_Good(t *testing.T) {
 	}
 }
 
-func TestNopLogger(t *testing.T) {
+func TestNopLogger_Methods_Good(t *testing.T) {
 	// Verify NopLogger doesn't panic
 	var nop exec.NopLogger
 	nop.Debug("msg", "key", "val")
 	nop.Error("msg", "key", "val")
 }
 
-func TestSetDefaultLogger(t *testing.T) {
+func TestLogger_SetDefault_Good(t *testing.T) {
 	original := exec.DefaultLogger()
 	defer exec.SetDefaultLogger(original)
 
@@ -132,7 +140,7 @@ func TestSetDefaultLogger(t *testing.T) {
 	}
 }
 
-func TestCommand_UsesDefaultLogger(t *testing.T) {
+func TestCommand_UsesDefaultLogger_Good(t *testing.T) {
 	original := exec.DefaultLogger()
 	defer exec.SetDefaultLogger(original)
 
@@ -147,7 +155,7 @@ func TestCommand_UsesDefaultLogger(t *testing.T) {
 	}
 }
 
-func TestCommand_WithDir(t *testing.T) {
+func TestCommand_WithDir_Good(t *testing.T) {
 	ctx := context.Background()
 	out, err := exec.Command(ctx, "pwd").
 		WithDir("/tmp").
@@ -156,13 +164,13 @@ func TestCommand_WithDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	trimmed := strings.TrimSpace(string(out))
+	trimmed := core.Trim(string(out))
 	if trimmed != "/tmp" && trimmed != "/private/tmp" {
 		t.Errorf("expected /tmp or /private/tmp, got %q", trimmed)
 	}
 }
 
-func TestCommand_WithEnv(t *testing.T) {
+func TestCommand_WithEnv_Good(t *testing.T) {
 	ctx := context.Background()
 	out, err := exec.Command(ctx, "sh", "-c", "echo $TEST_EXEC_VAR").
 		WithEnv([]string{"TEST_EXEC_VAR=exec_val"}).
@@ -171,31 +179,32 @@ func TestCommand_WithEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "exec_val" {
+	if core.Trim(string(out)) != "exec_val" {
 		t.Errorf("expected 'exec_val', got %q", string(out))
 	}
 }
 
-func TestCommand_WithStdinStdoutStderr(t *testing.T) {
+func TestCommand_WithStdinStdoutStderr_Good(t *testing.T) {
 	ctx := context.Background()
-	input := strings.NewReader("piped input\n")
-	var stdout, stderr strings.Builder
+	input := core.NewReader("piped input\n")
+	stdout := core.NewBuilder()
+	stderr := core.NewBuilder()
 
 	err := exec.Command(ctx, "cat").
 		WithStdin(input).
-		WithStdout(&stdout).
-		WithStderr(&stderr).
+		WithStdout(stdout).
+		WithStderr(stderr).
 		WithLogger(&mockLogger{}).
 		Run()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(stdout.String()) != "piped input" {
+	if core.Trim(stdout.String()) != "piped input" {
 		t.Errorf("expected 'piped input', got %q", stdout.String())
 	}
 }
 
-func TestRunQuiet_Good(t *testing.T) {
+func TestRunQuiet_Command_Good(t *testing.T) {
 	ctx := context.Background()
 	err := exec.RunQuiet(ctx, "echo", "quiet")
 	if err != nil {
@@ -203,7 +212,7 @@ func TestRunQuiet_Good(t *testing.T) {
 	}
 }
 
-func TestRunQuiet_Bad(t *testing.T) {
+func TestRunQuiet_Command_Bad(t *testing.T) {
 	ctx := context.Background()
 	err := exec.RunQuiet(ctx, "sh", "-c", "echo fail >&2; exit 1")
 	if err == nil {

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/core"
 )
 
 // Runner orchestrates multiple processes with dependencies.
@@ -105,7 +105,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 					Name:     name,
 					Spec:     remaining[name],
 					ExitCode: 1,
-					Error:    coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
+					Error:    core.E("runner.run_all", "circular dependency or missing dependency", nil),
 				})
 			}
 			break
@@ -137,7 +137,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 						Name:    spec.Name,
 						Spec:    spec,
 						Skipped: true,
-						Error:   coreerr.E("Runner.RunAll", "skipped due to dependency failure", nil),
+						Error:   core.E("runner.run_all", "skipped due to dependency failure", nil),
 					}
 				} else {
 					result = r.runSpec(ctx, spec)
@@ -193,13 +193,17 @@ func (r *Runner) canRun(spec RunSpec, completed map[string]*RunResult) bool {
 func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	start := time.Now()
 
-	proc, err := r.service.StartWithOptions(ctx, RunOptions{
+	sr := r.service.StartWithOptions(ctx, RunOptions{
 		Command: spec.Command,
 		Args:    spec.Args,
 		Dir:     spec.Dir,
 		Env:     spec.Env,
 	})
-	if err != nil {
+	if !sr.OK {
+		err, _ := sr.Value.(error)
+		if err == nil {
+			err = core.E("runner.run_spec", core.Concat("failed to start: ", spec.Name), nil)
+		}
 		return RunResult{
 			Name:     spec.Name,
 			Spec:     spec,
@@ -208,6 +212,7 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 		}
 	}
 
+	proc := sr.Value.(*Process)
 	<-proc.Done()
 
 	return RunResult{

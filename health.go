@@ -2,19 +2,22 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/core"
 )
 
 // HealthCheck is a function that returns nil if healthy.
+//
+//	check := process.HealthCheck(func() error { return nil })
 type HealthCheck func() error
 
 // HealthServer provides HTTP /health and /ready endpoints for process monitoring.
+//
+//	hs := process.NewHealthServer("127.0.0.1:0")
 type HealthServer struct {
 	addr     string
 	server   *http.Server
@@ -25,6 +28,8 @@ type HealthServer struct {
 }
 
 // NewHealthServer creates a health check server on the given address.
+//
+//	hs := process.NewHealthServer("127.0.0.1:0")
 func NewHealthServer(addr string) *HealthServer {
 	return &HealthServer{
 		addr:  addr,
@@ -58,13 +63,13 @@ func (h *HealthServer) Start() error {
 		for _, check := range checks {
 			if err := check(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = fmt.Fprintf(w, "unhealthy: %v\n", err)
+				_, _ = w.Write([]byte("unhealthy: " + err.Error() + "\n"))
 				return
 			}
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "ok")
+		_, _ = w.Write([]byte("ok\n"))
 	})
 
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -74,17 +79,17 @@ func (h *HealthServer) Start() error {
 
 		if !ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = fmt.Fprintln(w, "not ready")
+			_, _ = w.Write([]byte("not ready\n"))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "ready")
+		_, _ = w.Write([]byte("ready\n"))
 	})
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return coreerr.E("HealthServer.Start", fmt.Sprintf("failed to listen on %s", h.addr), err)
+		return core.E("health.start", core.Concat("failed to listen on ", h.addr), err)
 	}
 
 	h.listener = listener
@@ -115,9 +120,11 @@ func (h *HealthServer) Addr() string {
 
 // WaitForHealth polls a health endpoint until it responds 200 or the timeout
 // (in milliseconds) expires. Returns true if healthy, false on timeout.
+//
+//	ok := process.WaitForHealth("127.0.0.1:9000", 2_000)
 func WaitForHealth(addr string, timeoutMs int) bool {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	url := fmt.Sprintf("http://%s/health", addr)
+	url := core.Concat("http://", addr, "/health")
 
 	client := &http.Client{Timeout: 2 * time.Second}
 

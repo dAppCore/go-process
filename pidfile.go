@@ -1,16 +1,14 @@
 package process
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	"bytes"
+	"path"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 
+	"dappco.re/go/core"
 	coreio "dappco.re/go/core/io"
-	coreerr "dappco.re/go/core/log"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
@@ -31,26 +29,26 @@ func (p *PIDFile) Acquire() error {
 	defer p.mu.Unlock()
 
 	if data, err := coreio.Local.Read(p.path); err == nil {
-		pid, err := strconv.Atoi(strings.TrimSpace(data))
+		pid, err := strconv.Atoi(string(bytes.TrimSpace([]byte(data))))
 		if err == nil && pid > 0 {
-			if proc, err := os.FindProcess(pid); err == nil {
+			if proc, err := processHandle(pid); err == nil {
 				if err := proc.Signal(syscall.Signal(0)); err == nil {
-					return coreerr.E("PIDFile.Acquire", fmt.Sprintf("another instance is running (PID %d)", pid), nil)
+					return core.E("pidfile.acquire", core.Concat("another instance is running (PID ", strconv.Itoa(pid), ")"), nil)
 				}
 			}
 		}
 		_ = coreio.Local.Delete(p.path)
 	}
 
-	if dir := filepath.Dir(p.path); dir != "." {
+	if dir := path.Dir(p.path); dir != "." {
 		if err := coreio.Local.EnsureDir(dir); err != nil {
-			return coreerr.E("PIDFile.Acquire", "failed to create PID directory", err)
+			return core.E("pidfile.acquire", "failed to create PID directory", err)
 		}
 	}
 
-	pid := os.Getpid()
+	pid := currentPID()
 	if err := coreio.Local.Write(p.path, strconv.Itoa(pid)); err != nil {
-		return coreerr.E("PIDFile.Acquire", "failed to write PID file", err)
+		return core.E("pidfile.acquire", "failed to write PID file", err)
 	}
 
 	return nil
@@ -61,7 +59,7 @@ func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := coreio.Local.Delete(p.path); err != nil {
-		return coreerr.E("PIDFile.Release", "failed to remove PID file", err)
+		return core.E("pidfile.release", "failed to remove PID file", err)
 	}
 	return nil
 }
@@ -80,12 +78,12 @@ func ReadPID(path string) (int, bool) {
 		return 0, false
 	}
 
-	pid, err := strconv.Atoi(strings.TrimSpace(data))
+	pid, err := strconv.Atoi(string(bytes.TrimSpace([]byte(data))))
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
 
-	proc, err := os.FindProcess(pid)
+	proc, err := processHandle(pid)
 	if err != nil {
 		return pid, false
 	}

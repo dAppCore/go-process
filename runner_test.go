@@ -13,14 +13,12 @@ func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
 
 	c := framework.New()
-	factory := NewService(Options{})
-	raw, err := factory(c)
-	require.NoError(t, err)
-
-	return NewRunner(raw.(*Service))
+	r := Register(c)
+	require.True(t, r.OK)
+	return NewRunner(r.Value.(*Service))
 }
 
-func TestRunner_RunSequential(t *testing.T) {
+func TestRunner_RunSequential_Good(t *testing.T) {
 	t.Run("all pass", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -70,7 +68,7 @@ func TestRunner_RunSequential(t *testing.T) {
 	})
 }
 
-func TestRunner_RunParallel(t *testing.T) {
+func TestRunner_RunParallel_Good(t *testing.T) {
 	t.Run("all run concurrently", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -102,7 +100,7 @@ func TestRunner_RunParallel(t *testing.T) {
 	})
 }
 
-func TestRunner_RunAll(t *testing.T) {
+func TestRunner_RunAll_Good(t *testing.T) {
 	t.Run("respects dependencies", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -150,7 +148,7 @@ func TestRunner_RunAll(t *testing.T) {
 	})
 }
 
-func TestRunner_RunAll_CircularDeps(t *testing.T) {
+func TestRunner_CircularDeps_Bad(t *testing.T) {
 	t.Run("circular dependency counts as failed", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -166,7 +164,7 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 	})
 }
 
-func TestRunResult_Passed(t *testing.T) {
+func TestRunResult_Passed_Good(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		r := RunResult{ExitCode: 0}
 		assert.True(t, r.Passed())

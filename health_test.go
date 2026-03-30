@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHealthServer_Endpoints(t *testing.T) {
+func TestHealthServer_Endpoints_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	err := hs.Start()
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestHealthServer_Endpoints(t *testing.T) {
 	_ = resp.Body.Close()
 }
 
-func TestHealthServer_WithChecks(t *testing.T) {
+func TestHealthServer_WithChecks_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 
 	healthy := true
@@ -66,7 +66,7 @@ func TestHealthServer_WithChecks(t *testing.T) {
 	_ = resp.Body.Close()
 }
 
-func TestWaitForHealth_Reachable(t *testing.T) {
+func TestWaitForHealth_Reachable_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	require.NoError(t, hs.Start())
 	defer func() { _ = hs.Stop(context.Background()) }()
@@ -75,7 +75,7 @@ func TestWaitForHealth_Reachable(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestWaitForHealth_Unreachable(t *testing.T) {
+func TestWaitForHealth_Unreachable_Bad(t *testing.T) {
 	ok := WaitForHealth("127.0.0.1:19999", 500)
 	assert.False(t, ok)
 }

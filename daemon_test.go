@@ -4,16 +4,16 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
+	"dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestDaemon_StartAndStop(t *testing.T) {
-	pidPath := filepath.Join(t.TempDir(), "test.pid")
+func TestDaemon_Lifecycle_Good(t *testing.T) {
+	pidPath := core.JoinPath(t.TempDir(), "test.pid")
 
 	d := NewDaemon(DaemonOptions{
 		PIDFile:         pidPath,
@@ -36,7 +36,7 @@ func TestDaemon_StartAndStop(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDaemon_DoubleStartFails(t *testing.T) {
+func TestDaemon_AlreadyRunning_Bad(t *testing.T) {
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
 	})
@@ -50,7 +50,7 @@ func TestDaemon_DoubleStartFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "already running")
 }
 
-func TestDaemon_RunWithoutStartFails(t *testing.T) {
+func TestDaemon_RunUnstarted_Bad(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,7 +61,7 @@ func TestDaemon_RunWithoutStartFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "not started")
 }
 
-func TestDaemon_SetReady(t *testing.T) {
+func TestDaemon_SetReady_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
 	})
@@ -83,17 +83,17 @@ func TestDaemon_SetReady(t *testing.T) {
 	_ = resp.Body.Close()
 }
 
-func TestDaemon_NoHealthAddrReturnsEmpty(t *testing.T) {
+func TestDaemon_HealthAddrDisabled_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 	assert.Empty(t, d.HealthAddr())
 }
 
-func TestDaemon_DefaultShutdownTimeout(t *testing.T) {
+func TestDaemon_DefaultTimeout_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 	assert.Equal(t, 30*time.Second, d.opts.ShutdownTimeout)
 }
 
-func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
+func TestDaemon_RunBlocking_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
 	})
@@ -126,7 +126,7 @@ func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
 	}
 }
 
-func TestDaemon_StopIdempotent(t *testing.T) {
+func TestDaemon_StopIdempotent_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 
 	// Stop without Start should be a no-op
@@ -134,9 +134,9 @@ func TestDaemon_StopIdempotent(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestDaemon_AutoRegisters(t *testing.T) {
+func TestDaemon_AutoRegister_Good(t *testing.T) {
 	dir := t.TempDir()
-	reg := NewRegistry(filepath.Join(dir, "daemons"))
+	reg := NewRegistry(core.JoinPath(dir, "daemons"))
 
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",

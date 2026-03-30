@@ -2,6 +2,8 @@ package exec
 
 // Logger interface for command execution logging.
 // Compatible with pkg/log.Logger and other structured loggers.
+//
+//	exec.SetDefaultLogger(myLogger)
 type Logger interface {
 	// Debug logs a debug-level message with optional key-value pairs.
 	Debug(msg string, keyvals ...any)
@@ -10,6 +12,8 @@ type Logger interface {
 }
 
 // NopLogger is a no-op logger that discards all messages.
+//
+//	var logger exec.NopLogger
 type NopLogger struct{}
 
 // Debug discards the message (no-op implementation).
@@ -22,6 +26,8 @@ var defaultLogger Logger = NopLogger{}
 
 // SetDefaultLogger sets the package-level default logger.
 // Commands without an explicit logger will use this.
+//
+//	exec.SetDefaultLogger(myLogger)
 func SetDefaultLogger(l Logger) {
 	if l == nil {
 		l = NopLogger{}
@@ -30,6 +36,8 @@ func SetDefaultLogger(l Logger) {
 }
 
 // DefaultLogger returns the current default logger.
+//
+//	logger := exec.DefaultLogger()
 func DefaultLogger() Logger {
 	return defaultLogger
 }
