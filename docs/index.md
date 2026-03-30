@@ -5,10 +5,10 @@ description: Process management with Core IPC integration for Go applications.
 
 # go-process
 
-`forge.lthn.ai/core/go-process` is a process management library that provides
+`dappco.re/go/core/process` is a process management library that provides
 spawning, monitoring, and controlling external processes with real-time output
 streaming via the Core ACTION (IPC) system. It integrates directly with the
-[Core DI framework](https://forge.lthn.ai/core/go) as a first-class service.
+[Core DI framework](https://dappco.re/go/core) as a first-class service.
 
 ## Features
 
@@ -28,22 +28,17 @@ streaming via the Core ACTION (IPC) system. It integrates directly with the
 ```go
 import (
     "context"
-    framework "forge.lthn.ai/core/go/pkg/core"
-    "forge.lthn.ai/core/go-process"
+    "dappco.re/go/core"
+    "dappco.re/go/core/process"
 )
 
-// Create a Core instance with the process service
-c, err := framework.New(
-    framework.WithName("process", process.NewService(process.Options{})),
-)
-if err != nil {
-    log.Fatal(err)
-}
+// Create a Core instance with the process service registered.
+c := core.New(core.WithService(process.Register))
 
 // Retrieve the typed service
-svc, err := framework.ServiceFor[*process.Service](c, "process")
-if err != nil {
-    log.Fatal(err)
+svc, ok := core.ServiceFor[*process.Service](c, "process")
+if !ok {
+    panic("process service not registered")
 }
 ```
 
@@ -51,15 +46,19 @@ if err != nil {
 
 ```go
 // Fire-and-forget (async)
-proc, err := svc.Start(ctx, "go", "test", "./...")
-if err != nil {
-    return err
+start := svc.Start(ctx, "go", "test", "./...")
+if !start.OK {
+    return start.Value.(error)
 }
+proc := start.Value.(*process.Process)
 <-proc.Done()
 fmt.Println(proc.Output())
 
 // Synchronous convenience
-output, err := svc.Run(ctx, "echo", "hello world")
+run := svc.Run(ctx, "echo", "hello world")
+if run.OK {
+    fmt.Println(run.Value.(string))
+}
 ```
 
 ### Listen for Events
@@ -67,7 +66,7 @@ output, err := svc.Run(ctx, "echo", "hello world")
 Process lifecycle events are broadcast through Core's ACTION system:
 
 ```go
-c.RegisterAction(func(c *framework.Core, msg framework.Message) error {
+c.RegisterAction(func(c *core.Core, msg core.Message) core.Result {
     switch m := msg.(type) {
     case process.ActionProcessStarted:
         fmt.Printf("Started: %s (PID %d)\n", m.Command, m.PID)
@@ -78,24 +77,24 @@ c.RegisterAction(func(c *framework.Core, msg framework.Message) error {
     case process.ActionProcessKilled:
         fmt.Printf("Killed with %s\n", m.Signal)
     }
-    return nil
+    return core.Result{OK: true}
 })
 ```
 
-### Global Convenience API
+### Permission Model
 
-For applications that only need a single process service, a global singleton
-is available:
+Core's process primitive delegates to named actions registered by this module.
+Without `process.Register`, `c.Process().Run(...)` fails with `OK: false`.
 
 ```go
-// Initialise once at startup
-process.Init(coreInstance)
+c := core.New()
+r := c.Process().Run(ctx, "echo", "blocked")
+fmt.Println(r.OK) // false
 
-// Then use package-level functions anywhere
-proc, _ := process.Start(ctx, "ls", "-la")
-output, _ := process.Run(ctx, "date")
-procs := process.List()
-running := process.Running()
+c = core.New(core.WithService(process.Register))
+_ = c.ServiceStartup(ctx, nil)
+r = c.Process().Run(ctx, "echo", "allowed")
+fmt.Println(r.OK) // true
 ```
 
 ## Package Layout
@@ -109,7 +108,7 @@ running := process.Running()
 
 | Field | Value |
 |-------|-------|
-| Module path | `forge.lthn.ai/core/go-process` |
+| Module path | `dappco.re/go/core/process` |
 | Go version | 1.26.0 |
 | Licence | EUPL-1.2 |
 
@@ -117,7 +116,7 @@ running := process.Running()
 
 | Module | Purpose |
 |--------|---------|
-| `forge.lthn.ai/core/go` | Core DI framework (`ServiceRuntime`, `Core.ACTION`, lifecycle interfaces) |
+| `dappco.re/go/core` | Core DI framework (`ServiceRuntime`, `Core.ACTION`, lifecycle interfaces) |
 | `github.com/stretchr/testify` | Test assertions (test-only) |
 
 The package has no other runtime dependencies beyond the Go standard library

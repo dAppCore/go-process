@@ -20,11 +20,12 @@ core go vet               # Vet
 
 The package has three layers, all in the root `process` package (plus a `exec` subpackage):
 
-### Layer 1: Process Execution (service.go, process.go, process_global.go)
+### Layer 1: Process Execution (service.go, process.go)
 
 `Service` is a Core service (`*core.ServiceRuntime[Options]`) that manages all `Process` instances. It spawns subprocesses, pipes stdout/stderr through goroutines, captures output to a `RingBuffer`, and broadcasts IPC actions (`ActionProcessStarted`, `ActionProcessOutput`, `ActionProcessExited`, `ActionProcessKilled` — defined in actions.go).
 
-`process_global.go` provides package-level convenience functions (`Start`, `Run`, `Kill`, `List`) that delegate to a global `Service` singleton initialized via `Init(core)`. Follows the same pattern as Go's `i18n` package.
+The legacy global singleton API (`process_global.go`) was removed in favor of
+explicit Core service registration.
 
 ### Layer 2: Daemon Lifecycle (daemon.go, pidfile.go, health.go, registry.go)
 
@@ -45,19 +46,19 @@ Builder-pattern wrapper around `os/exec` with structured logging via a pluggable
 
 ## Key Patterns
 
-- **Core integration**: `Service` embeds `*core.ServiceRuntime[Options]` and uses `s.Core().ACTION(...)` to broadcast typed action messages. Tests create a Core instance via `framework.New(framework.WithName("process", NewService(...)))`.
+- **Core integration**: `Service` embeds `*core.ServiceRuntime[Options]` and uses `s.Core().ACTION(...)` to broadcast typed action messages. Tests create a Core instance via `framework.New(framework.WithService(Register))`.
 - **Output capture**: All process output goes through a fixed-size `RingBuffer` (default 1MB). Oldest data is silently overwritten when full. Set `RunOptions.DisableCapture` to skip buffering for long-running processes where output is only streamed via IPC.
 - **Process lifecycle**: Status transitions are `StatusPending → StatusRunning → StatusExited|StatusFailed|StatusKilled`. The `done` channel closes on exit; use `<-proc.Done()` or `proc.Wait()`.
 - **Detach / process group isolation**: Set `RunOptions.Detach = true` to run the subprocess in its own process group (`Setpgid`). Detached processes use `context.Background()` so they survive parent context cancellation and parent death.
 - **Graceful shutdown**: `Service.OnShutdown` kills all running processes. `Daemon.Stop()` performs ordered teardown: sets health to not-ready → shuts down health server → releases PID file → unregisters from registry. `DaemonOptions.ShutdownTimeout` (default 30 s) bounds the shutdown context.
 - **Auto-registration**: Pass a `Registry` and `RegistryEntry` in `DaemonOptions` to automatically register the daemon on `Start()` and unregister on `Stop()`.
 - **PID liveness checks**: Both `PIDFile` and `Registry` use `proc.Signal(syscall.Signal(0))` to check if a PID is alive before trusting stored state.
-- **Error handling**: All errors MUST use `coreerr.E()` from `go-log` (imported as `coreerr`), never `fmt.Errorf` or `errors.New`. Sentinel errors are package-level vars created with `coreerr.E("", "message", nil)`.
+- **Error handling**: All errors MUST use `core.E()`, never `fmt.Errorf` or
+  `errors.New`. Sentinel errors are package-level vars created with `core.E("", "message", nil)`.
 
 ## Dependencies
 
 - `dappco.re/go/core` — Core DI framework, IPC actions, `ServiceRuntime`
-- `dappco.re/go/core/log` — Structured error constructor (`coreerr.E()`)
 - `dappco.re/go/core/io` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
 - `github.com/stretchr/testify` — test assertions (require/assert)
 

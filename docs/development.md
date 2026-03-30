@@ -101,9 +101,7 @@ go-process/
     pidfile.go              # PID file single-instance lock
     pidfile_test.go         # PID file tests
     process.go              # Process type and methods
-    process_global.go       # Global singleton and convenience API
     process_test.go         # Process tests
-    global_test.go          # Global API tests (concurrency)
     registry.go             # Daemon registry (JSON file store)
     registry_test.go        # Registry tests
     runner.go               # Pipeline runner (sequential, parallel, DAG)
@@ -142,8 +140,6 @@ go-process/
 | `ErrProcessNotFound` | No process with the given ID exists in the service |
 | `ErrProcessNotRunning` | Operation requires a running process (e.g. SendInput, Signal) |
 | `ErrStdinNotAvailable` | Stdin pipe is nil (already closed or never created) |
-| `ErrServiceNotInitialized` | Global convenience function called before `process.Init()` |
-| `ServiceError` | Wraps service-level errors with a message string |
 
 ## Build Configuration
 
