@@ -86,7 +86,7 @@ func (c *Cmd) Run() error {
 	c.logDebug("executing command")
 
 	if err := c.cmd.Run(); err != nil {
-		wrapped := wrapError("Cmd.Run", err, c.name, c.args)
+		wrapped := wrapError("exec.cmd.run", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return wrapped
 	}
@@ -100,7 +100,7 @@ func (c *Cmd) Output() ([]byte, error) {
 
 	out, err := c.cmd.Output()
 	if err != nil {
-		wrapped := wrapError("Cmd.Output", err, c.name, c.args)
+		wrapped := wrapError("exec.cmd.output", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return nil, wrapped
 	}
@@ -114,7 +114,7 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 
 	out, err := c.cmd.CombinedOutput()
 	if err != nil {
-		wrapped := wrapError("Cmd.CombinedOutput", err, c.name, c.args)
+		wrapped := wrapError("exec.cmd.combined_output", err, c.name, c.args)
 		c.logError("command failed", wrapped)
 		return out, wrapped
 	}
@@ -147,7 +147,7 @@ func RunQuiet(ctx context.Context, name string, args ...string) error {
 	var stderr bytes.Buffer
 	cmd := Command(ctx, name, args...).WithStderr(&stderr)
 	if err := cmd.Run(); err != nil {
-		return core.E("RunQuiet", core.Trim(stderr.String()), err)
+		return core.E("exec.run_quiet", core.Trim(stderr.String()), err)
 	}
 	return nil
 }

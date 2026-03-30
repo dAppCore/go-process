@@ -46,7 +46,7 @@ Exported fields:
 ### Package Functions
 
 - `func Command(ctx context.Context, name string, args ...string) *Cmd`: Returns a `Cmd` for the supplied context, executable name, and arguments.
-- `func RunQuiet(ctx context.Context, name string, args ...string) error`: Runs a command with stderr captured into a buffer and returns `core.E("RunQuiet", core.Trim(stderr.String()), err)` on failure.
+- `func RunQuiet(ctx context.Context, name string, args ...string) error`: Runs a command with stderr captured into a buffer and returns `core.E("exec.run_quiet", core.Trim(stderr.String()), err)` on failure.
 - `func SetDefaultLogger(l Logger)`: Sets the package-level default logger. Passing `nil` replaces it with `NopLogger`.
 - `func DefaultLogger() Logger`: Returns the package-level default logger.
 
@@ -58,9 +58,9 @@ Exported fields:
 - `func (c *Cmd) WithStdout(w io.Writer) *Cmd`: Sets `Options.Stdout` and returns the same command.
 - `func (c *Cmd) WithStderr(w io.Writer) *Cmd`: Sets `Options.Stderr` and returns the same command.
 - `func (c *Cmd) WithLogger(l Logger) *Cmd`: Sets a command-specific logger and returns the same command.
-- `func (c *Cmd) Run() error`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, runs it, and wraps failures with `wrapError("Cmd.Run", ...)`.
-- `func (c *Cmd) Output() ([]byte, error)`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, returns stdout bytes, and wraps failures with `wrapError("Cmd.Output", ...)`.
-- `func (c *Cmd) CombinedOutput() ([]byte, error)`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, returns combined stdout and stderr, and wraps failures with `wrapError("Cmd.CombinedOutput", ...)`.
+- `func (c *Cmd) Run() error`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, runs it, and wraps failures with `wrapError("exec.cmd.run", ...)`.
+- `func (c *Cmd) Output() ([]byte, error)`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, returns stdout bytes, and wraps failures with `wrapError("exec.cmd.output", ...)`.
+- `func (c *Cmd) CombinedOutput() ([]byte, error)`: Prepares the underlying `exec.Cmd`, logs `"executing command"`, returns combined stdout and stderr, and wraps failures with `wrapError("exec.cmd.combined_output", ...)`.
 
 ### `NopLogger` Methods
 

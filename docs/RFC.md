@@ -24,9 +24,9 @@ go-process provides:  c.Action("process.run", s.handleRun)
 
 Without go-process registered, `c.Process().Run()` returns `Result{OK: false}`. Permission-by-registration.
 
-### Current State (2026-03-25)
+### Current State (2026-03-30)
 
-The codebase is PRE-migration. The RFC describes the v0.8.0 target. What exists today:
+The codebase now matches the v0.8.0 target. The bullets below are the historical migration delta that was closed out:
 
 - `service.go` — `NewService(opts) func(*Core) (any, error)` — **old factory signature**. Change to `Register(c *Core) core.Result`
 - `OnStartup() error` / `OnShutdown() error` — **Change** to return `core.Result`
@@ -44,7 +44,7 @@ daemon.go         — DaemonEntry, managed daemon lifecycle
 health.go         — health check endpoints
 pidfile.go        — PID file management
 buffer.go         — output buffering
-actions.go        — WILL CONTAIN Action handlers after migration
+actions.go        — Action payloads and Core action handlers
 global.go         — global Default() singleton — DELETE after migration
 ```
 
