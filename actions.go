@@ -70,15 +70,10 @@ func (s *Service) handleStart(ctx context.Context, opts core.Options) core.Resul
 		return core.Result{Value: core.E("process.start", "command is required", nil), OK: false}
 	}
 
-	detach := true
-	if opts.Has("detach") {
-		detach = opts.Bool("detach")
-	}
-
 	runOpts := RunOptions{
 		Command: command,
 		Dir:     opts.String("dir"),
-		Detach:  detach,
+		Detach:  opts.Bool("detach"),
 	}
 	if r := opts.Get("args"); r.OK {
 		runOpts.Args = optionStrings(r.Value)

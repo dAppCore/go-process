@@ -126,6 +126,28 @@ func TestService_HandleStart_Good(t *testing.T) {
 			t.Fatal("process should honor detached=false context cancellation")
 		}
 	})
+
+	t.Run("defaults to non-detached", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		start := c.Action("process.start").Run(ctx, framework.NewOptions(
+			framework.Option{Key: "command", Value: "sleep"},
+			framework.Option{Key: "args", Value: []string{"60"}},
+		))
+		require.True(t, start.OK)
+
+		id := start.Value.(string)
+		proc, err := svc.Get(id)
+		require.NoError(t, err)
+
+		cancel()
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should honor context cancellation by default")
+		}
+	})
 }
 
 func TestService_HandleStart_Bad(t *testing.T) {
