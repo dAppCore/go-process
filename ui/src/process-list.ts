@@ -2,6 +2,7 @@
 
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { connectProcessEvents, type ProcessEvent } from './shared/events.js';
 import type { ProcessInfo } from './shared/api.js';
 
 /**
@@ -185,23 +186,45 @@ export class ProcessList extends LitElement {
   `;
 
   @property({ attribute: 'api-url' }) apiUrl = '';
+  @property({ attribute: 'ws-url' }) wsUrl = '';
   @property({ attribute: 'selected-id' }) selectedId = '';
 
   @state() private processes: ProcessInfo[] = [];
   @state() private loading = false;
   @state() private error = '';
-  @state() private killing = new Set<string>();
+  @state() private connected = false;
+
+  private ws: WebSocket | null = null;
 
   connectedCallback() {
     super.connectedCallback();
     this.loadProcesses();
   }
 
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.disconnect();
+  }
+
+  updated(changed: Map<string, unknown>) {
+    if (changed.has('wsUrl')) {
+      this.disconnect();
+      this.processes = [];
+      this.loadProcesses();
+    }
+  }
+
   async loadProcesses() {
-    // Process-level REST endpoints are not yet available.
-    // This element will populate via WS events once endpoints exist.
+    // The process list is built from the shared process event stream.
+    this.error = '';
     this.loading = false;
-    this.processes = [];
+
+    if (!this.wsUrl) {
+      this.processes = [];
+      return;
+    }
+
+    this.connect();
   }
 
   private handleSelect(proc: ProcessInfo) {
@@ -228,6 +251,84 @@ export class ProcessList extends LitElement {
     }
   }
 
+  private connect() {
+    this.ws = connectProcessEvents(this.wsUrl, (event: ProcessEvent) => {
+      this.applyEvent(event);
+    });
+
+    this.ws.onopen = () => {
+      this.connected = true;
+    };
+    this.ws.onclose = () => {
+      this.connected = false;
+    };
+  }
+
+  private disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.connected = false;
+  }
+
+  private applyEvent(event: ProcessEvent) {
+    const channel = event.channel ?? event.type ?? '';
+    const data = (event.data ?? {}) as Partial<ProcessInfo> & {
+      id?: string;
+      signal?: string;
+    };
+
+    if (!data.id) {
+      return;
+    }
+
+    const next = new Map(this.processes.map((proc) => [proc.id, proc] as const));
+    const current = next.get(data.id);
+
+    if (channel === 'process.started') {
+      next.set(data.id, this.normalizeProcess(data, current, 'running'));
+      this.processes = this.sortProcesses(next);
+      return;
+    }
+
+    if (channel === 'process.exited') {
+      next.set(data.id, this.normalizeProcess(data, current, 'exited'));
+      this.processes = this.sortProcesses(next);
+      return;
+    }
+
+    if (channel === 'process.killed') {
+      next.set(data.id, this.normalizeProcess(data, current, 'killed'));
+      this.processes = this.sortProcesses(next);
+      return;
+    }
+  }
+
+  private normalizeProcess(
+    data: Partial<ProcessInfo> & { id: string; signal?: string },
+    current: ProcessInfo | undefined,
+    status: ProcessInfo['status'],
+  ): ProcessInfo {
+    return {
+      id: data.id,
+      command: data.command ?? current?.command ?? '',
+      args: data.args ?? current?.args ?? [],
+      dir: data.dir ?? current?.dir ?? '',
+      startedAt: data.startedAt ?? current?.startedAt ?? new Date().toISOString(),
+      status,
+      exitCode: data.exitCode ?? current?.exitCode ?? (status === 'killed' ? -1 : 0),
+      duration: data.duration ?? current?.duration ?? 0,
+      pid: data.pid ?? current?.pid ?? 0,
+    };
+  }
+
+  private sortProcesses(processes: Map<string, ProcessInfo>): ProcessInfo[] {
+    return [...processes.values()].sort(
+      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    );
+  }
+
   render() {
     if (this.loading) {
       return html`<div class="loading">Loading processes\u2026</div>`;
@@ -238,8 +339,11 @@ export class ProcessList extends LitElement {
       ${this.processes.length === 0
         ? html`
             <div class="info-notice">
-              Process list endpoints are pending. Processes will appear here once
-              the REST API for managed processes is available.
+              ${this.wsUrl
+                ? this.connected
+                  ? 'Waiting for process events from the WebSocket feed.'
+                  : 'Connecting to the process event stream...'
+                : 'Set a WebSocket URL to receive live process events.'}
             </div>
             <div class="empty">No managed processes.</div>
           `
@@ -275,12 +379,12 @@ export class ProcessList extends LitElement {
                           <div class="item-actions">
                             <button
                               class="kill-btn"
-                              ?disabled=${this.killing.has(proc.id)}
+                              disabled
                               @click=${(e: Event) => {
                                 e.stopPropagation();
                               }}
                             >
-                              ${this.killing.has(proc.id) ? 'Killing\u2026' : 'Kill'}
+                              Live only
                             </button>
                           </div>
                         `
