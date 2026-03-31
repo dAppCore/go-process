@@ -236,10 +236,15 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 	}
 
 	healthy := process.WaitForHealth(entry.Health, 2000)
+	reason := ""
+	if !healthy {
+		reason = "health endpoint did not report healthy"
+	}
 
 	result := map[string]any{
 		"healthy": healthy,
 		"address": entry.Health,
+		"reason":  reason,
 	}
 
 	// Emit health event
@@ -247,6 +252,7 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 		"code":    code,
 		"daemon":  daemon,
 		"healthy": healthy,
+		"reason":  reason,
 	})
 
 	statusCode := http.StatusOK

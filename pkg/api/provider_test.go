@@ -5,6 +5,7 @@ package api_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	process "dappco.re/go/core/process"
@@ -87,6 +88,27 @@ func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestProcessProvider_HealthCheck_NoEndpoint_Good(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(dir)
+	require.NoError(t, registry.Register(process.DaemonEntry{
+		Code:   "test",
+		Daemon: "nohealth",
+		PID:    os.Getpid(),
+	}))
+
+	p := processapi.NewProvider(registry, nil)
+
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/process/daemons/test/nohealth/health", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "no health endpoint configured")
+	assert.Contains(t, w.Body.String(), "\"reason\"")
 }
 
 func TestProcessProvider_RegistersAsRouteGroup_Good(t *testing.T) {
