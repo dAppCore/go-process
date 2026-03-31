@@ -155,7 +155,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		Dir:         opts.Dir,
 		Env:         append([]string(nil), opts.Env...),
 		StartedAt:   time.Now(),
-		Status:      StatusRunning,
+		Status:      StatusPending,
 		cmd:         cmd,
 		ctx:         procCtx,
 		cancel:      cancel,
@@ -168,10 +168,16 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
+		proc.mu.Lock()
+		proc.Status = StatusFailed
+		proc.mu.Unlock()
 		cancel()
 		return core.Result{Value: core.E("process.start", core.Concat("command failed: ", opts.Command), err), OK: false}
 	}
 	proc.PID = cmd.Process.Pid
+	proc.mu.Lock()
+	proc.Status = StatusRunning
+	proc.mu.Unlock()
 
 	// Store process
 	if r := s.managed.Set(id, proc); !r.OK {

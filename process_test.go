@@ -26,6 +26,18 @@ func TestProcess_Info_Good(t *testing.T) {
 	assert.Greater(t, info.Duration, time.Duration(0))
 }
 
+func TestProcess_Info_Pending_Good(t *testing.T) {
+	proc := &ManagedProcess{
+		ID:     "pending",
+		Status: StatusPending,
+		done:   make(chan struct{}),
+	}
+
+	info := proc.Info()
+	assert.Equal(t, StatusPending, info.Status)
+	assert.False(t, info.Running)
+}
+
 func TestProcess_Output_Good(t *testing.T) {
 	t.Run("captures stdout", func(t *testing.T) {
 		svc, _ := newTestService(t)
