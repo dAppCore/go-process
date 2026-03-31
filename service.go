@@ -230,10 +230,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		close(proc.done)
 
 		if status == StatusKilled {
-			_ = s.Core().ACTION(ActionProcessKilled{
-				ID:     id,
-				Signal: killedSignal,
-			})
+			s.emitKilledAction(proc, killedSignal)
 		}
 		s.Core().ACTION(ActionProcessExited{
 			ID:       id,
@@ -308,6 +305,7 @@ func (s *Service) Kill(id string) error {
 	if err := proc.Kill(); err != nil {
 		return err
 	}
+	s.emitKilledAction(proc, proc.requestedSignal())
 	return nil
 }
 
@@ -489,4 +487,17 @@ func normalizeSignalName(sig syscall.Signal) string {
 	default:
 		return sig.String()
 	}
+}
+
+func (s *Service) emitKilledAction(proc *ManagedProcess, signal string) {
+	if proc == nil || !proc.markKillEmitted() {
+		return
+	}
+	if signal == "" {
+		signal = "SIGKILL"
+	}
+	_ = s.Core().ACTION(ActionProcessKilled{
+		ID:     proc.ID,
+		Signal: signal,
+	})
 }

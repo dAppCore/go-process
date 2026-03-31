@@ -38,6 +38,7 @@ type ManagedProcess struct {
 	gracePeriod time.Duration
 	killGroup   bool
 	lastSignal  string
+	killEmitted bool
 }
 
 // Process is kept as a compatibility alias for ManagedProcess.
@@ -218,4 +219,15 @@ func (p *ManagedProcess) requestedSignal() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.lastSignal
+}
+
+func (p *ManagedProcess) markKillEmitted() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.killEmitted {
+		return false
+	}
+	p.killEmitted = true
+	return true
 }
