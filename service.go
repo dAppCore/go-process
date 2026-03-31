@@ -224,7 +224,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		waitErr := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
-		status, exitCode, actionErr, killedSignal := classifyProcessExit(proc, waitErr)
+		status, exitCode, _, killedSignal := classifyProcessExit(proc, waitErr)
 
 		proc.mu.Lock()
 		proc.PID = cmd.Process.Pid
@@ -242,7 +242,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 			ID:       id,
 			ExitCode: exitCode,
 			Duration: duration,
-			Error:    actionErr,
+			Error:    nil,
 		})
 	}()
 

@@ -474,6 +474,7 @@ func TestService_Actions_Good(t *testing.T) {
 
 		assert.Len(t, exited, 1)
 		assert.Equal(t, 0, exited[0].ExitCode)
+		assert.Nil(t, exited[0].Error)
 	})
 
 	t.Run("broadcasts killed event", func(t *testing.T) {
