@@ -58,6 +58,9 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	if binary == "" {
 		binary = p.Name
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	var out bytes.Buffer
 	cmd := execCommandContext(ctx, binary, args...)

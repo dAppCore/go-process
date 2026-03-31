@@ -56,6 +56,14 @@ func TestProgram_RunFallback_Good(t *testing.T) {
 	assert.Equal(t, "fallback", out)
 }
 
+func TestProgram_RunNilContext_Good(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+
+	out, err := p.Run(nil, "nil-context")
+	require.NoError(t, err)
+	assert.Equal(t, "nil-context", out)
+}
+
 func TestProgram_RunDir_Good(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
 	require.NoError(t, p.Find())

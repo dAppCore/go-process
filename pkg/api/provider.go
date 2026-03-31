@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"syscall"
 
-	"forge.lthn.ai/core/api"
-	"forge.lthn.ai/core/api/pkg/provider"
 	process "dappco.re/go/core/process"
 	"dappco.re/go/core/ws"
+	"forge.lthn.ai/core/api"
+	"forge.lthn.ai/core/api/pkg/provider"
 	"github.com/gin-gonic/gin"
 )
 
@@ -119,6 +119,8 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 					"daemon":  map[string]any{"type": "string"},
 					"pid":     map[string]any{"type": "integer"},
 					"health":  map[string]any{"type": "string"},
+					"project": map[string]any{"type": "string"},
+					"binary":  map[string]any{"type": "string"},
 					"started": map[string]any{"type": "string", "format": "date-time"},
 				},
 			},
@@ -147,6 +149,7 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 				"properties": map[string]any{
 					"healthy": map[string]any{"type": "boolean"},
 					"address": map[string]any{"type": "string"},
+					"reason":  map[string]any{"type": "string"},
 				},
 			},
 		},

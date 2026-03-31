@@ -49,6 +49,14 @@ func TestProcessProvider_Describe_Good(t *testing.T) {
 		assert.NotEmpty(t, d.Summary)
 		assert.NotEmpty(t, d.Tags)
 	}
+
+	for _, d := range descs {
+		if d.Path == "/daemons/:code/:daemon/health" {
+			props, ok := d.Response["properties"].(map[string]any)
+			require.True(t, ok)
+			assert.Contains(t, props, "reason")
+		}
+	}
 }
 
 func TestProcessProvider_ListDaemons_Good(t *testing.T) {
