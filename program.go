@@ -3,6 +3,7 @@ package process
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strconv"
 
 	"dappco.re/go/core"
@@ -35,6 +36,12 @@ func (p *Program) Find() error {
 	path, err := execLookPath(p.Name)
 	if err != nil {
 		return core.E("program.find", core.Concat(strconv.Quote(p.Name), ": not found in PATH"), ErrProgramNotFound)
+	}
+	if !filepath.IsAbs(path) {
+		path, err = filepath.Abs(path)
+		if err != nil {
+			return core.E("program.find", core.Concat(strconv.Quote(p.Name), ": failed to resolve absolute path"), err)
+		}
 	}
 	p.Path = path
 	return nil

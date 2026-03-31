@@ -3,6 +3,7 @@ package process_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ func TestProgram_Find_Good(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	require.NoError(t, p.Find())
 	assert.NotEmpty(t, p.Path)
+	assert.True(t, filepath.IsAbs(p.Path))
 }
 
 func TestProgram_FindUnknown_Bad(t *testing.T) {
