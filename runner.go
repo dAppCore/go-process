@@ -72,16 +72,17 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 
 	// Build dependency graph
 	specMap := make(map[string]RunSpec)
-	for _, spec := range specs {
+	indexMap := make(map[string]int)
+	for i, spec := range specs {
 		specMap[spec.Name] = spec
+		indexMap[spec.Name] = i
 	}
 
 	// Track completion
 	completed := make(map[string]*RunResult)
 	var completedMu sync.Mutex
 
-	results := make([]RunResult, 0, len(specs))
-	var resultsMu sync.Mutex
+	results := make([]RunResult, len(specs))
 
 	// Process specs in waves
 	remaining := make(map[string]RunSpec)
@@ -100,13 +101,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 
 		if len(ready) == 0 && len(remaining) > 0 {
 			// Deadlock — circular dependency or missing specs. Mark as failed, not skipped.
-			for name := range remaining {
-				results = append(results, RunResult{
+			for name, spec := range remaining {
+				results[indexMap[name]] = RunResult{
 					Name:     name,
-					Spec:     remaining[name],
+					Spec:     spec,
 					ExitCode: 1,
 					Error:    core.E("runner.run_all", "circular dependency or missing dependency", nil),
-				})
+				}
 			}
 			break
 		}
@@ -147,9 +148,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 				completed[spec.Name] = &result
 				completedMu.Unlock()
 
-				resultsMu.Lock()
-				results = append(results, result)
-				resultsMu.Unlock()
+				results[indexMap[spec.Name]] = result
 			}(spec)
 		}
 		wg.Wait()
