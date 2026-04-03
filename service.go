@@ -104,6 +104,10 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
 
+	if opts.KillGroup && !opts.Detach {
+		return nil, coreerr.E("Service.StartWithOptions", "KillGroup requires Detach", nil)
+	}
+
 	// Detached processes use Background context so they survive parent death
 	parentCtx := ctx
 	if opts.Detach {

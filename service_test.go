@@ -150,6 +150,18 @@ func TestService_Start(t *testing.T) {
 			t.Fatal("detached process should have completed")
 		}
 	})
+
+	t.Run("kill group requires detach", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:   "sleep",
+			Args:      []string{"1"},
+			KillGroup: true,
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "KillGroup requires Detach")
+	})
 }
 
 func TestService_Run(t *testing.T) {
