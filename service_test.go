@@ -248,6 +248,7 @@ func TestService_Actions(t *testing.T) {
 		svc := raw.(*Service)
 
 		var killed []ActionProcessKilled
+		var exited []ActionProcessExited
 		var mu sync.Mutex
 
 		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
@@ -255,6 +256,9 @@ func TestService_Actions(t *testing.T) {
 			defer mu.Unlock()
 			if m, ok := msg.(ActionProcessKilled); ok {
 				killed = append(killed, m)
+			}
+			if m, ok := msg.(ActionProcessExited); ok {
+				exited = append(exited, m)
 			}
 			return framework.Result{OK: true}
 		})
@@ -278,7 +282,42 @@ func TestService_Actions(t *testing.T) {
 		assert.Len(t, killed, 1)
 		assert.Equal(t, proc.ID, killed[0].ID)
 		assert.NotEmpty(t, killed[0].Signal)
+		assert.Len(t, exited, 1)
+		assert.Equal(t, proc.ID, exited[0].ID)
+		assert.Error(t, exited[0].Error)
 		assert.Equal(t, StatusKilled, proc.Status)
+	})
+
+	t.Run("broadcasts exited event on start failure", func(t *testing.T) {
+		c := framework.New()
+
+		factory := NewService(Options{})
+		raw, err := factory(c)
+		require.NoError(t, err)
+		svc := raw.(*Service)
+
+		var exited []ActionProcessExited
+		var mu sync.Mutex
+
+		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
+			mu.Lock()
+			defer mu.Unlock()
+			if m, ok := msg.(ActionProcessExited); ok {
+				exited = append(exited, m)
+			}
+			return framework.Result{OK: true}
+		})
+
+		_, err = svc.Start(context.Background(), "definitely-not-a-real-binary-xyz")
+		require.Error(t, err)
+
+		time.Sleep(10 * time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, exited, 1)
+		assert.Equal(t, -1, exited[0].ExitCode)
+		assert.Error(t, exited[0].Error)
 	})
 }
 

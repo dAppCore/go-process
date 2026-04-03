@@ -103,6 +103,7 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 // StartWithOptions spawns a process with full configuration.
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
+	startedAt := time.Now()
 
 	if opts.KillGroup && !opts.Detach {
 		return nil, coreerr.E("Service.StartWithOptions", "KillGroup requires Detach", nil)
@@ -159,7 +160,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		Args:        opts.Args,
 		Dir:         opts.Dir,
 		Env:         opts.Env,
-		StartedAt:   time.Now(),
+		StartedAt:   startedAt,
 		Status:      StatusRunning,
 		cmd:         cmd,
 		ctx:         procCtx,
@@ -174,6 +175,14 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	// Start the process
 	if err := cmd.Start(); err != nil {
 		cancel()
+		if s.Core() != nil {
+			_ = s.Core().ACTION(ActionProcessExited{
+				ID:       id,
+				ExitCode: -1,
+				Duration: time.Since(startedAt),
+				Error:    coreerr.E("Service.StartWithOptions", "failed to start process", err),
+			})
+		}
 		return nil, coreerr.E("Service.StartWithOptions", "failed to start process", err)
 	}
 
@@ -234,21 +243,21 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 
 		close(proc.done)
 
-		// Broadcast lifecycle completion.
-		switch status {
-		case StatusKilled:
+		exitAction := ActionProcessExited{
+			ID:       id,
+			ExitCode: exitCode,
+			Duration: duration,
+			Error:    exitErr,
+		}
+		if status == StatusKilled {
+			exitAction.Error = coreerr.E("Service.StartWithOptions", "process was killed", nil)
 			_ = s.Core().ACTION(ActionProcessKilled{
 				ID:     id,
 				Signal: signalName,
 			})
-		default:
-			_ = s.Core().ACTION(ActionProcessExited{
-				ID:       id,
-				ExitCode: exitCode,
-				Duration: duration,
-				Error:    exitErr,
-			})
 		}
+
+		_ = s.Core().ACTION(exitAction)
 	}()
 
 	return proc, nil
