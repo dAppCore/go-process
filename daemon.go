@@ -164,7 +164,9 @@ func (d *Daemon) Stop() error {
 
 	// Auto-unregister
 	if d.opts.Registry != nil {
-		_ = d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon)
+		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
+			errs = append(errs, core.E("daemon.stop", "registry", err))
+		}
 	}
 
 	d.running = false

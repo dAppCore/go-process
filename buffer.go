@@ -19,6 +19,10 @@ type RingBuffer struct {
 //
 //	rb := process.NewRingBuffer(256)
 func NewRingBuffer(size int) *RingBuffer {
+	if size <= 0 {
+		size = 1
+	}
+
 	return &RingBuffer{
 		data: make([]byte, size),
 		size: size,

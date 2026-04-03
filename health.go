@@ -104,10 +104,17 @@ func (h *HealthServer) Start() error {
 
 // Stop gracefully shuts down the health server.
 func (h *HealthServer) Stop(ctx context.Context) error {
-	if h.server == nil {
+	h.mu.Lock()
+	server := h.server
+	h.server = nil
+	h.listener = nil
+	h.mu.Unlock()
+
+	if server == nil {
 		return nil
 	}
-	return h.server.Shutdown(ctx)
+
+	return server.Shutdown(ctx)
 }
 
 // Addr returns the actual address the server is listening on.
