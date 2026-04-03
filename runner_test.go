@@ -151,7 +151,7 @@ func TestRunner_RunAll(t *testing.T) {
 }
 
 func TestRunner_RunAll_CircularDeps(t *testing.T) {
-	t.Run("circular dependency counts as failed", func(t *testing.T) {
+	t.Run("circular dependency is skipped with error", func(t *testing.T) {
 		runner := newTestRunner(t)
 
 		result, err := runner.RunAll(context.Background(), []RunSpec{
@@ -160,9 +160,29 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		assert.False(t, result.Success())
-		assert.Equal(t, 2, result.Failed)
-		assert.Equal(t, 0, result.Skipped)
+		assert.True(t, result.Success())
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Error(t, res.Error)
+		}
+	})
+
+	t.Run("missing dependency is skipped with error", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		result, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "a", Command: "echo", Args: []string{"a"}, After: []string{"missing"}},
+		})
+		require.NoError(t, err)
+
+		assert.True(t, result.Success())
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 1, result.Skipped)
+		require.Len(t, result.Results, 1)
+		assert.True(t, result.Results[0].Skipped)
+		assert.Error(t, result.Results[0].Error)
 	})
 }
 
