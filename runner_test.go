@@ -148,6 +148,24 @@ func TestRunner_RunAll(t *testing.T) {
 		assert.True(t, result.Success())
 		assert.Equal(t, 4, result.Passed)
 	})
+
+	t.Run("preserves input order", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		specs := []RunSpec{
+			{Name: "third", Command: "echo", Args: []string{"3"}, After: []string{"second"}},
+			{Name: "first", Command: "echo", Args: []string{"1"}},
+			{Name: "second", Command: "echo", Args: []string{"2"}, After: []string{"first"}},
+		}
+
+		result, err := runner.RunAll(context.Background(), specs)
+		require.NoError(t, err)
+
+		require.Len(t, result.Results, len(specs))
+		for i, res := range result.Results {
+			assert.Equal(t, specs[i].Name, res.Name)
+		}
+	})
 }
 
 func TestRunner_RunAll_CircularDeps(t *testing.T) {
@@ -206,4 +224,20 @@ func TestRunResult_Passed(t *testing.T) {
 		r := RunResult{ExitCode: 0, Error: assert.AnError}
 		assert.False(t, r.Passed())
 	})
+}
+
+func TestRunner_NilService(t *testing.T) {
+	runner := NewRunner(nil)
+
+	_, err := runner.RunAll(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
+
+	_, err = runner.RunSequential(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
+
+	_, err = runner.RunParallel(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
 }

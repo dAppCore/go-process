@@ -13,6 +13,9 @@ type Runner struct {
 	service *Service
 }
 
+// ErrRunnerNoService is returned when a runner was created without a service.
+var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
+
 // NewRunner creates a runner for the given service.
 func NewRunner(svc *Service) *Runner {
 	return &Runner{service: svc}
@@ -68,20 +71,24 @@ func (r RunAllResult) Success() bool {
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 
 	// Build dependency graph
 	specMap := make(map[string]RunSpec)
+	indexMap := make(map[string]int, len(specs))
 	for _, spec := range specs {
 		specMap[spec.Name] = spec
+		indexMap[spec.Name] = len(indexMap)
 	}
 
 	// Track completion
 	completed := make(map[string]*RunResult)
 	var completedMu sync.Mutex
 
-	results := make([]RunResult, 0, len(specs))
-	var resultsMu sync.Mutex
+	results := make([]RunResult, len(specs))
 
 	// Process specs in waves
 	remaining := make(map[string]RunSpec)
@@ -99,16 +106,15 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 		}
 
 		if len(ready) == 0 && len(remaining) > 0 {
-			// Deadlock — circular dependency or missing specs. Report them as skipped
-			// with an error so callers can distinguish dependency graph issues from
-			// command execution failures.
+			// Deadlock - circular dependency or missing specs.
+			// Keep the output aligned with the input order.
 			for name := range remaining {
-				results = append(results, RunResult{
+				results[indexMap[name]] = RunResult{
 					Name:    name,
 					Spec:    remaining[name],
 					Skipped: true,
 					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
-				})
+				}
 			}
 			break
 		}
@@ -149,9 +155,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 				completed[spec.Name] = &result
 				completedMu.Unlock()
 
-				resultsMu.Lock()
-				results = append(results, result)
-				resultsMu.Unlock()
+				results[indexMap[spec.Name]] = result
 			}(spec)
 		}
 		wg.Wait()
@@ -179,6 +183,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 	}
 
 	return aggResult, nil
+}
+
+func (r *Runner) ensureService() error {
+	if r == nil || r.service == nil {
+		return ErrRunnerNoService
+	}
+	return nil
 }
 
 // canRun checks if all dependencies are completed.
@@ -224,6 +235,9 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 
 // RunSequential executes specs one after another, stopping on first failure.
 func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
 
@@ -264,6 +278,9 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 
 // RunParallel executes all specs concurrently, regardless of dependencies.
 func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, len(specs))
 
