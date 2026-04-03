@@ -12,6 +12,9 @@ import (
 	coreerr "dappco.re/go/core/log"
 )
 
+// ErrCommandContextRequired is returned when a command is created without a context.
+var ErrCommandContextRequired = coreerr.E("", "exec: command context is required", nil)
+
 // Options configuration for command execution
 type Options struct {
 	Dir    string
@@ -87,7 +90,9 @@ func (c *Cmd) WithBackground(background bool) *Cmd {
 
 // Start launches the command.
 func (c *Cmd) Start() error {
-	c.prepare()
+	if err := c.prepare(); err != nil {
+		return err
+	}
 	c.logDebug("executing command")
 
 	if err := c.cmd.Start(); err != nil {
@@ -112,7 +117,9 @@ func (c *Cmd) Run() error {
 		return c.Start()
 	}
 
-	c.prepare()
+	if err := c.prepare(); err != nil {
+		return err
+	}
 	c.logDebug("executing command")
 
 	if err := c.cmd.Run(); err != nil {
@@ -129,7 +136,9 @@ func (c *Cmd) Output() ([]byte, error) {
 		return nil, coreerr.E("Cmd.Output", "background execution is incompatible with Output", nil)
 	}
 
-	c.prepare()
+	if err := c.prepare(); err != nil {
+		return nil, err
+	}
 	c.logDebug("executing command")
 
 	out, err := c.cmd.Output()
@@ -147,7 +156,9 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 		return nil, coreerr.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil)
 	}
 
-	c.prepare()
+	if err := c.prepare(); err != nil {
+		return nil, err
+	}
 	c.logDebug("executing command")
 
 	out, err := c.cmd.CombinedOutput()
@@ -159,16 +170,12 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 	return out, nil
 }
 
-func (c *Cmd) prepare() {
-	if c.ctx != nil {
-		c.cmd = exec.CommandContext(c.ctx, c.name, c.args...)
-	} else {
-		// Should we enforce context? The issue says "Enforce context usage".
-		// For now, let's allow nil but log a warning if we had a logger?
-		// Or strictly panic/error?
-		// Let's fallback to Background for now but maybe strict later.
-		c.cmd = exec.Command(c.name, c.args...)
+func (c *Cmd) prepare() error {
+	if c.ctx == nil {
+		return coreerr.E("Cmd.prepare", "exec: command context is required", ErrCommandContextRequired)
 	}
+
+	c.cmd = exec.CommandContext(c.ctx, c.name, c.args...)
 
 	c.cmd.Dir = c.opts.Dir
 	if len(c.opts.Env) > 0 {
@@ -178,6 +185,7 @@ func (c *Cmd) prepare() {
 	c.cmd.Stdin = c.opts.Stdin
 	c.cmd.Stdout = c.opts.Stdout
 	c.cmd.Stderr = c.opts.Stderr
+	return nil
 }
 
 // RunQuiet executes the command suppressing stdout unless there is an error.

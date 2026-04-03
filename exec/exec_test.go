@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"dappco.re/go/core/process/exec"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockLogger captures log calls for testing
@@ -229,6 +231,32 @@ func TestCommand_Run_Background(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+func TestCommand_NilContextRejected(t *testing.T) {
+	t.Run("start", func(t *testing.T) {
+		err := exec.Command(nil, "echo", "test").Start()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("run", func(t *testing.T) {
+		err := exec.Command(nil, "echo", "test").Run()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("output", func(t *testing.T) {
+		_, err := exec.Command(nil, "echo", "test").Output()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("combined output", func(t *testing.T) {
+		_, err := exec.Command(nil, "echo", "test").CombinedOutput()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
 }
 
 func TestCommand_Output_BackgroundRejected(t *testing.T) {
