@@ -143,6 +143,8 @@ func TestProcess_Kill(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been killed")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("noop on completed process", func(t *testing.T) {
@@ -209,6 +211,8 @@ func TestProcess_Signal(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been terminated by signal")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("error on completed process", func(t *testing.T) {
@@ -279,6 +283,7 @@ func TestProcess_Timeout(t *testing.T) {
 		}
 
 		assert.False(t, proc.IsRunning())
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("no timeout when zero", func(t *testing.T) {
@@ -319,6 +324,8 @@ func TestProcess_Shutdown(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("shutdown should have completed")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("immediate kill without grace period", func(t *testing.T) {
@@ -367,6 +374,8 @@ func TestProcess_KillGroup(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("process group should have been killed")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 }
 
@@ -388,5 +397,7 @@ func TestProcess_TimeoutWithGrace(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("process should have been killed by timeout")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 }

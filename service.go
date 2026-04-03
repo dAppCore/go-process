@@ -220,38 +220,31 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		err := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
+		status, exitCode, exitErr, signalName := classifyProcessExit(err)
 
 		proc.mu.Lock()
 		proc.Duration = duration
-		if err != nil {
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				proc.ExitCode = exitErr.ExitCode()
-				proc.Status = StatusExited
-			} else {
-				proc.Status = StatusFailed
-			}
-		} else {
-			proc.ExitCode = 0
-			proc.Status = StatusExited
-		}
-		status := proc.Status
-		exitCode := proc.ExitCode
+		proc.ExitCode = exitCode
+		proc.Status = status
 		proc.mu.Unlock()
 
 		close(proc.done)
 
-		// Broadcast exit
-		var exitErr error
-		if status == StatusFailed {
-			exitErr = err
+		// Broadcast lifecycle completion.
+		switch status {
+		case StatusKilled:
+			_ = s.Core().ACTION(ActionProcessKilled{
+				ID:     id,
+				Signal: signalName,
+			})
+		default:
+			_ = s.Core().ACTION(ActionProcessExited{
+				ID:       id,
+				ExitCode: exitCode,
+				Duration: duration,
+				Error:    exitErr,
+			})
 		}
-		_ = s.Core().ACTION(ActionProcessExited{
-			ID:       id,
-			ExitCode: exitCode,
-			Duration: duration,
-			Error:    exitErr,
-		})
 	}()
 
 	return proc, nil
@@ -325,16 +318,7 @@ func (s *Service) Kill(id string) error {
 		return err
 	}
 
-	if err := proc.Kill(); err != nil {
-		return err
-	}
-
-	_ = s.Core().ACTION(ActionProcessKilled{
-		ID:     id,
-		Signal: "SIGKILL",
-	})
-
-	return nil
+	return proc.Kill()
 }
 
 // Remove removes a completed process from the list.
@@ -387,6 +371,9 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) (stri
 	<-proc.Done()
 
 	output := proc.Output()
+	if proc.Status == StatusKilled {
+		return output, coreerr.E("Service.Run", "process was killed", nil)
+	}
 	if proc.ExitCode != 0 {
 		return output, coreerr.E("Service.Run", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
@@ -403,6 +390,9 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 	<-proc.Done()
 
 	output := proc.Output()
+	if proc.Status == StatusKilled {
+		return output, coreerr.E("Service.RunWithOptions", "process was killed", nil)
+	}
 	if proc.ExitCode != 0 {
 		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
@@ -426,4 +416,25 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 	default:
 		return core.Result{}
 	}
+}
+
+// classifyProcessExit maps a command completion error to lifecycle state.
+func classifyProcessExit(err error) (Status, int, error, string) {
+	if err == nil {
+		return StatusExited, 0, nil, ""
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			signalName := ws.Signal().String()
+			if signalName == "" {
+				signalName = "signal"
+			}
+			return StatusKilled, -1, nil, signalName
+		}
+		return StatusExited, exitErr.ExitCode(), nil, ""
+	}
+
+	return StatusFailed, 0, err, ""
 }

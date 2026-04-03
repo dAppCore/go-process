@@ -226,6 +226,48 @@ func TestService_Actions(t *testing.T) {
 		assert.Len(t, exited, 1)
 		assert.Equal(t, 0, exited[0].ExitCode)
 	})
+
+	t.Run("broadcasts killed events", func(t *testing.T) {
+		c := framework.New()
+
+		factory := NewService(Options{})
+		raw, err := factory(c)
+		require.NoError(t, err)
+		svc := raw.(*Service)
+
+		var killed []ActionProcessKilled
+		var mu sync.Mutex
+
+		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
+			mu.Lock()
+			defer mu.Unlock()
+			if m, ok := msg.(ActionProcessKilled); ok {
+				killed = append(killed, m)
+			}
+			return framework.Result{OK: true}
+		})
+
+		proc, err := svc.Start(context.Background(), "sleep", "60")
+		require.NoError(t, err)
+
+		err = svc.Kill(proc.ID)
+		require.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been killed")
+		}
+
+		time.Sleep(10 * time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Len(t, killed, 1)
+		assert.Equal(t, proc.ID, killed[0].ID)
+		assert.NotEmpty(t, killed[0].Signal)
+		assert.Equal(t, StatusKilled, proc.Status)
+	})
 }
 
 func TestService_List(t *testing.T) {
@@ -328,6 +370,8 @@ func TestService_Kill(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("process should have been killed")
 		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("error on unknown id", func(t *testing.T) {
