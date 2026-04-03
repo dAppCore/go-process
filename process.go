@@ -188,6 +188,14 @@ func (p *Process) Signal(sig os.Signal) error {
 		return nil
 	}
 
+	if p.killGroup {
+		sysSig, ok := sig.(syscall.Signal)
+		if !ok {
+			return p.cmd.Process.Signal(sig)
+		}
+		return syscall.Kill(-p.cmd.Process.Pid, sysSig)
+	}
+
 	return p.cmd.Process.Signal(sig)
 }
 

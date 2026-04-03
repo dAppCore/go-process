@@ -225,6 +225,28 @@ func TestProcess_Signal(t *testing.T) {
 		err = proc.Signal(os.Interrupt)
 		assert.ErrorIs(t, err, ErrProcessNotRunning)
 	})
+
+	t.Run("signals process group when kill group is enabled", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:   "sh",
+			Args:      []string{"-c", "trap '' INT; sh -c 'trap - INT; sleep 60' & wait"},
+			Detach:    true,
+			KillGroup: true,
+		})
+		require.NoError(t, err)
+
+		err = proc.Signal(os.Interrupt)
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+			// Good - the whole process group responded to the signal.
+		case <-time.After(5 * time.Second):
+			t.Fatal("process group should have been terminated by signal")
+		}
+	})
 }
 
 func TestProcess_CloseStdin(t *testing.T) {
