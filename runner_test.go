@@ -179,10 +179,10 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.False(t, result.Success())
-		assert.Equal(t, 2, result.Failed)
-		assert.Equal(t, 0, result.Skipped)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
 		for _, res := range result.Results {
-			assert.False(t, res.Skipped)
+			assert.True(t, res.Skipped)
 			assert.Equal(t, 1, res.ExitCode)
 			assert.Error(t, res.Error)
 		}
@@ -197,10 +197,10 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.False(t, result.Success())
-		assert.Equal(t, 1, result.Failed)
-		assert.Equal(t, 0, result.Skipped)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 1, result.Skipped)
 		require.Len(t, result.Results, 1)
-		assert.False(t, result.Results[0].Skipped)
+		assert.True(t, result.Results[0].Skipped)
 		assert.Equal(t, 1, result.Results[0].ExitCode)
 		assert.Error(t, result.Results[0].Error)
 	})
