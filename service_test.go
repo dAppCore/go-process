@@ -500,6 +500,23 @@ func TestService_OnStartup(t *testing.T) {
 		require.True(t, result.OK)
 		assert.Contains(t, result.Value.(string), "action-run")
 	})
+
+	t.Run("forwards task execution options", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessRun{
+			Command:     "sleep",
+			Args:        []string{"60"},
+			Timeout:     100 * time.Millisecond,
+			GracePeriod: 50 * time.Millisecond,
+		})
+
+		require.False(t, result.OK)
+		assert.Nil(t, result.Value)
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

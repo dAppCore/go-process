@@ -417,10 +417,15 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 	switch m := task.(type) {
 	case TaskProcessRun:
 		output, err := s.RunWithOptions(c.Context(), RunOptions{
-			Command: m.Command,
-			Args:    m.Args,
-			Dir:     m.Dir,
-			Env:     m.Env,
+			Command:        m.Command,
+			Args:           m.Args,
+			Dir:            m.Dir,
+			Env:            m.Env,
+			DisableCapture: m.DisableCapture,
+			Detach:         m.Detach,
+			Timeout:        m.Timeout,
+			GracePeriod:    m.GracePeriod,
+			KillGroup:      m.KillGroup,
 		})
 		if err != nil {
 			return core.Result{Value: err, OK: false}

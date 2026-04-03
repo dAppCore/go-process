@@ -11,6 +11,16 @@ type TaskProcessRun struct {
 	Args    []string
 	Dir     string
 	Env     []string
+	// DisableCapture skips buffering process output before returning it.
+	DisableCapture bool
+	// Detach runs the command in its own process group.
+	Detach bool
+	// Timeout bounds the execution duration.
+	Timeout time.Duration
+	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
+	GracePeriod time.Duration
+	// KillGroup terminates the entire process group instead of only the leader.
+	KillGroup bool
 }
 
 // ActionProcessStarted is broadcast when a process begins execution.
