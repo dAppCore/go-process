@@ -66,6 +66,12 @@ func TestHealthServer_WithChecks_Good(t *testing.T) {
 	_ = resp.Body.Close()
 }
 
+func TestHealthServer_StopImmediately_Good(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+	require.NoError(t, hs.Start())
+	require.NoError(t, hs.Stop(context.Background()))
+}
+
 func TestWaitForHealth_Reachable_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	require.NoError(t, hs.Start())

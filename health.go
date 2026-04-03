@@ -92,12 +92,13 @@ func (h *HealthServer) Start() error {
 		return core.E("health.start", core.Concat("failed to listen on ", h.addr), err)
 	}
 
+	server := &http.Server{Handler: mux}
 	h.listener = listener
-	h.server = &http.Server{Handler: mux}
+	h.server = server
 
-	go func() {
-		_ = h.server.Serve(listener)
-	}()
+	go func(srv *http.Server, ln net.Listener) {
+		_ = srv.Serve(ln)
+	}(server, listener)
 
 	return nil
 }
