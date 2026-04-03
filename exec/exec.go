@@ -19,8 +19,8 @@ type Options struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
-	// If true, command will run in background (not implemented in this wrapper yet)
-	// Background bool
+	// Background runs the command asynchronously and returns from Run immediately.
+	Background bool
 }
 
 // Command wraps os/exec.Command with logging and context
@@ -79,9 +79,39 @@ func (c *Cmd) WithLogger(l Logger) *Cmd {
 	return c
 }
 
+// WithBackground configures whether Run should wait for the command to finish.
+func (c *Cmd) WithBackground(background bool) *Cmd {
+	c.opts.Background = background
+	return c
+}
+
+// Start launches the command.
+func (c *Cmd) Start() error {
+	c.prepare()
+	c.logDebug("executing command")
+
+	if err := c.cmd.Start(); err != nil {
+		wrapped := wrapError("Cmd.Start", err, c.name, c.args)
+		c.logError("command failed", wrapped)
+		return wrapped
+	}
+
+	if c.opts.Background {
+		go func(cmd *exec.Cmd) {
+			_ = cmd.Wait()
+		}(c.cmd)
+	}
+
+	return nil
+}
+
 // Run executes the command and waits for it to finish.
 // It automatically logs the command execution at debug level.
 func (c *Cmd) Run() error {
+	if c.opts.Background {
+		return c.Start()
+	}
+
 	c.prepare()
 	c.logDebug("executing command")
 
@@ -95,6 +125,10 @@ func (c *Cmd) Run() error {
 
 // Output runs the command and returns its standard output.
 func (c *Cmd) Output() ([]byte, error) {
+	if c.opts.Background {
+		return nil, coreerr.E("Cmd.Output", "background execution is incompatible with Output", nil)
+	}
+
 	c.prepare()
 	c.logDebug("executing command")
 
@@ -109,6 +143,10 @@ func (c *Cmd) Output() ([]byte, error) {
 
 // CombinedOutput runs the command and returns its combined standard output and standard error.
 func (c *Cmd) CombinedOutput() ([]byte, error) {
+	if c.opts.Background {
+		return nil, coreerr.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil)
+	}
+
 	c.prepare()
 	c.logDebug("executing command")
 

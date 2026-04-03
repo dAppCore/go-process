@@ -2,8 +2,12 @@ package exec_test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"dappco.re/go/core/process/exec"
 )
@@ -192,6 +196,49 @@ func TestCommand_WithStdinStdoutStderr(t *testing.T) {
 	}
 	if strings.TrimSpace(stdout.String()) != "piped input" {
 		t.Errorf("expected 'piped input', got %q", stdout.String())
+	}
+}
+
+func TestCommand_Run_Background(t *testing.T) {
+	logger := &mockLogger{}
+	ctx := context.Background()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker.txt")
+
+	start := time.Now()
+	err := exec.Command(ctx, "sh", "-c", fmt.Sprintf("sleep 0.2; printf done > %q", marker)).
+		WithBackground(true).
+		WithLogger(logger).
+		Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("background run took too long: %s", elapsed)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, readErr := os.ReadFile(marker)
+		if readErr == nil && strings.TrimSpace(string(data)) == "done" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background command did not create marker file")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestCommand_Output_BackgroundRejected(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := exec.Command(ctx, "echo", "test").
+		WithBackground(true).
+		Output()
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }
 
