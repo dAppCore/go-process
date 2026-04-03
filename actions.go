@@ -4,6 +4,15 @@ import "time"
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
 
+// TaskProcessRun requests synchronous command execution through Core.PERFORM.
+// The handler returns the combined command output on success.
+type TaskProcessRun struct {
+	Command string
+	Args    []string
+	Dir     string
+	Env     []string
+}
+
 // ActionProcessStarted is broadcast when a process begins execution.
 type ActionProcessStarted struct {
 	ID      string

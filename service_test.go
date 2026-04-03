@@ -391,10 +391,19 @@ func TestService_OnShutdown(t *testing.T) {
 }
 
 func TestService_OnStartup(t *testing.T) {
-	t.Run("returns nil", func(t *testing.T) {
-		svc, _ := newTestService(t)
+	t.Run("registers process.run task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
 		err := svc.OnStartup(context.Background())
-		assert.NoError(t, err)
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessRun{
+			Command: "echo",
+			Args:    []string{"action-run"},
+		})
+
+		require.True(t, result.OK)
+		assert.Contains(t, result.Value.(string), "action-run")
 	})
 }
 

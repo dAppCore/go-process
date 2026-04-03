@@ -30,10 +30,11 @@ var (
 type Service struct {
 	*core.ServiceRuntime[Options]
 
-	processes map[string]*Process
-	mu        sync.RWMutex
-	bufSize   int
-	idCounter atomic.Uint64
+	processes     map[string]*Process
+	mu            sync.RWMutex
+	bufSize       int
+	idCounter     atomic.Uint64
+	registrations sync.Once
 }
 
 // Options configures the process service.
@@ -64,6 +65,11 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 
 // OnStartup implements core.Startable.
 func (s *Service) OnStartup(ctx context.Context) error {
+	s.registrations.Do(func() {
+		if s.Core() != nil {
+			s.Core().RegisterTask(s.handleTask)
+		}
+	})
 	return nil
 }
 
@@ -401,4 +407,23 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
+}
+
+// handleTask dispatches Core.PERFORM messages for the process service.
+func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
+	switch m := task.(type) {
+	case TaskProcessRun:
+		output, err := s.RunWithOptions(c.Context(), RunOptions{
+			Command: m.Command,
+			Args:    m.Args,
+			Dir:     m.Dir,
+			Env:     m.Env,
+		})
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+		return core.Result{Value: output, OK: true}
+	default:
+		return core.Result{}
+	}
 }
