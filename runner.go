@@ -13,6 +13,9 @@ type Runner struct {
 	service *Service
 }
 
+// ErrRunnerNoService is returned when a runner was created without a service.
+var ErrRunnerNoService = core.E("", "runner service is nil", nil)
+
 // NewRunner creates a runner for the given service.
 func NewRunner(svc *Service) *Runner {
 	return &Runner{service: svc}
@@ -68,6 +71,9 @@ func (r RunAllResult) Success() bool {
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 
 	// Build dependency graph
@@ -226,6 +232,9 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 
 // RunSequential executes specs one after another, stopping on first failure.
 func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
 
@@ -266,6 +275,9 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 
 // RunParallel executes all specs concurrently, regardless of dependencies.
 func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
+	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, len(specs))
 
@@ -295,4 +307,11 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	}
 
 	return aggResult, nil
+}
+
+func (r *Runner) ensureService() error {
+	if r == nil || r.service == nil {
+		return ErrRunnerNoService
+	}
+	return nil
 }

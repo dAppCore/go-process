@@ -203,3 +203,19 @@ func TestRunResult_Passed_Good(t *testing.T) {
 		assert.False(t, r.Passed())
 	})
 }
+
+func TestRunner_NilService_Bad(t *testing.T) {
+	runner := NewRunner(nil)
+
+	_, err := runner.RunAll(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
+
+	_, err = runner.RunSequential(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
+
+	_, err = runner.RunParallel(context.Background(), nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerNoService)
+}
