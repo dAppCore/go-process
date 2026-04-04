@@ -42,6 +42,19 @@ func TestProgram_Find_UsesExistingPath(t *testing.T) {
 	assert.Equal(t, path, p.Path)
 }
 
+func TestProgram_Find_PrefersExistingPathOverName(t *testing.T) {
+	path, err := exec.LookPath("echo")
+	require.NoError(t, err)
+
+	p := &process.Program{
+		Name: "no-such-binary-xyzzy-42",
+		Path: path,
+	}
+
+	require.NoError(t, p.Find())
+	assert.Equal(t, path, p.Path)
+}
+
 func TestProgram_Find_EmptyName(t *testing.T) {
 	p := &process.Program{}
 	require.Error(t, p.Find())

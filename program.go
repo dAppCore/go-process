@@ -44,9 +44,9 @@ type Program struct {
 //
 //	if err := p.Find(); err != nil { return err }
 func (p *Program) Find() error {
-	target := p.Name
+	target := p.Path
 	if target == "" {
-		target = p.Path
+		target = p.Name
 	}
 	if target == "" {
 		return coreerr.E("Program.Find", "program name is empty", nil)
