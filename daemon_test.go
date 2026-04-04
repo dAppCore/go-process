@@ -109,7 +109,7 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 	}
 }
 
-func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
+func TestDaemon_StopUnregistersAfterHealthShutdownCompletes(t *testing.T) {
 	blockCheck := make(chan struct{})
 	checkEntered := make(chan struct{})
 	var once sync.Once
@@ -165,10 +165,8 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 		return !d.Ready()
 	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should become not ready before shutdown completes")
 
-	require.Eventually(t, func() bool {
-		_, ok := reg.Get("test-app", "serve")
-		return !ok
-	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should unregister before health shutdown completes")
+	_, ok := reg.Get("test-app", "serve")
+	assert.True(t, ok, "daemon should remain registered until health shutdown completes")
 
 	select {
 	case err := <-stopDone:
@@ -184,6 +182,11 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("daemon stop did not finish after health check unblocked")
 	}
+
+	require.Eventually(t, func() bool {
+		_, ok := reg.Get("test-app", "serve")
+		return !ok
+	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should unregister after health shutdown completes")
 
 	select {
 	case err := <-healthErr:

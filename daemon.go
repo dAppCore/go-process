@@ -179,10 +179,9 @@ func (d *Daemon) Stop() error {
 		d.health.SetReady(false)
 	}
 
-	// Auto-unregister after the process is no longer serving traffic.
-	if d.opts.Registry != nil {
-		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
+	if d.health != nil {
+		if err := d.health.Stop(shutdownCtx); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
 		}
 	}
 
@@ -192,9 +191,11 @@ func (d *Daemon) Stop() error {
 		}
 	}
 
-	if d.health != nil {
-		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+	// Auto-unregister after the daemon has stopped serving traffic and
+	// relinquished its PID file.
+	if d.opts.Registry != nil {
+		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
 		}
 	}
 
