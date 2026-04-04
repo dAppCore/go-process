@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -467,7 +468,7 @@ func TestService_Kill(t *testing.T) {
 }
 
 func TestService_KillPID(t *testing.T) {
-	t.Run("force kills unmanaged process", func(t *testing.T) {
+	t.Run("terminates unmanaged process with SIGTERM", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		cmd := exec.Command("sleep", "60")
@@ -494,6 +495,12 @@ func TestService_KillPID(t *testing.T) {
 		select {
 		case err := <-waitCh:
 			require.Error(t, err)
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			ws, ok := exitErr.Sys().(syscall.WaitStatus)
+			require.True(t, ok)
+			assert.True(t, ws.Signaled())
+			assert.Equal(t, syscall.SIGTERM, ws.Signal())
 		case <-time.After(2 * time.Second):
 			t.Fatal("unmanaged process should have been killed")
 		}
