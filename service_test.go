@@ -90,6 +90,16 @@ func TestService_Start(t *testing.T) {
 		assert.Contains(t, err.Error(), "command is required")
 	})
 
+	t.Run("nil context is rejected", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.StartWithOptions(nil, RunOptions{
+			Command: "echo",
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrContextRequired)
+	})
+
 	t.Run("with working directory", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
@@ -697,6 +707,16 @@ func TestService_RunWithOptions(t *testing.T) {
 		})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "exited with code 2")
+	})
+
+	t.Run("rejects nil context", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.RunWithOptions(nil, RunOptions{
+			Command: "echo",
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrContextRequired)
 	})
 }
 

@@ -25,6 +25,7 @@ var (
 	ErrProcessNotFound   = coreerr.E("", "process not found", nil)
 	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
 	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
+	ErrContextRequired   = coreerr.E("", "context is required", nil)
 )
 
 // Service manages process execution with Core IPC integration.
@@ -137,6 +138,9 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	if opts.Command == "" {
 		return nil, coreerr.E("Service.StartWithOptions", "command is required", nil)
+	}
+	if ctx == nil {
+		return nil, coreerr.E("Service.StartWithOptions", "context is required", ErrContextRequired)
 	}
 
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
