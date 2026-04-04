@@ -38,6 +38,14 @@ type Service struct {
 	registrations sync.Once
 }
 
+// coreApp returns the attached Core runtime, if one exists.
+func (s *Service) coreApp() *core.Core {
+	if s == nil || s.ServiceRuntime == nil {
+		return nil
+	}
+	return s.ServiceRuntime.Core()
+}
+
 // Options configures the process service.
 //
 // Example:
@@ -79,8 +87,8 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 //	_ = svc.OnStartup(ctx)
 func (s *Service) OnStartup(ctx context.Context) error {
 	s.registrations.Do(func() {
-		if s.Core() != nil {
-			s.Core().RegisterTask(s.handleTask)
+		if c := s.coreApp(); c != nil {
+			c.RegisterTask(s.handleTask)
 		}
 	})
 	return nil
@@ -204,8 +212,8 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	// Start the process
 	if err := cmd.Start(); err != nil {
 		cancel()
-		if s.Core() != nil {
-			_ = s.Core().ACTION(ActionProcessExited{
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(ActionProcessExited{
 				ID:       id,
 				ExitCode: -1,
 				Duration: time.Since(startedAt),
@@ -233,13 +241,15 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	}
 
 	// Broadcast start
-	_ = s.Core().ACTION(ActionProcessStarted{
-		ID:      id,
-		Command: opts.Command,
-		Args:    opts.Args,
-		Dir:     opts.Dir,
-		PID:     cmd.Process.Pid,
-	})
+	if c := s.coreApp(); c != nil {
+		_ = c.ACTION(ActionProcessStarted{
+			ID:      id,
+			Command: opts.Command,
+			Args:    opts.Args,
+			Dir:     opts.Dir,
+			PID:     cmd.Process.Pid,
+		})
+	}
 
 	// Stream output in goroutines
 	var wg sync.WaitGroup
@@ -280,13 +290,17 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		}
 		if status == StatusKilled {
 			exitAction.Error = coreerr.E("Service.StartWithOptions", "process was killed", nil)
-			_ = s.Core().ACTION(ActionProcessKilled{
-				ID:     id,
-				Signal: signalName,
-			})
+			if c := s.coreApp(); c != nil {
+				_ = c.ACTION(ActionProcessKilled{
+					ID:     id,
+					Signal: signalName,
+				})
+			}
 		}
 
-		_ = s.Core().ACTION(exitAction)
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(exitAction)
+		}
 	}()
 
 	return proc, nil
@@ -307,11 +321,13 @@ func (s *Service) streamOutput(proc *Process, r io.Reader, stream Stream) {
 		}
 
 		// Broadcast output
-		_ = s.Core().ACTION(ActionProcessOutput{
-			ID:     proc.ID,
-			Line:   line,
-			Stream: stream,
-		})
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(ActionProcessOutput{
+				ID:     proc.ID,
+				Line:   line,
+				Stream: stream,
+			})
+		}
 	}
 }
 

@@ -44,6 +44,23 @@ func TestService_Start(t *testing.T) {
 		assert.Contains(t, proc.Output(), "hello")
 	})
 
+	t.Run("works without core runtime", func(t *testing.T) {
+		svc := &Service{
+			processes: make(map[string]*Process),
+			bufSize:   1024,
+		}
+
+		proc, err := svc.Start(context.Background(), "echo", "standalone")
+		require.NoError(t, err)
+		require.NotNil(t, proc)
+
+		<-proc.Done()
+
+		assert.Equal(t, StatusExited, proc.Status)
+		assert.Equal(t, 0, proc.ExitCode)
+		assert.Contains(t, proc.Output(), "standalone")
+	})
+
 	t.Run("failing command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
