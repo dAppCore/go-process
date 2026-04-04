@@ -89,6 +89,16 @@ type TaskProcessGet struct {
 	ID string
 }
 
+// TaskProcessWait waits for a managed process to finish through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessWait{ID: "proc-1"})
+type TaskProcessWait struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
 // TaskProcessOutput requests the captured output of a managed process through Core.PERFORM.
 //
 // Example:

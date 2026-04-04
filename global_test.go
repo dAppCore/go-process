@@ -273,6 +273,26 @@ func TestGlobal_Output(t *testing.T) {
 	assert.Contains(t, output, "global-output")
 }
 
+func TestGlobal_Wait(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	proc, err := Start(context.Background(), "echo", "global-wait")
+	require.NoError(t, err)
+
+	info, err := Wait(proc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, proc.ID, info.ID)
+	assert.Equal(t, StatusExited, info.Status)
+	assert.Equal(t, 0, info.ExitCode)
+}
+
 func TestGlobal_Signal(t *testing.T) {
 	svc, _ := newTestService(t)
 

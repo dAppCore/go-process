@@ -529,6 +529,24 @@ func (s *Service) Output(id string) (string, error) {
 	return proc.Output(), nil
 }
 
+// Wait blocks until a managed process exits and returns its final snapshot.
+//
+// Example:
+//
+//	info, err := svc.Wait("proc-1")
+func (s *Service) Wait(id string) (Info, error) {
+	proc, err := s.Get(id)
+	if err != nil {
+		return Info{}, err
+	}
+
+	if err := proc.Wait(); err != nil {
+		return proc.Info(), err
+	}
+
+	return proc.Info(), nil
+}
+
 // findByPID locates a managed process by operating-system PID.
 func (s *Service) findByPID(pid int) *Process {
 	s.mu.RLock()
@@ -672,6 +690,17 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 		}
 
 		return core.Result{Value: proc.Info(), OK: true}
+	case TaskProcessWait:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process wait requires an id", nil), OK: false}
+		}
+
+		info, err := s.Wait(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{Value: info, OK: true}
 	case TaskProcessOutput:
 		if m.ID == "" {
 			return core.Result{Value: coreerr.E("Service.handleTask", "task process output requires an id", nil), OK: false}

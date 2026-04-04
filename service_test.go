@@ -597,6 +597,41 @@ func TestService_Output(t *testing.T) {
 	})
 }
 
+func TestService_Wait(t *testing.T) {
+	t.Run("returns final info on success", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "echo", "waited")
+		require.NoError(t, err)
+
+		info, err := svc.Wait(proc.ID)
+		require.NoError(t, err)
+		assert.Equal(t, proc.ID, info.ID)
+		assert.Equal(t, StatusExited, info.Status)
+		assert.Equal(t, 0, info.ExitCode)
+	})
+
+	t.Run("returns error on unknown id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.Wait("nonexistent")
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+
+	t.Run("returns info alongside failure", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		require.NoError(t, err)
+
+		info, err := svc.Wait(proc.ID)
+		require.Error(t, err)
+		assert.Equal(t, proc.ID, info.ID)
+		assert.Equal(t, StatusExited, info.Status)
+		assert.Equal(t, 7, info.ExitCode)
+	})
+}
+
 func TestService_OnShutdown(t *testing.T) {
 	t.Run("kills all running processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
@@ -768,6 +803,25 @@ func TestService_OnStartup(t *testing.T) {
 		}
 
 		assert.Equal(t, StatusKilled, proc.Status)
+	})
+
+	t.Run("registers process.wait task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "echo", "action-wait")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessWait{ID: proc.ID})
+		require.True(t, result.OK)
+
+		info, ok := result.Value.(Info)
+		require.True(t, ok)
+		assert.Equal(t, proc.ID, info.ID)
+		assert.Equal(t, StatusExited, info.Status)
+		assert.Equal(t, 0, info.ExitCode)
 	})
 
 	t.Run("registers process.list task", func(t *testing.T) {

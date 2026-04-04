@@ -114,6 +114,19 @@ func Output(id string) (string, error) {
 	return svc.Output(id)
 }
 
+// Wait blocks until a managed process exits and returns its final snapshot.
+//
+// Example:
+//
+//	info, err := process.Wait("proc-1")
+func Wait(id string) (Info, error) {
+	svc := Default()
+	if svc == nil {
+		return Info{}, ErrServiceNotInitialized
+	}
+	return svc.Wait(id)
+}
+
 // List returns all processes from the default service.
 //
 // Example:
