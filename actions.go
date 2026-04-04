@@ -6,6 +6,10 @@ import "time"
 
 // TaskProcessRun requests synchronous command execution through Core.PERFORM.
 // The handler returns the combined command output on success.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessRun{Command: "echo", Args: []string{"hello"}})
 type TaskProcessRun struct {
 	Command string
 	Args    []string
@@ -24,6 +28,10 @@ type TaskProcessRun struct {
 }
 
 // TaskProcessKill requests termination of a managed process by ID or PID.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessKill{ID: "proc-1"})
 type TaskProcessKill struct {
 	// ID identifies a managed process started by this service.
 	ID string
@@ -32,6 +40,10 @@ type TaskProcessKill struct {
 }
 
 // ActionProcessStarted is broadcast when a process begins execution.
+//
+// Example:
+//
+//	case process.ActionProcessStarted: fmt.Println("started", msg.ID)
 type ActionProcessStarted struct {
 	ID      string
 	Command string
@@ -42,6 +54,10 @@ type ActionProcessStarted struct {
 
 // ActionProcessOutput is broadcast for each line of output.
 // Subscribe to this for real-time streaming.
+//
+// Example:
+//
+//	case process.ActionProcessOutput: fmt.Println(msg.Line)
 type ActionProcessOutput struct {
 	ID     string
 	Line   string
@@ -50,6 +66,10 @@ type ActionProcessOutput struct {
 
 // ActionProcessExited is broadcast when a process completes.
 // Check ExitCode for success (0) or failure.
+//
+// Example:
+//
+//	case process.ActionProcessExited: fmt.Println(msg.ExitCode)
 type ActionProcessExited struct {
 	ID       string
 	ExitCode int
@@ -58,6 +78,10 @@ type ActionProcessExited struct {
 }
 
 // ActionProcessKilled is broadcast when a process is terminated.
+//
+// Example:
+//
+//	case process.ActionProcessKilled: fmt.Println(msg.Signal)
 type ActionProcessKilled struct {
 	ID     string
 	Signal string

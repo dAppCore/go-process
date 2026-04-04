@@ -11,6 +11,13 @@ import (
 )
 
 // DaemonOptions configures daemon mode execution.
+//
+// Example:
+//
+//	opts := process.DaemonOptions{
+//	    PIDFile: "/var/run/myapp.pid",
+//	    HealthAddr: "127.0.0.1:0",
+//	}
 type DaemonOptions struct {
 	// PIDFile path for single-instance enforcement.
 	// Leave empty to skip PID file management.
@@ -46,6 +53,10 @@ type Daemon struct {
 }
 
 // NewDaemon creates a daemon runner with the given options.
+//
+// Example:
+//
+//	daemon := process.NewDaemon(process.DaemonOptions{HealthAddr: "127.0.0.1:0"})
 func NewDaemon(opts DaemonOptions) *Daemon {
 	if opts.ShutdownTimeout == 0 {
 		opts.ShutdownTimeout = 30 * time.Second
@@ -68,6 +79,10 @@ func NewDaemon(opts DaemonOptions) *Daemon {
 }
 
 // Start initialises the daemon (PID file, health server).
+//
+// Example:
+//
+//	if err := daemon.Start(); err != nil { return err }
 func (d *Daemon) Start() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -114,6 +129,10 @@ func (d *Daemon) Start() error {
 }
 
 // Run blocks until the context is cancelled.
+//
+// Example:
+//
+//	if err := daemon.Run(ctx); err != nil { return err }
 func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Lock()
 	if !d.running {
@@ -128,6 +147,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 // Stop performs graceful shutdown.
+//
+// Example:
+//
+//	_ = daemon.Stop()
 func (d *Daemon) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -167,14 +190,36 @@ func (d *Daemon) Stop() error {
 	return nil
 }
 
-// SetReady sets the daemon readiness status for health checks.
+// SetReady sets the daemon readiness status for `/ready`.
+//
+// Example:
+//
+//	daemon.SetReady(false)
 func (d *Daemon) SetReady(ready bool) {
 	if d.health != nil {
 		d.health.SetReady(ready)
 	}
 }
 
+// Ready reports whether the daemon is currently ready for traffic.
+//
+// Example:
+//
+//	if daemon.Ready() {
+//	    // expose the service to callers
+//	}
+func (d *Daemon) Ready() bool {
+	if d.health != nil {
+		return d.health.Ready()
+	}
+	return false
+}
+
 // HealthAddr returns the health server address, or empty if disabled.
+//
+// Example:
+//
+//	addr := daemon.HealthAddr()
 func (d *Daemon) HealthAddr() string {
 	if d.health != nil {
 		return d.health.Addr()

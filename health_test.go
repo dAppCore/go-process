@@ -11,6 +11,7 @@ import (
 
 func TestHealthServer_Endpoints(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
+	assert.True(t, hs.Ready())
 	err := hs.Start()
 	require.NoError(t, err)
 	defer func() { _ = hs.Stop(context.Background()) }()
@@ -29,11 +30,21 @@ func TestHealthServer_Endpoints(t *testing.T) {
 	_ = resp.Body.Close()
 
 	hs.SetReady(false)
+	assert.False(t, hs.Ready())
 
 	resp, err = http.Get("http://" + addr + "/ready")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 	_ = resp.Body.Close()
+}
+
+func TestHealthServer_Ready(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+
+	assert.True(t, hs.Ready())
+
+	hs.SetReady(false)
+	assert.False(t, hs.Ready())
 }
 
 func TestHealthServer_WithChecks(t *testing.T) {

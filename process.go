@@ -14,6 +14,10 @@ import (
 )
 
 // Process represents a managed external process.
+//
+// Example:
+//
+//	proc, err := svc.Start(ctx, "echo", "hello")
 type Process struct {
 	ID        string
 	Command   string
@@ -37,6 +41,10 @@ type Process struct {
 }
 
 // Info returns a snapshot of process state.
+//
+// Example:
+//
+//	info := proc.Info()
 func (p *Process) Info() Info {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -61,6 +69,10 @@ func (p *Process) Info() Info {
 }
 
 // Output returns the captured output as a string.
+//
+// Example:
+//
+//	fmt.Println(proc.Output())
 func (p *Process) Output() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -71,6 +83,10 @@ func (p *Process) Output() string {
 }
 
 // OutputBytes returns the captured output as bytes.
+//
+// Example:
+//
+//	data := proc.OutputBytes()
 func (p *Process) OutputBytes() []byte {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -88,6 +104,10 @@ func (p *Process) IsRunning() bool {
 }
 
 // Wait blocks until the process exits.
+//
+// Example:
+//
+//	if err := proc.Wait(); err != nil { return err }
 func (p *Process) Wait() error {
 	<-p.done
 	p.mu.RLock()
@@ -105,12 +125,20 @@ func (p *Process) Wait() error {
 }
 
 // Done returns a channel that closes when the process exits.
+//
+// Example:
+//
+//	<-proc.Done()
 func (p *Process) Done() <-chan struct{} {
 	return p.done
 }
 
 // Kill forcefully terminates the process.
 // If KillGroup is set, kills the entire process group.
+//
+// Example:
+//
+//	_ = proc.Kill()
 func (p *Process) Kill() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -133,6 +161,10 @@ func (p *Process) Kill() error {
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.
 // If GracePeriod was not set (zero), falls back to immediate Kill().
 // If KillGroup is set, signals are sent to the entire process group.
+//
+// Example:
+//
+//	_ = proc.Shutdown()
 func (p *Process) Shutdown() error {
 	p.mu.RLock()
 	grace := p.gracePeriod
@@ -177,6 +209,10 @@ func (p *Process) terminate() error {
 }
 
 // Signal sends a signal to the process.
+//
+// Example:
+//
+//	_ = proc.Signal(os.Interrupt)
 func (p *Process) Signal(sig os.Signal) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -201,6 +237,10 @@ func (p *Process) Signal(sig os.Signal) error {
 }
 
 // SendInput writes to the process stdin.
+//
+// Example:
+//
+//	_ = proc.SendInput("hello\n")
 func (p *Process) SendInput(input string) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -218,6 +258,10 @@ func (p *Process) SendInput(input string) error {
 }
 
 // CloseStdin closes the process stdin pipe.
+//
+// Example:
+//
+//	_ = proc.CloseStdin()
 func (p *Process) CloseStdin() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

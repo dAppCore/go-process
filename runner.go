@@ -20,11 +20,19 @@ var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
 var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
 
 // NewRunner creates a runner for the given service.
+//
+// Example:
+//
+//	runner := process.NewRunner(svc)
 func NewRunner(svc *Service) *Runner {
 	return &Runner{service: svc}
 }
 
 // RunSpec defines a process to run with optional dependencies.
+//
+// Example:
+//
+//	spec := process.RunSpec{Name: "test", Command: "go", Args: []string{"test", "./..."}}
 type RunSpec struct {
 	// Name is a friendly identifier (e.g., "lint", "test").
 	Name string
@@ -54,6 +62,10 @@ type RunResult struct {
 }
 
 // Passed returns true if the process succeeded.
+//
+// Example:
+//
+//	if result.Passed() { ... }
 func (r RunResult) Passed() bool {
 	return !r.Skipped && r.Error == nil && r.ExitCode == 0
 }
@@ -68,11 +80,19 @@ type RunAllResult struct {
 }
 
 // Success returns true if all non-skipped specs passed.
+//
+// Example:
+//
+//	if result.Success() { ... }
 func (r RunAllResult) Success() bool {
 	return r.Failed == 0
 }
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
+//
+// Example:
+//
+//	result, err := runner.RunAll(ctx, specs)
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
 		return nil, err
@@ -241,6 +261,10 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 }
 
 // RunSequential executes specs one after another, stopping on first failure.
+//
+// Example:
+//
+//	result, err := runner.RunSequential(ctx, specs)
 func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
 		return nil, err
@@ -287,6 +311,10 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 }
 
 // RunParallel executes all specs concurrently, regardless of dependencies.
+//
+// Example:
+//
+//	result, err := runner.RunParallel(ctx, specs)
 func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
 		return nil, err

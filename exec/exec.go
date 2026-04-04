@@ -15,7 +15,7 @@ import (
 // ErrCommandContextRequired is returned when a command is created without a context.
 var ErrCommandContextRequired = coreerr.E("", "exec: command context is required", nil)
 
-// Options configuration for command execution
+// Options configures command execution.
 type Options struct {
 	Dir    string
 	Env    []string
@@ -26,7 +26,11 @@ type Options struct {
 	Background bool
 }
 
-// Command wraps os/exec.Command with logging and context
+// Command wraps os/exec.Command with logging and context.
+//
+// Example:
+//
+//	cmd := exec.Command(ctx, "go", "test", "./...")
 func Command(ctx context.Context, name string, args ...string) *Cmd {
 	return &Cmd{
 		name: name,
@@ -35,7 +39,7 @@ func Command(ctx context.Context, name string, args ...string) *Cmd {
 	}
 }
 
-// Cmd represents a wrapped command
+// Cmd represents a wrapped command.
 type Cmd struct {
 	name   string
 	args   []string
@@ -45,31 +49,51 @@ type Cmd struct {
 	logger Logger
 }
 
-// WithDir sets the working directory
+// WithDir sets the working directory.
+//
+// Example:
+//
+//	cmd.WithDir("/tmp")
 func (c *Cmd) WithDir(dir string) *Cmd {
 	c.opts.Dir = dir
 	return c
 }
 
-// WithEnv sets the environment variables
+// WithEnv sets the environment variables.
+//
+// Example:
+//
+//	cmd.WithEnv([]string{"CGO_ENABLED=0"})
 func (c *Cmd) WithEnv(env []string) *Cmd {
 	c.opts.Env = env
 	return c
 }
 
-// WithStdin sets stdin
+// WithStdin sets stdin.
+//
+// Example:
+//
+//	cmd.WithStdin(strings.NewReader("input"))
 func (c *Cmd) WithStdin(r io.Reader) *Cmd {
 	c.opts.Stdin = r
 	return c
 }
 
-// WithStdout sets stdout
+// WithStdout sets stdout.
+//
+// Example:
+//
+//	cmd.WithStdout(os.Stdout)
 func (c *Cmd) WithStdout(w io.Writer) *Cmd {
 	c.opts.Stdout = w
 	return c
 }
 
-// WithStderr sets stderr
+// WithStderr sets stderr.
+//
+// Example:
+//
+//	cmd.WithStderr(os.Stderr)
 func (c *Cmd) WithStderr(w io.Writer) *Cmd {
 	c.opts.Stderr = w
 	return c
@@ -89,6 +113,10 @@ func (c *Cmd) WithBackground(background bool) *Cmd {
 }
 
 // Start launches the command.
+//
+// Example:
+//
+//	if err := cmd.Start(); err != nil { return err }
 func (c *Cmd) Start() error {
 	if err := c.prepare(); err != nil {
 		return err
@@ -112,6 +140,10 @@ func (c *Cmd) Start() error {
 
 // Run executes the command and waits for it to finish.
 // It automatically logs the command execution at debug level.
+//
+// Example:
+//
+//	if err := cmd.Run(); err != nil { return err }
 func (c *Cmd) Run() error {
 	if c.opts.Background {
 		return c.Start()
@@ -131,6 +163,10 @@ func (c *Cmd) Run() error {
 }
 
 // Output runs the command and returns its standard output.
+//
+// Example:
+//
+//	out, err := cmd.Output()
 func (c *Cmd) Output() ([]byte, error) {
 	if c.opts.Background {
 		return nil, coreerr.E("Cmd.Output", "background execution is incompatible with Output", nil)
@@ -151,6 +187,10 @@ func (c *Cmd) Output() ([]byte, error) {
 }
 
 // CombinedOutput runs the command and returns its combined standard output and standard error.
+//
+// Example:
+//
+//	out, err := cmd.CombinedOutput()
 func (c *Cmd) CombinedOutput() ([]byte, error) {
 	if c.opts.Background {
 		return nil, coreerr.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil)
@@ -190,6 +230,10 @@ func (c *Cmd) prepare() error {
 
 // RunQuiet executes the command suppressing stdout unless there is an error.
 // Useful for internal commands.
+//
+// Example:
+//
+//	err := exec.RunQuiet(ctx, "go", "vet", "./...")
 func RunQuiet(ctx context.Context, name string, args ...string) error {
 	var stderr bytes.Buffer
 	cmd := Command(ctx, name, args...).WithStderr(&stderr)

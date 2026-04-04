@@ -4,8 +4,14 @@ package exec
 // Compatible with pkg/log.Logger and other structured loggers.
 type Logger interface {
 	// Debug logs a debug-level message with optional key-value pairs.
+	//
+	// Example:
+	//   logger.Debug("starting", "cmd", "go")
 	Debug(msg string, keyvals ...any)
 	// Error logs an error-level message with optional key-value pairs.
+	//
+	// Example:
+	//   logger.Error("failed", "cmd", "go", "err", err)
 	Error(msg string, keyvals ...any)
 }
 
@@ -22,6 +28,10 @@ var defaultLogger Logger = NopLogger{}
 
 // SetDefaultLogger sets the package-level default logger.
 // Commands without an explicit logger will use this.
+//
+// Example:
+//
+//	exec.SetDefaultLogger(logger)
 func SetDefaultLogger(l Logger) {
 	if l == nil {
 		l = NopLogger{}
@@ -30,6 +40,10 @@ func SetDefaultLogger(l Logger) {
 }
 
 // DefaultLogger returns the current default logger.
+//
+// Example:
+//
+//	logger := exec.DefaultLogger()
 func DefaultLogger() Logger {
 	return defaultLogger
 }

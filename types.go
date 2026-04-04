@@ -1,5 +1,10 @@
 // Package process provides process management with Core IPC integration.
 //
+// Example:
+//
+//	svc := process.NewService(process.Options{})
+//	proc, err := svc.Start(ctx, "echo", "hello")
+//
 // The process package enables spawning, monitoring, and controlling external
 // processes with output streaming via the Core ACTION system.
 //
@@ -35,6 +40,10 @@ package process
 import "time"
 
 // Status represents the process lifecycle state.
+//
+// Example:
+//
+//	if proc.Status == process.StatusKilled { return }
 type Status string
 
 const (
@@ -51,6 +60,10 @@ const (
 )
 
 // Stream identifies the output source.
+//
+// Example:
+//
+//	if event.Stream == process.StreamStdout { ... }
 type Stream string
 
 const (
@@ -61,6 +74,13 @@ const (
 )
 
 // RunOptions configures process execution.
+//
+// Example:
+//
+//	opts := process.RunOptions{
+//	    Command: "go",
+//	    Args: []string{"test", "./..."},
+//	}
 type RunOptions struct {
 	// Command is the executable to run.
 	Command string
@@ -92,6 +112,11 @@ type RunOptions struct {
 }
 
 // Info provides a snapshot of process state without internal fields.
+//
+// Example:
+//
+//	info := proc.Info()
+//	fmt.Println(info.PID)
 type Info struct {
 	ID        string        `json:"id"`
 	Command   string        `json:"command"`

@@ -14,6 +14,10 @@ import (
 )
 
 // DaemonEntry records a running daemon in the registry.
+//
+// Example:
+//
+//	entry := process.DaemonEntry{Code: "app", Daemon: "serve", PID: os.Getpid()}
 type DaemonEntry struct {
 	Code    string    `json:"code"`
 	Daemon  string    `json:"daemon"`
@@ -30,11 +34,19 @@ type Registry struct {
 }
 
 // NewRegistry creates a registry backed by the given directory.
+//
+// Example:
+//
+//	reg := process.NewRegistry("/tmp/daemons")
 func NewRegistry(dir string) *Registry {
 	return &Registry{dir: dir}
 }
 
 // DefaultRegistry returns a registry using ~/.core/daemons/.
+//
+// Example:
+//
+//	reg := process.DefaultRegistry()
 func DefaultRegistry() *Registry {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -46,6 +58,10 @@ func DefaultRegistry() *Registry {
 // Register writes a daemon entry to the registry directory.
 // If Started is zero, it is set to the current time.
 // The directory is created if it does not exist.
+//
+// Example:
+//
+//	_ = reg.Register(entry)
 func (r *Registry) Register(entry DaemonEntry) error {
 	if entry.Started.IsZero() {
 		entry.Started = time.Now()
@@ -67,6 +83,10 @@ func (r *Registry) Register(entry DaemonEntry) error {
 }
 
 // Unregister removes a daemon entry from the registry.
+//
+// Example:
+//
+//	_ = reg.Unregister("app", "serve")
 func (r *Registry) Unregister(code, daemon string) error {
 	if err := coreio.Local.Delete(r.entryPath(code, daemon)); err != nil {
 		return coreerr.E("Registry.Unregister", "failed to delete entry file", err)
@@ -76,6 +96,10 @@ func (r *Registry) Unregister(code, daemon string) error {
 
 // Get reads a single daemon entry and checks whether its process is alive.
 // If the process is dead, the stale file is removed and (nil, false) is returned.
+//
+// Example:
+//
+//	entry, ok := reg.Get("app", "serve")
 func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	path := r.entryPath(code, daemon)
 
@@ -99,6 +123,10 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 }
 
 // List returns all alive daemon entries, pruning any with dead PIDs.
+//
+// Example:
+//
+//	entries, err := reg.List()
 func (r *Registry) List() ([]DaemonEntry, error) {
 	matches, err := filepath.Glob(filepath.Join(r.dir, "*.json"))
 	if err != nil {

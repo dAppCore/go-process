@@ -21,17 +21,27 @@ var ErrProgramContextRequired = coreerr.E("", "program: command context is requi
 var ErrProgramNameRequired = coreerr.E("", "program: program name is empty", nil)
 
 // Program represents a named executable located on the system PATH.
-// Create one with a Name, call Find to resolve its path, then Run or RunDir.
+//
+// Example:
+//
+//	git := &process.Program{Name: "git"}
+//	if err := git.Find(); err != nil { return err }
+//	out, err := git.Run(ctx, "status")
 type Program struct {
 	// Name is the binary name (e.g. "go", "node", "git").
 	Name string
 	// Path is the absolute path resolved by Find.
+	// Example: "/usr/bin/git"
 	// If empty, Run and RunDir fall back to Name for OS PATH resolution.
 	Path string
 }
 
 // Find resolves the program's absolute path using exec.LookPath.
 // Returns ErrProgramNotFound (wrapped) if the binary is not on PATH.
+//
+// Example:
+//
+//	if err := p.Find(); err != nil { return err }
 func (p *Program) Find() error {
 	if p.Name == "" {
 		return coreerr.E("Program.Find", "program name is empty", nil)
@@ -46,6 +56,10 @@ func (p *Program) Find() error {
 
 // Run executes the program with args in the current working directory.
 // Returns trimmed combined stdout+stderr output and any error.
+//
+// Example:
+//
+//	out, err := p.Run(ctx, "hello")
 func (p *Program) Run(ctx context.Context, args ...string) (string, error) {
 	return p.RunDir(ctx, "", args...)
 }
@@ -53,6 +67,10 @@ func (p *Program) Run(ctx context.Context, args ...string) (string, error) {
 // RunDir executes the program with args in dir.
 // Returns trimmed combined stdout+stderr output and any error.
 // If dir is empty, the process inherits the caller's working directory.
+//
+// Example:
+//
+//	out, err := p.RunDir(ctx, "/tmp", "pwd")
 func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (string, error) {
 	if ctx == nil {
 		return "", coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired)

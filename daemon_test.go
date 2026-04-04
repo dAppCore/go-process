@@ -75,12 +75,19 @@ func TestDaemon_SetReady(t *testing.T) {
 	resp, _ := http.Get("http://" + addr + "/ready")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
+	assert.True(t, d.Ready())
 
 	d.SetReady(false)
+	assert.False(t, d.Ready())
 
 	resp, _ = http.Get("http://" + addr + "/ready")
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 	_ = resp.Body.Close()
+}
+
+func TestDaemon_ReadyWithoutHealthServer(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	assert.False(t, d.Ready())
 }
 
 func TestDaemon_NoHealthAddrReturnsEmpty(t *testing.T) {

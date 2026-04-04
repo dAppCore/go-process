@@ -39,6 +39,10 @@ type Service struct {
 }
 
 // Options configures the process service.
+//
+// Example:
+//
+//	svc := process.NewService(process.Options{BufferSize: 2 * 1024 * 1024})
 type Options struct {
 	// BufferSize is the ring buffer size for output capture.
 	// Default: 1MB (1024 * 1024 bytes).
@@ -50,6 +54,10 @@ type Options struct {
 //	core, _ := core.New(
 //	    core.WithName("process", process.NewService(process.Options{})),
 //	)
+//
+// Example:
+//
+//	factory := process.NewService(process.Options{})
 func NewService(opts Options) func(*core.Core) (any, error) {
 	return func(c *core.Core) (any, error) {
 		if opts.BufferSize == 0 {
@@ -65,6 +73,10 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 }
 
 // OnStartup implements core.Startable.
+//
+// Example:
+//
+//	_ = svc.OnStartup(ctx)
 func (s *Service) OnStartup(ctx context.Context) error {
 	s.registrations.Do(func() {
 		if s.Core() != nil {
@@ -76,6 +88,10 @@ func (s *Service) OnStartup(ctx context.Context) error {
 
 // OnShutdown implements core.Stoppable.
 // Gracefully shuts down all running processes (SIGTERM → SIGKILL).
+//
+// Example:
+//
+//	_ = svc.OnShutdown(ctx)
 func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RLock()
 	procs := make([]*Process, 0, len(s.processes))
@@ -94,6 +110,10 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 }
 
 // Start spawns a new process with the given command and args.
+//
+// Example:
+//
+//	proc, err := svc.Start(ctx, "echo", "hello")
 func (s *Service) Start(ctx context.Context, command string, args ...string) (*Process, error) {
 	return s.StartWithOptions(ctx, RunOptions{
 		Command: command,
@@ -102,6 +122,10 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 }
 
 // StartWithOptions spawns a process with full configuration.
+//
+// Example:
+//
+//	proc, err := svc.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	if opts.Command == "" {
 		return nil, coreerr.E("Service.StartWithOptions", "command is required", nil)
@@ -292,6 +316,10 @@ func (s *Service) streamOutput(proc *Process, r io.Reader, stream Stream) {
 }
 
 // Get returns a process by ID.
+//
+// Example:
+//
+//	proc, err := svc.Get("proc-1")
 func (s *Service) Get(id string) (*Process, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -304,6 +332,10 @@ func (s *Service) Get(id string) (*Process, error) {
 }
 
 // List returns all processes.
+//
+// Example:
+//
+//	for _, proc := range svc.List() { _ = proc }
 func (s *Service) List() []*Process {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -317,6 +349,10 @@ func (s *Service) List() []*Process {
 }
 
 // Running returns all currently running processes.
+//
+// Example:
+//
+//	running := svc.Running()
 func (s *Service) Running() []*Process {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -332,6 +368,10 @@ func (s *Service) Running() []*Process {
 }
 
 // Kill terminates a process by ID.
+//
+// Example:
+//
+//	_ = svc.Kill("proc-1")
 func (s *Service) Kill(id string) error {
 	proc, err := s.Get(id)
 	if err != nil {
@@ -342,6 +382,10 @@ func (s *Service) Kill(id string) error {
 }
 
 // KillPID terminates a process by operating-system PID.
+//
+// Example:
+//
+//	_ = svc.KillPID(1234)
 func (s *Service) KillPID(pid int) error {
 	if pid <= 0 {
 		return coreerr.E("Service.KillPID", "pid must be positive", nil)
@@ -355,6 +399,10 @@ func (s *Service) KillPID(pid int) error {
 }
 
 // Remove removes a completed process from the list.
+//
+// Example:
+//
+//	_ = svc.Remove("proc-1")
 func (s *Service) Remove(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -373,6 +421,10 @@ func (s *Service) Remove(id string) error {
 }
 
 // Clear removes all completed processes.
+//
+// Example:
+//
+//	svc.Clear()
 func (s *Service) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -385,6 +437,10 @@ func (s *Service) Clear() {
 }
 
 // Output returns the captured output of a process.
+//
+// Example:
+//
+//	out, err := svc.Output("proc-1")
 func (s *Service) Output(id string) (string, error) {
 	proc, err := s.Get(id)
 	if err != nil {
@@ -395,6 +451,10 @@ func (s *Service) Output(id string) (string, error) {
 
 // Run executes a command and waits for completion.
 // Returns the combined output and any error.
+//
+// Example:
+//
+//	out, err := svc.Run(ctx, "echo", "hello")
 func (s *Service) Run(ctx context.Context, command string, args ...string) (string, error) {
 	proc, err := s.Start(ctx, command, args...)
 	if err != nil {
@@ -414,6 +474,10 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) (stri
 }
 
 // RunWithOptions executes a command with options and waits for completion.
+//
+// Example:
+//
+//	out, err := svc.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
 func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, error) {
 	proc, err := s.StartWithOptions(ctx, opts)
 	if err != nil {
