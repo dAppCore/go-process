@@ -112,7 +112,7 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	for _, p := range procs {
-		_ = p.Kill()
+		_, _ = p.killTree()
 	}
 
 	return nil
@@ -165,10 +165,9 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		cmd.Env = append(cmd.Environ(), opts.Env...)
 	}
 
-	// Detached processes get their own process group
-	if opts.Detach {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	// Put every subprocess in its own process group so shutdown can terminate
+	// the full tree without affecting the parent process.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Set up pipes
 	stdout, err := cmd.StdoutPipe()

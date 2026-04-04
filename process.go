@@ -166,6 +166,22 @@ func (p *Process) kill() (bool, error) {
 	return true, p.cmd.Process.Kill()
 }
 
+// killTree forcefully terminates the process group when one exists.
+func (p *Process) killTree() (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.Status != StatusRunning {
+		return false, nil
+	}
+
+	if p.cmd == nil || p.cmd.Process == nil {
+		return false, nil
+	}
+
+	return true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+}
+
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.
 // If GracePeriod was not set (zero), falls back to immediate Kill().
 // If KillGroup is set, signals are sent to the entire process group.
