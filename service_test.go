@@ -525,10 +525,11 @@ func TestService_Kill(t *testing.T) {
 }
 
 func TestService_KillPID(t *testing.T) {
-	t.Run("terminates unmanaged process with SIGTERM", func(t *testing.T) {
+	t.Run("terminates unmanaged process with SIGKILL", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		cmd := exec.Command("sleep", "60")
+		// Ignore SIGTERM so the test proves KillPID uses a forceful signal.
+		cmd := exec.Command("sh", "-c", "trap '' TERM; while :; do :; done")
 		require.NoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
@@ -557,7 +558,7 @@ func TestService_KillPID(t *testing.T) {
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
 			require.True(t, ok)
 			assert.True(t, ws.Signaled())
-			assert.Equal(t, syscall.SIGTERM, ws.Signal())
+			assert.Equal(t, syscall.SIGKILL, ws.Signal())
 		case <-time.After(2 * time.Second):
 			t.Fatal("unmanaged process should have been killed")
 		}
