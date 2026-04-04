@@ -13,12 +13,12 @@ import (
 	coreerr "dappco.re/go/core/log"
 )
 
-// Process represents a managed external process.
+// ManagedProcess represents a managed external process.
 //
 // Example:
 //
 //	proc, err := svc.Start(ctx, "echo", "hello")
-type Process struct {
+type ManagedProcess struct {
 	ID        string
 	Command   string
 	Args      []string
@@ -42,12 +42,15 @@ type Process struct {
 	killSignal   string
 }
 
+// Process is kept as an alias for ManagedProcess for compatibility.
+type Process = ManagedProcess
+
 // Info returns a snapshot of process state.
 //
 // Example:
 //
 //	info := proc.Info()
-func (p *Process) Info() Info {
+func (p *ManagedProcess) Info() Info {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -80,7 +83,7 @@ func (p *Process) Info() Info {
 // Example:
 //
 //	fmt.Println(proc.Output())
-func (p *Process) Output() string {
+func (p *ManagedProcess) Output() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.output == nil {
@@ -94,7 +97,7 @@ func (p *Process) Output() string {
 // Example:
 //
 //	data := proc.OutputBytes()
-func (p *Process) OutputBytes() []byte {
+func (p *ManagedProcess) OutputBytes() []byte {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.output == nil {
@@ -104,7 +107,7 @@ func (p *Process) OutputBytes() []byte {
 }
 
 // IsRunning returns true if the process is still executing.
-func (p *Process) IsRunning() bool {
+func (p *ManagedProcess) IsRunning() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.Status == StatusRunning
@@ -115,7 +118,7 @@ func (p *Process) IsRunning() bool {
 // Example:
 //
 //	if err := proc.Wait(); err != nil { return err }
-func (p *Process) Wait() error {
+func (p *ManagedProcess) Wait() error {
 	<-p.done
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -136,7 +139,7 @@ func (p *Process) Wait() error {
 // Example:
 //
 //	<-proc.Done()
-func (p *Process) Done() <-chan struct{} {
+func (p *ManagedProcess) Done() <-chan struct{} {
 	return p.done
 }
 
@@ -146,13 +149,13 @@ func (p *Process) Done() <-chan struct{} {
 // Example:
 //
 //	_ = proc.Kill()
-func (p *Process) Kill() error {
+func (p *ManagedProcess) Kill() error {
 	_, err := p.kill()
 	return err
 }
 
 // kill terminates the process and reports whether a signal was actually sent.
-func (p *Process) kill() (bool, error) {
+func (p *ManagedProcess) kill() (bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -172,7 +175,7 @@ func (p *Process) kill() (bool, error) {
 }
 
 // killTree forcefully terminates the process group when one exists.
-func (p *Process) killTree() (bool, error) {
+func (p *ManagedProcess) killTree() (bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -194,7 +197,7 @@ func (p *Process) killTree() (bool, error) {
 // Example:
 //
 //	_ = proc.Shutdown()
-func (p *Process) Shutdown() error {
+func (p *ManagedProcess) Shutdown() error {
 	p.mu.RLock()
 	grace := p.gracePeriod
 	p.mu.RUnlock()
@@ -218,7 +221,7 @@ func (p *Process) Shutdown() error {
 }
 
 // terminate sends SIGTERM to the process (or process group if KillGroup is set).
-func (p *Process) terminate() error {
+func (p *ManagedProcess) terminate() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -242,7 +245,7 @@ func (p *Process) terminate() error {
 // Example:
 //
 //	_ = proc.Signal(os.Interrupt)
-func (p *Process) Signal(sig os.Signal) error {
+func (p *ManagedProcess) Signal(sig os.Signal) error {
 	p.mu.RLock()
 	status := p.Status
 	cmd := p.cmd
@@ -303,7 +306,7 @@ func (p *Process) Signal(sig os.Signal) error {
 // Example:
 //
 //	_ = proc.SendInput("hello\n")
-func (p *Process) SendInput(input string) error {
+func (p *ManagedProcess) SendInput(input string) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -324,7 +327,7 @@ func (p *Process) SendInput(input string) error {
 // Example:
 //
 //	_ = proc.CloseStdin()
-func (p *Process) CloseStdin() error {
+func (p *ManagedProcess) CloseStdin() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

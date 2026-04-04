@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ *Process = (*ManagedProcess)(nil)
+
 func TestProcess_Info(t *testing.T) {
 	svc, _ := newTestService(t)
 
