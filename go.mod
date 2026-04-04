@@ -9,6 +9,7 @@ require (
 	dappco.re/go/core/log v0.1.0
 	dappco.re/go/core/ws v0.3.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -66,7 +67,6 @@ require (
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/sessions v1.4.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

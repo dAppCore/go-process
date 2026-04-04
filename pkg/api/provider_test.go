@@ -320,6 +320,41 @@ func TestProcessProvider_GetProcessOutput_Good(t *testing.T) {
 	assert.Contains(t, resp.Data, "output-check")
 }
 
+func TestProcessProvider_InputAndCloseStdin_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "cat")
+	require.NoError(t, err)
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	inputReq := strings.NewReader("{\"input\":\"hello-api\\n\"}")
+	inputHTTPReq, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/input", inputReq)
+	require.NoError(t, err)
+	inputHTTPReq.Header.Set("Content-Type", "application/json")
+
+	inputResp := httptest.NewRecorder()
+	r.ServeHTTP(inputResp, inputHTTPReq)
+
+	assert.Equal(t, http.StatusOK, inputResp.Code)
+
+	closeReq, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/close-stdin", nil)
+	require.NoError(t, err)
+
+	closeResp := httptest.NewRecorder()
+	r.ServeHTTP(closeResp, closeReq)
+
+	assert.Equal(t, http.StatusOK, closeResp.Code)
+
+	select {
+	case <-proc.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("process should have exited after stdin was closed")
+	}
+
+	assert.Contains(t, proc.Output(), "hello-api")
+}
+
 func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
@@ -449,15 +484,21 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 		"/api/process/processes",
 		"/api/process/processes/anything",
 		"/api/process/processes/anything/output",
+		"/api/process/processes/anything/input",
+		"/api/process/processes/anything/close-stdin",
 		"/api/process/processes/anything/kill",
 	}
 
 	for _, path := range cases {
 		w := httptest.NewRecorder()
-		req, err := http.NewRequest("GET", path, nil)
-		if strings.HasSuffix(path, "/kill") {
-			req, err = http.NewRequest("POST", path, nil)
+		method := "GET"
+		switch {
+		case strings.HasSuffix(path, "/kill"),
+			strings.HasSuffix(path, "/input"),
+			strings.HasSuffix(path, "/close-stdin"):
+			method = "POST"
 		}
+		req, err := http.NewRequest(method, path, nil)
 		require.NoError(t, err)
 		r.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)

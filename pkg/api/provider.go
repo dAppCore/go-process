@@ -98,6 +98,8 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/processes", p.listProcesses)
 	rg.GET("/processes/:id", p.getProcess)
 	rg.GET("/processes/:id/output", p.getProcessOutput)
+	rg.POST("/processes/:id/input", p.inputProcess)
+	rg.POST("/processes/:id/close-stdin", p.closeProcessStdin)
 	rg.POST("/processes/:id/kill", p.killProcess)
 	rg.POST("/pipelines/run", p.runPipeline)
 }
@@ -227,6 +229,39 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "string",
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/:id/input",
+			Summary:     "Write process input",
+			Description: "Writes the provided input string to a managed process stdin pipe.",
+			Tags:        []string{"process"},
+			RequestBody: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"input": map[string]any{"type": "string"},
+				},
+				"required": []string{"input"},
+			},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"written": map[string]any{"type": "boolean"},
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/:id/close-stdin",
+			Summary:     "Close process stdin",
+			Description: "Closes the stdin pipe of a managed process so it can exit cleanly.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"closed": map[string]any{"type": "boolean"},
+				},
 			},
 		},
 		{
@@ -419,6 +454,52 @@ func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(output))
+}
+
+type processInputRequest struct {
+	Input string `json:"input"`
+}
+
+func (p *ProcessProvider) inputProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req processInputRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+
+	if err := p.service.Input(c.Param("id"), req.Input); err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("input_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(map[string]any{"written": true}))
+}
+
+func (p *ProcessProvider) closeProcessStdin(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	if err := p.service.CloseStdin(c.Param("id")); err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("close_stdin_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(map[string]any{"closed": true}))
 }
 
 func (p *ProcessProvider) killProcess(c *gin.Context) {
