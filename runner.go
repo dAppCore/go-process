@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -257,13 +258,25 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 
 	<-proc.Done()
 
+	var runErr error
+	switch proc.Status {
+	case StatusKilled:
+		runErr = coreerr.E("Runner.runSpec", "process was killed", nil)
+	case StatusExited:
+		if proc.ExitCode != 0 {
+			runErr = coreerr.E("Runner.runSpec", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+		}
+	case StatusFailed:
+		runErr = coreerr.E("Runner.runSpec", "process failed to start", nil)
+	}
+
 	return RunResult{
 		Name:     spec.Name,
 		Spec:     spec,
 		ExitCode: proc.ExitCode,
 		Duration: proc.Duration,
 		Output:   proc.Output(),
-		Error:    nil,
+		Error:    runErr,
 	}
 }
 
