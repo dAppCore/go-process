@@ -95,7 +95,7 @@ func (s *Service) OnStartup(ctx context.Context) error {
 }
 
 // OnShutdown implements core.Stoppable.
-// Gracefully shuts down all running processes (SIGTERM → SIGKILL).
+// Immediately kills all running processes to avoid shutdown stalls.
 //
 // Example:
 //
@@ -111,7 +111,7 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	for _, p := range procs {
-		_ = p.Shutdown()
+		_ = p.Kill()
 	}
 
 	return nil

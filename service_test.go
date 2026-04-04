@@ -515,6 +515,31 @@ func TestService_OnShutdown(t *testing.T) {
 			t.Fatal("proc2 should have been killed")
 		}
 	})
+
+	t.Run("does not wait for process grace period", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:     "sh",
+			Args:        []string{"-c", "trap '' TERM; sleep 60"},
+			GracePeriod: 5 * time.Second,
+		})
+		require.NoError(t, err)
+		require.True(t, proc.IsRunning())
+
+		start := time.Now()
+		err = svc.OnShutdown(context.Background())
+		require.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been killed immediately on shutdown")
+		}
+
+		assert.Less(t, time.Since(start), 2*time.Second)
+		assert.Equal(t, StatusKilled, proc.Status)
+	})
 }
 
 func TestService_OnStartup(t *testing.T) {
