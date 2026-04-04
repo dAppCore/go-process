@@ -3,10 +3,9 @@ package process
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
-	"strings"
 
+	core "dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
 )
 
@@ -48,7 +47,7 @@ func (p *Program) Find() error {
 	}
 	path, err := exec.LookPath(p.Name)
 	if err != nil {
-		return coreerr.E("Program.Find", fmt.Sprintf("%q: not found in PATH", p.Name), ErrProgramNotFound)
+		return coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", p.Name), ErrProgramNotFound)
 	}
 	p.Path = path
 	return nil
@@ -94,7 +93,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if err := cmd.Run(); err != nil {
-		return strings.TrimSpace(out.String()), coreerr.E("Program.RunDir", fmt.Sprintf("%q: command failed", p.Name), err)
+		return core.Trim(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
 	}
-	return strings.TrimSpace(out.String()), nil
+	return core.Trim(out.String()), nil
 }
