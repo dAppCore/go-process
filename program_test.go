@@ -46,6 +46,15 @@ func TestProgram_Run_ReturnsOutput(t *testing.T) {
 	assert.Equal(t, "hello", out)
 }
 
+func TestProgram_Run_PreservesLeadingWhitespace(t *testing.T) {
+	p := &process.Program{Name: "sh"}
+	require.NoError(t, p.Find())
+
+	out, err := p.Run(testCtx(t), "-c", "printf '  hello  \n'")
+	require.NoError(t, err)
+	assert.Equal(t, "  hello", out)
+}
+
 func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	// Path is empty; RunDir should fall back to Name for OS PATH resolution.
 	p := &process.Program{Name: "echo"}
