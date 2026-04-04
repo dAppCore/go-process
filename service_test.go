@@ -815,6 +815,30 @@ func TestService_OnStartup(t *testing.T) {
 		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
+	t.Run("allows signal zero liveness checks", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessSignal{
+			ID:     proc.ID,
+			Signal: syscall.Signal(0),
+		})
+		require.True(t, result.OK)
+
+		assert.True(t, proc.IsRunning())
+
+		cancel()
+		<-proc.Done()
+	})
+
 	t.Run("registers process.wait task", func(t *testing.T) {
 		svc, c := newTestService(t)
 

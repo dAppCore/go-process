@@ -668,10 +668,6 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 			return core.Result{Value: coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil), OK: false}
 		}
 	case TaskProcessSignal:
-		if m.Signal == 0 {
-			return core.Result{Value: coreerr.E("Service.handleTask", "task process signal requires a signal", nil), OK: false}
-		}
-
 		switch {
 		case m.ID != "":
 			if err := s.Signal(m.ID, m.Signal); err != nil {

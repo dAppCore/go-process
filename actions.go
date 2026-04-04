@@ -66,6 +66,7 @@ type TaskProcessKill struct {
 }
 
 // TaskProcessSignal requests signalling a managed process by ID or PID through Core.PERFORM.
+// Signal 0 is allowed for liveness checks.
 //
 // Example:
 //
