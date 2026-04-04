@@ -90,6 +90,9 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/daemons/:code/:daemon", p.getDaemon)
 	rg.POST("/daemons/:code/:daemon/stop", p.stopDaemon)
 	rg.GET("/daemons/:code/:daemon/health", p.healthCheck)
+	rg.GET("/processes", p.listProcesses)
+	rg.GET("/processes/:id", p.getProcess)
+	rg.POST("/processes/:id/kill", p.killProcess)
 	rg.POST("/pipelines/run", p.runPipeline)
 }
 
@@ -160,6 +163,66 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 					"healthy": map[string]any{"type": "boolean"},
 					"address": map[string]any{"type": "string"},
 					"reason":  map[string]any{"type": "string"},
+				},
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/processes",
+			Summary:     "List managed processes",
+			Description: "Returns the current process service snapshot as serialisable process info entries.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":        map[string]any{"type": "string"},
+						"command":   map[string]any{"type": "string"},
+						"args":      map[string]any{"type": "array"},
+						"dir":       map[string]any{"type": "string"},
+						"startedAt": map[string]any{"type": "string", "format": "date-time"},
+						"running":   map[string]any{"type": "boolean"},
+						"status":    map[string]any{"type": "string"},
+						"exitCode":  map[string]any{"type": "integer"},
+						"duration":  map[string]any{"type": "integer"},
+						"pid":       map[string]any{"type": "integer"},
+					},
+				},
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/processes/:id",
+			Summary:     "Get a managed process",
+			Description: "Returns a single managed process by ID as a process info snapshot.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":        map[string]any{"type": "string"},
+					"command":   map[string]any{"type": "string"},
+					"args":      map[string]any{"type": "array"},
+					"dir":       map[string]any{"type": "string"},
+					"startedAt": map[string]any{"type": "string", "format": "date-time"},
+					"running":   map[string]any{"type": "boolean"},
+					"status":    map[string]any{"type": "string"},
+					"exitCode":  map[string]any{"type": "integer"},
+					"duration":  map[string]any{"type": "integer"},
+					"pid":       map[string]any{"type": "integer"},
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/:id/kill",
+			Summary:     "Kill a managed process",
+			Description: "Sends SIGKILL to the managed process identified by ID.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"killed": map[string]any{"type": "boolean"},
 				},
 			},
 		},
@@ -287,6 +350,54 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	c.JSON(statusCode, api.OK(result))
+}
+
+func (p *ProcessProvider) listProcesses(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	procs := p.service.List()
+	infos := make([]process.Info, 0, len(procs))
+	for _, proc := range procs {
+		infos = append(infos, proc.Info())
+	}
+
+	c.JSON(http.StatusOK, api.OK(infos))
+}
+
+func (p *ProcessProvider) getProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	proc, err := p.service.Get(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, api.Fail("not_found", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(proc.Info()))
+}
+
+func (p *ProcessProvider) killProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	if err := p.service.Kill(c.Param("id")); err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("kill_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
 }
 
 type pipelineRunRequest struct {

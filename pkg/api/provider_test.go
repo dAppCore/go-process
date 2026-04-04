@@ -3,12 +3,14 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	core "dappco.re/go/core"
 	goapi "dappco.re/go/core/api"
@@ -200,6 +202,106 @@ func TestProcessProvider_RunPipeline_Unavailable(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestProcessProvider_ListProcesses_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "echo", "hello-api")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", "/api/process/processes", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[[]process.Info]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, proc.ID, resp.Data[0].ID)
+	assert.Equal(t, "echo", resp.Data[0].Command)
+}
+
+func TestProcessProvider_GetProcess_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "echo", "single")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", "/api/process/processes/"+proc.ID, nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[process.Info]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, proc.ID, resp.Data.ID)
+	assert.Equal(t, "echo", resp.Data.Command)
+}
+
+func TestProcessProvider_KillProcess_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "sleep", "60")
+	require.NoError(t, err)
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/kill", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[map[string]any]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, true, resp.Data["killed"])
+
+	select {
+	case <-proc.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("process should have been killed")
+	}
+	assert.Equal(t, process.StatusKilled, proc.Status)
+}
+
+func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	r := setupRouter(p)
+
+	cases := []string{
+		"/api/process/processes",
+		"/api/process/processes/anything",
+		"/api/process/processes/anything/kill",
+	}
+
+	for _, path := range cases {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", path, nil)
+		if strings.HasSuffix(path, "/kill") {
+			req, err = http.NewRequest("POST", path, nil)
+		}
+		require.NoError(t, err)
+		r.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	}
 }
 
 // -- Test helpers -------------------------------------------------------------

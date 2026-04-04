@@ -250,19 +250,20 @@ func (p *Process) Signal(sig os.Signal) error {
 	}
 
 	// Some shells briefly ignore or defer the signal while they are still
-	// initialising child jobs. Retry once after a short delay so the whole
-	// process group is more reliably terminated.
+	// initialising child jobs. Retry a few times after short delays so the
+	// whole process group is more reliably terminated.
 	go func(pid int, sig syscall.Signal, done <-chan struct{}) {
-		timer := time.NewTimer(50 * time.Millisecond)
-		defer timer.Stop()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 
-		select {
-		case <-done:
-			return
-		case <-timer.C:
+		for i := 0; i < 5; i++ {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				_ = syscall.Kill(-pid, sig)
+			}
 		}
-
-		_ = syscall.Kill(-pid, sig)
 	}(cmd.Process.Pid, sysSig, p.done)
 
 	return nil
