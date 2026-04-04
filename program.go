@@ -44,12 +44,16 @@ type Program struct {
 //
 //	if err := p.Find(); err != nil { return err }
 func (p *Program) Find() error {
-	if p.Name == "" {
+	target := p.Name
+	if target == "" {
+		target = p.Path
+	}
+	if target == "" {
 		return coreerr.E("Program.Find", "program name is empty", nil)
 	}
-	path, err := exec.LookPath(p.Name)
+	path, err := exec.LookPath(target)
 	if err != nil {
-		return coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", p.Name), ErrProgramNotFound)
+		return coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound)
 	}
 	p.Path = path
 	return nil

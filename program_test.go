@@ -2,6 +2,7 @@ package process_test
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -30,6 +31,15 @@ func TestProgram_Find_UnknownBinary(t *testing.T) {
 	err := p.Find()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, process.ErrProgramNotFound)
+}
+
+func TestProgram_Find_UsesExistingPath(t *testing.T) {
+	path, err := exec.LookPath("echo")
+	require.NoError(t, err)
+
+	p := &process.Program{Path: path}
+	require.NoError(t, p.Find())
+	assert.Equal(t, path, p.Path)
 }
 
 func TestProgram_Find_EmptyName(t *testing.T) {
