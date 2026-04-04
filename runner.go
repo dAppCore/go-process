@@ -66,7 +66,7 @@ type RunAllResult struct {
 
 // Success returns true if all non-skipped specs passed.
 func (r RunAllResult) Success() bool {
-	return r.Failed == 0 && r.Skipped == 0
+	return r.Failed == 0
 }
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
