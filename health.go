@@ -118,11 +118,14 @@ func (h *HealthServer) Start() error {
 		return coreerr.E("HealthServer.Start", fmt.Sprintf("failed to listen on %s", h.addr), err)
 	}
 
+	server := &http.Server{Handler: mux}
+	h.mu.Lock()
 	h.listener = listener
-	h.server = &http.Server{Handler: mux}
+	h.server = server
+	h.mu.Unlock()
 
 	go func() {
-		_ = h.server.Serve(listener)
+		_ = server.Serve(listener)
 	}()
 
 	return nil
@@ -134,10 +137,17 @@ func (h *HealthServer) Start() error {
 //
 //	_ = server.Stop(context.Background())
 func (h *HealthServer) Stop(ctx context.Context) error {
-	if h.server == nil {
+	h.mu.Lock()
+	server := h.server
+	h.server = nil
+	h.listener = nil
+	h.ready = false
+	h.mu.Unlock()
+
+	if server == nil {
 		return nil
 	}
-	return h.server.Shutdown(ctx)
+	return server.Shutdown(ctx)
 }
 
 // Addr returns the actual address the server is listening on.
@@ -146,6 +156,8 @@ func (h *HealthServer) Stop(ctx context.Context) error {
 //
 //	addr := server.Addr()
 func (h *HealthServer) Addr() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.listener != nil {
 		return h.listener.Addr().String()
 	}
@@ -197,6 +209,55 @@ func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 
 	if lastReason == "" {
 		lastReason = "health check timed out"
+	}
+	return false, lastReason
+}
+
+// WaitForReady polls `/ready` until it responds 200 or the timeout expires.
+//
+// Example:
+//
+//	if !process.WaitForReady("127.0.0.1:8080", 5_000) {
+//	    return errors.New("service did not become ready")
+//	}
+func WaitForReady(addr string, timeoutMs int) bool {
+	ok, _ := ProbeReady(addr, timeoutMs)
+	return ok
+}
+
+// ProbeReady polls `/ready` until it responds 200 or the timeout expires.
+// It returns the readiness status and the last observed failure reason.
+//
+// Example:
+//
+//	ok, reason := process.ProbeReady("127.0.0.1:8080", 5_000)
+func ProbeReady(addr string, timeoutMs int) (bool, string) {
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	url := fmt.Sprintf("http://%s/ready", addr)
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	var lastReason string
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(url)
+		if err == nil {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return true, ""
+			}
+			lastReason = strings.TrimSpace(string(body))
+			if lastReason == "" {
+				lastReason = resp.Status
+			}
+		} else {
+			lastReason = err.Error()
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if lastReason == "" {
+		lastReason = "readiness check timed out"
 	}
 	return false, lastReason
 }

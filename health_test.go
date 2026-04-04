@@ -90,3 +90,30 @@ func TestWaitForHealth_Unreachable(t *testing.T) {
 	ok := WaitForHealth("127.0.0.1:19999", 500)
 	assert.False(t, ok)
 }
+
+func TestWaitForReady_Reachable(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+	require.NoError(t, hs.Start())
+	defer func() { _ = hs.Stop(context.Background()) }()
+
+	ok := WaitForReady(hs.Addr(), 2_000)
+	assert.True(t, ok)
+}
+
+func TestWaitForReady_Unreachable(t *testing.T) {
+	ok := WaitForReady("127.0.0.1:19999", 500)
+	assert.False(t, ok)
+}
+
+func TestHealthServer_StopMarksNotReady(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+	require.NoError(t, hs.Start())
+
+	require.NotEmpty(t, hs.Addr())
+	assert.True(t, hs.Ready())
+
+	require.NoError(t, hs.Stop(context.Background()))
+
+	assert.False(t, hs.Ready())
+	assert.NotEmpty(t, hs.Addr())
+}
