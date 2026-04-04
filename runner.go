@@ -20,6 +20,9 @@ var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
 // ErrRunnerInvalidSpecName is returned when a RunSpec name is empty or duplicated.
 var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
 
+// ErrRunnerContextRequired is returned when a runner method is called without a context.
+var ErrRunnerContextRequired = coreerr.E("", "runner context is required", nil)
+
 // NewRunner creates a runner for the given service.
 //
 // Example:
@@ -96,6 +99,9 @@ func (r RunAllResult) Success() bool {
 //	result, err := runner.RunAll(ctx, specs)
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
+	if err := ensureRunnerContext(ctx); err != nil {
 		return nil, err
 	}
 	if err := validateSpecs(specs); err != nil {
@@ -288,6 +294,9 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 	if err := r.ensureService(); err != nil {
 		return nil, err
 	}
+	if err := ensureRunnerContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
@@ -339,6 +348,9 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	if err := r.ensureService(); err != nil {
 		return nil, err
 	}
+	if err := ensureRunnerContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
@@ -387,6 +399,13 @@ func validateSpecs(specs []RunSpec) error {
 			return coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName)
 		}
 		seen[spec.Name] = struct{}{}
+	}
+	return nil
+}
+
+func ensureRunnerContext(ctx context.Context) error {
+	if ctx == nil {
+		return coreerr.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired)
 	}
 	return nil
 }

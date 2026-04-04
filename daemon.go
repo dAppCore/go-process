@@ -144,6 +144,10 @@ func (d *Daemon) Start() error {
 //
 //	if err := daemon.Run(ctx); err != nil { return err }
 func (d *Daemon) Run(ctx context.Context) error {
+	if ctx == nil {
+		return coreerr.E("Daemon.Run", "daemon context is required", ErrDaemonContextRequired)
+	}
+
 	d.mu.Lock()
 	if !d.running {
 		d.mu.Unlock()
@@ -243,3 +247,6 @@ func (d *Daemon) HealthAddr() string {
 	}
 	return ""
 }
+
+// ErrDaemonContextRequired is returned when Run is called without a context.
+var ErrDaemonContextRequired = coreerr.E("", "daemon context is required", nil)

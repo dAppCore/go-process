@@ -221,6 +221,14 @@ func TestDaemon_RunWithoutStartFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "not started")
 }
 
+func TestDaemon_RunNilContextFails(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+
+	err := d.Run(nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrDaemonContextRequired)
+}
+
 func TestDaemon_SetReady(t *testing.T) {
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",

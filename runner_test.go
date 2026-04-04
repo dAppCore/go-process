@@ -294,6 +294,22 @@ func TestRunner_NilService(t *testing.T) {
 	assert.ErrorIs(t, err, ErrRunnerNoService)
 }
 
+func TestRunner_NilContext(t *testing.T) {
+	runner := newTestRunner(t)
+
+	_, err := runner.RunAll(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+
+	_, err = runner.RunSequential(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+
+	_, err = runner.RunParallel(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+}
+
 func TestRunner_InvalidSpecNames(t *testing.T) {
 	runner := newTestRunner(t)
 
