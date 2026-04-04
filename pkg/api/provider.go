@@ -275,6 +275,9 @@ func (p *ProcessProvider) listDaemons(c *gin.Context) {
 	if entries == nil {
 		entries = []process.DaemonEntry{}
 	}
+	for _, entry := range entries {
+		p.emitEvent("process.daemon.started", daemonEventPayload(entry))
+	}
 	c.JSON(http.StatusOK, api.OK(entries))
 }
 
@@ -287,6 +290,7 @@ func (p *ProcessProvider) getDaemon(c *gin.Context) {
 		c.JSON(http.StatusNotFound, api.Fail("not_found", "daemon not found or not running"))
 		return
 	}
+	p.emitEvent("process.daemon.started", daemonEventPayload(*entry))
 	c.JSON(http.StatusOK, api.OK(entry))
 }
 
@@ -501,6 +505,18 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 		Data:    data,
 	})
 	_ = p.hub.SendToChannel(channel, msg)
+}
+
+func daemonEventPayload(entry process.DaemonEntry) map[string]any {
+	return map[string]any{
+		"code":    entry.Code,
+		"daemon":  entry.Daemon,
+		"pid":     entry.PID,
+		"health":  entry.Health,
+		"project": entry.Project,
+		"binary":  entry.Binary,
+		"started": entry.Started,
+	}
 }
 
 // PIDAlive checks whether a PID is still running. Exported for use by

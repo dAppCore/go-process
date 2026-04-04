@@ -87,6 +87,48 @@ func TestProcessProvider_ListDaemons_Good(t *testing.T) {
 	assert.True(t, resp.Success)
 }
 
+func TestProcessProvider_ListDaemons_BroadcastsStarted_Good(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(dir)
+	require.NoError(t, registry.Register(process.DaemonEntry{
+		Code:   "test",
+		Daemon: "serve",
+		PID:    os.Getpid(),
+	}))
+
+	hub := corews.NewHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	p := processapi.NewProvider(registry, nil, hub)
+	server := httptest.NewServer(hub.Handler())
+	defer server.Close()
+
+	conn := connectWS(t, server.URL)
+	defer conn.Close()
+
+	require.Eventually(t, func() bool {
+		return hub.ClientCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/process/daemons", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	events := readWSEvents(t, conn, "process.daemon.started")
+	started := events["process.daemon.started"]
+	require.NotNil(t, started)
+
+	startedData := started.Data.(map[string]any)
+	assert.Equal(t, "test", startedData["code"])
+	assert.Equal(t, "serve", startedData["daemon"])
+	assert.Equal(t, float64(os.Getpid()), startedData["pid"])
+}
+
 func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
