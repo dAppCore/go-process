@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -462,6 +463,40 @@ func TestService_Kill(t *testing.T) {
 
 		err := svc.Kill("nonexistent")
 		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+}
+
+func TestService_KillPID(t *testing.T) {
+	t.Run("force kills unmanaged process", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		cmd := exec.Command("sleep", "60")
+		require.NoError(t, cmd.Start())
+
+		waitCh := make(chan error, 1)
+		go func() {
+			waitCh <- cmd.Wait()
+		}()
+
+		t.Cleanup(func() {
+			if cmd.ProcessState == nil && cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			select {
+			case <-waitCh:
+			case <-time.After(2 * time.Second):
+			}
+		})
+
+		err := svc.KillPID(cmd.Process.Pid)
+		require.NoError(t, err)
+
+		select {
+		case err := <-waitCh:
+			require.Error(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("unmanaged process should have been killed")
+		}
 	})
 }
 

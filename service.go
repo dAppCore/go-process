@@ -407,7 +407,7 @@ func (s *Service) Kill(id string) error {
 	return nil
 }
 
-// KillPID terminates a process by operating-system PID.
+// KillPID forcefully terminates a process by operating-system PID.
 //
 // Example:
 //
@@ -428,7 +428,7 @@ func (s *Service) KillPID(pid int) error {
 		return nil
 	}
 
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
 	}
 
