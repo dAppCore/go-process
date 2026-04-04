@@ -191,6 +191,32 @@ func Running() []*Process {
 	return svc.Running()
 }
 
+// Remove removes a completed process from the default service.
+//
+// Example:
+//
+//	_ = process.Remove("proc-1")
+func Remove(id string) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.Remove(id)
+}
+
+// Clear removes all completed processes from the default service.
+//
+// Example:
+//
+//	process.Clear()
+func Clear() {
+	svc := Default()
+	if svc == nil {
+		return
+	}
+	svc.Clear()
+}
+
 // Errors
 var (
 	// ErrServiceNotInitialized is returned when the service is not initialized.

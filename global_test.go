@@ -36,6 +36,12 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	assert.Nil(t, List())
 	assert.Nil(t, Running())
 
+	err = Remove("proc-1")
+	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+
+	// Clear is a no-op without a default service.
+	Clear()
+
 	err = Kill("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
@@ -289,4 +295,34 @@ func TestGlobal_Running(t *testing.T) {
 
 	running = Running()
 	assert.Len(t, running, 0)
+}
+
+func TestGlobal_RemoveAndClear(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	proc, err := Start(context.Background(), "echo", "remove-me")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	err = Remove(proc.ID)
+	require.NoError(t, err)
+
+	_, err = Get(proc.ID)
+	require.ErrorIs(t, err, ErrProcessNotFound)
+
+	proc2, err := Start(context.Background(), "echo", "clear-me")
+	require.NoError(t, err)
+	<-proc2.Done()
+
+	Clear()
+
+	_, err = Get(proc2.ID)
+	require.ErrorIs(t, err, ErrProcessNotFound)
 }
