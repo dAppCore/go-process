@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -61,8 +60,10 @@ type RunResult struct {
 	ExitCode int
 	Duration time.Duration
 	Output   string
-	Error    error
-	Skipped  bool
+	// Error only reports start-time or orchestration failures. A started process
+	// that exits non-zero uses ExitCode to report failure and leaves Error nil.
+	Error   error
+	Skipped bool
 }
 
 // Passed returns true if the process succeeded.
@@ -268,9 +269,8 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	case StatusKilled:
 		runErr = coreerr.E("Runner.runSpec", "process was killed", nil)
 	case StatusExited:
-		if proc.ExitCode != 0 {
-			runErr = coreerr.E("Runner.runSpec", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
-		}
+		// Non-zero exits are surfaced through ExitCode; Error remains nil so
+		// callers can distinguish execution failure from orchestration failure.
 	case StatusFailed:
 		runErr = coreerr.E("Runner.runSpec", "process failed to start", nil)
 	}

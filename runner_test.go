@@ -51,6 +51,12 @@ func TestRunner_RunSequential(t *testing.T) {
 		assert.Equal(t, 1, result.Passed)
 		assert.Equal(t, 1, result.Failed)
 		assert.Equal(t, 1, result.Skipped)
+		require.Len(t, result.Results, 3)
+		assert.Equal(t, 0, result.Results[0].ExitCode)
+		assert.NoError(t, result.Results[0].Error)
+		assert.Equal(t, 1, result.Results[1].ExitCode)
+		assert.NoError(t, result.Results[1].Error)
+		assert.True(t, result.Results[2].Skipped)
 	})
 
 	t.Run("allow failure continues", func(t *testing.T) {
