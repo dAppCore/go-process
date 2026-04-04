@@ -1,6 +1,9 @@
 package process
 
-import "time"
+import (
+	"syscall"
+	"time"
+)
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
 
@@ -60,6 +63,20 @@ type TaskProcessKill struct {
 	ID string
 	// PID targets a process directly when ID is not available.
 	PID int
+}
+
+// TaskProcessSignal requests signalling a managed process by ID or PID through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessSignal{ID: "proc-1", Signal: syscall.SIGTERM})
+type TaskProcessSignal struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// PID targets a process directly when ID is not available.
+	PID int
+	// Signal is delivered to the process or process group.
+	Signal syscall.Signal
 }
 
 // TaskProcessGet requests a snapshot of a managed process through Core.PERFORM.

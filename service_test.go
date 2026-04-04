@@ -518,6 +518,64 @@ func TestService_KillPID(t *testing.T) {
 	})
 }
 
+func TestService_Signal(t *testing.T) {
+	t.Run("signals running process by id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "sleep", "60")
+		require.NoError(t, err)
+
+		err = svc.Signal(proc.ID, syscall.SIGTERM)
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been signalled")
+		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
+	})
+
+	t.Run("signals unmanaged process by pid", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		cmd := exec.Command("sleep", "60")
+		require.NoError(t, cmd.Start())
+
+		waitCh := make(chan error, 1)
+		go func() {
+			waitCh <- cmd.Wait()
+		}()
+
+		t.Cleanup(func() {
+			if cmd.ProcessState == nil && cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			select {
+			case <-waitCh:
+			case <-time.After(2 * time.Second):
+			}
+		})
+
+		err := svc.SignalPID(cmd.Process.Pid, syscall.SIGTERM)
+		require.NoError(t, err)
+
+		select {
+		case err := <-waitCh:
+			require.Error(t, err)
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			ws, ok := exitErr.Sys().(syscall.WaitStatus)
+			require.True(t, ok)
+			assert.True(t, ws.Signaled())
+			assert.Equal(t, syscall.SIGTERM, ws.Signal())
+		case <-time.After(2 * time.Second):
+			t.Fatal("unmanaged process should have been signalled")
+		}
+	})
+}
+
 func TestService_Output(t *testing.T) {
 	t.Run("returns captured output", func(t *testing.T) {
 		svc, _ := newTestService(t)
@@ -686,6 +744,30 @@ func TestService_OnStartup(t *testing.T) {
 		require.Len(t, killed, 1)
 		assert.Equal(t, proc.ID, killed[0].ID)
 		assert.NotEmpty(t, killed[0].Signal)
+	})
+
+	t.Run("registers process.signal task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "sleep", "60")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessSignal{
+			ID:     proc.ID,
+			Signal: syscall.SIGTERM,
+		})
+		require.True(t, result.OK)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been signalled through core")
+		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("registers process.list task", func(t *testing.T) {

@@ -2,8 +2,11 @@ package process
 
 import (
 	"context"
+	"os/exec"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	framework "dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
@@ -268,6 +271,68 @@ func TestGlobal_Output(t *testing.T) {
 	output, err := Output(proc.ID)
 	require.NoError(t, err)
 	assert.Contains(t, output, "global-output")
+}
+
+func TestGlobal_Signal(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	proc, err := Start(context.Background(), "sleep", "60")
+	require.NoError(t, err)
+
+	err = Signal(proc.ID, syscall.SIGTERM)
+	require.NoError(t, err)
+
+	select {
+	case <-proc.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("process should have been signalled through the global helper")
+	}
+}
+
+func TestGlobal_SignalPID(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	cmd := exec.Command("sleep", "60")
+	require.NoError(t, cmd.Start())
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-waitCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+
+	err := SignalPID(cmd.Process.Pid, syscall.SIGTERM)
+	require.NoError(t, err)
+
+	select {
+	case err := <-waitCh:
+		require.Error(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("unmanaged process should have been signalled through the global helper")
+	}
 }
 
 func TestGlobal_Running(t *testing.T) {

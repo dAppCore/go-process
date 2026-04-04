@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -150,6 +151,32 @@ func KillPID(pid int) error {
 		return ErrServiceNotInitialized
 	}
 	return svc.KillPID(pid)
+}
+
+// Signal sends a signal to a process by ID using the default service.
+//
+// Example:
+//
+//	_ = process.Signal("proc-1", syscall.SIGTERM)
+func Signal(id string, sig os.Signal) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.Signal(id, sig)
+}
+
+// SignalPID sends a signal to a process by operating-system PID using the default service.
+//
+// Example:
+//
+//	_ = process.SignalPID(1234, syscall.SIGTERM)
+func SignalPID(pid int, sig os.Signal) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.SignalPID(pid, sig)
 }
 
 // StartWithOptions spawns a process with full configuration using the default service.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"sync"
@@ -438,6 +439,45 @@ func (s *Service) KillPID(pid int) error {
 	return nil
 }
 
+// Signal sends a signal to a process by ID.
+//
+// Example:
+//
+//	_ = svc.Signal("proc-1", syscall.SIGTERM)
+func (s *Service) Signal(id string, sig os.Signal) error {
+	proc, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(sig)
+}
+
+// SignalPID sends a signal to a process by operating-system PID.
+//
+// Example:
+//
+//	_ = svc.SignalPID(1234, syscall.SIGTERM)
+func (s *Service) SignalPID(pid int, sig os.Signal) error {
+	if pid <= 0 {
+		return coreerr.E("Service.SignalPID", "pid must be positive", nil)
+	}
+
+	if proc := s.findByPID(pid); proc != nil {
+		return proc.Signal(sig)
+	}
+
+	target, err := os.FindProcess(pid)
+	if err != nil {
+		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to find pid %d", pid), err)
+	}
+
+	if err := target.Signal(sig); err != nil {
+		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
 // Remove removes a completed process from the list.
 //
 // Example:
@@ -601,6 +641,25 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 			return core.Result{OK: true}
 		default:
 			return core.Result{Value: coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil), OK: false}
+		}
+	case TaskProcessSignal:
+		if m.Signal == 0 {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process signal requires a signal", nil), OK: false}
+		}
+
+		switch {
+		case m.ID != "":
+			if err := s.Signal(m.ID, m.Signal); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		case m.PID > 0:
+			if err := s.SignalPID(m.PID, m.Signal); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		default:
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process signal requires an id or pid", nil), OK: false}
 		}
 	case TaskProcessGet:
 		if m.ID == "" {
