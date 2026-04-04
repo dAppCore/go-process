@@ -91,8 +91,6 @@ func (d *Daemon) Start() error {
 		}
 	}
 
-	d.running = true
-
 	// Auto-register if registry is set
 	if d.opts.Registry != nil {
 		entry := d.opts.RegistryEntry
@@ -101,10 +99,17 @@ func (d *Daemon) Start() error {
 			entry.Health = d.health.Addr()
 		}
 		if err := d.opts.Registry.Register(entry); err != nil {
+			if d.health != nil {
+				_ = d.health.Stop(context.Background())
+			}
+			if d.pid != nil {
+				_ = d.pid.Release()
+			}
 			return coreerr.E("Daemon.Start", "registry", err)
 		}
 	}
 
+	d.running = true
 	return nil
 }
 

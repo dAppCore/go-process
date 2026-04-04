@@ -163,3 +163,40 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 	_, ok = reg.Get("test-app", "serve")
 	assert.False(t, ok)
 }
+
+func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
+	dir := t.TempDir()
+
+	pidPath := filepath.Join(dir, "daemon.pid")
+	regDir := filepath.Join(dir, "registry")
+	require.NoError(t, os.MkdirAll(regDir, 0o755))
+	require.NoError(t, os.Chmod(regDir, 0o555))
+
+	d := NewDaemon(DaemonOptions{
+		PIDFile:    pidPath,
+		HealthAddr: "127.0.0.1:0",
+		Registry:   NewRegistry(regDir),
+		RegistryEntry: DaemonEntry{
+			Code:   "broken",
+			Daemon: "start",
+		},
+	})
+
+	err := d.Start()
+	require.Error(t, err)
+
+	_, statErr := os.Stat(pidPath)
+	assert.True(t, os.IsNotExist(statErr))
+
+	addr := d.HealthAddr()
+	require.NotEmpty(t, addr)
+
+	client := &http.Client{Timeout: 250 * time.Millisecond}
+	resp, reqErr := client.Get("http://" + addr + "/health")
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	assert.Error(t, reqErr)
+
+	assert.NoError(t, d.Stop())
+}
