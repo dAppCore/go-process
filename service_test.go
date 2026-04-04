@@ -776,6 +776,33 @@ func TestService_OnStartup(t *testing.T) {
 
 		assert.Contains(t, proc.Output(), "typed-through-core")
 	})
+
+	t.Run("registers process.close_stdin task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "cat")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessInput{
+			ID:    proc.ID,
+			Input: "close-through-core\n",
+		})
+		require.True(t, result.OK)
+
+		result = c.PERFORM(TaskProcessCloseStdin{ID: proc.ID})
+		require.True(t, result.OK)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have exited after stdin was closed")
+		}
+
+		assert.Contains(t, proc.Output(), "close-through-core")
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

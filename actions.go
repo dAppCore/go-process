@@ -94,6 +94,16 @@ type TaskProcessInput struct {
 	Input string
 }
 
+// TaskProcessCloseStdin closes the stdin pipe of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessCloseStdin{ID: "proc-1"})
+type TaskProcessCloseStdin struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
 // If RunningOnly is true, only active processes are returned.
 //
