@@ -114,6 +114,32 @@ func Output(id string) (string, error) {
 	return svc.Output(id)
 }
 
+// Input writes data to the stdin of a managed process using the default service.
+//
+// Example:
+//
+//	_ = process.Input("proc-1", "hello\n")
+func Input(id string, input string) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.Input(id, input)
+}
+
+// CloseStdin closes the stdin pipe of a managed process using the default service.
+//
+// Example:
+//
+//	_ = process.CloseStdin("proc-1")
+func CloseStdin(id string) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.CloseStdin(id)
+}
+
 // Wait blocks until a managed process exits and returns its final snapshot.
 //
 // Example:

@@ -36,6 +36,12 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	_, err = Output("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
+	err = Input("proc-1", "test")
+	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+
+	err = CloseStdin("proc-1")
+	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+
 	assert.Nil(t, List())
 	assert.Nil(t, Running())
 
@@ -271,6 +277,30 @@ func TestGlobal_Output(t *testing.T) {
 	output, err := Output(proc.ID)
 	require.NoError(t, err)
 	assert.Contains(t, output, "global-output")
+}
+
+func TestGlobal_InputAndCloseStdin(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	proc, err := Start(context.Background(), "cat")
+	require.NoError(t, err)
+
+	err = Input(proc.ID, "global-input\n")
+	require.NoError(t, err)
+
+	err = CloseStdin(proc.ID)
+	require.NoError(t, err)
+
+	<-proc.Done()
+
+	assert.Contains(t, proc.Output(), "global-input")
 }
 
 func TestGlobal_Wait(t *testing.T) {

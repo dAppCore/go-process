@@ -536,6 +536,32 @@ func (s *Service) Output(id string) (string, error) {
 	return proc.Output(), nil
 }
 
+// Input writes data to the stdin of a managed process.
+//
+// Example:
+//
+//	_ = svc.Input("proc-1", "hello\n")
+func (s *Service) Input(id string, input string) error {
+	proc, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	return proc.SendInput(input)
+}
+
+// CloseStdin closes the stdin pipe of a managed process.
+//
+// Example:
+//
+//	_ = svc.CloseStdin("proc-1")
+func (s *Service) CloseStdin(id string) error {
+	proc, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	return proc.CloseStdin()
+}
+
 // Wait blocks until a managed process exits and returns its final snapshot.
 //
 // Example:

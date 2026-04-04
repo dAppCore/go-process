@@ -607,6 +607,57 @@ func TestService_Output(t *testing.T) {
 	})
 }
 
+func TestService_Input(t *testing.T) {
+	t.Run("writes to stdin", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "cat")
+		require.NoError(t, err)
+
+		err = svc.Input(proc.ID, "service-input\n")
+		require.NoError(t, err)
+
+		err = svc.CloseStdin(proc.ID)
+		require.NoError(t, err)
+
+		<-proc.Done()
+
+		assert.Contains(t, proc.Output(), "service-input")
+	})
+
+	t.Run("error on unknown id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		err := svc.Input("nonexistent", "test")
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+}
+
+func TestService_CloseStdin(t *testing.T) {
+	t.Run("closes stdin pipe", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.Start(context.Background(), "cat")
+		require.NoError(t, err)
+
+		err = svc.CloseStdin(proc.ID)
+		require.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("cat should exit when stdin is closed")
+		}
+	})
+
+	t.Run("error on unknown id", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		err := svc.CloseStdin("nonexistent")
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+}
+
 func TestService_Wait(t *testing.T) {
 	t.Run("returns final info on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
