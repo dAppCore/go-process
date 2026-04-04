@@ -97,6 +97,8 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/daemons/:code/:daemon/stop", p.stopDaemon)
 	rg.GET("/daemons/:code/:daemon/health", p.healthCheck)
 	rg.GET("/processes", p.listProcesses)
+	rg.POST("/processes", p.startProcess)
+	rg.POST("/processes/run", p.runProcess)
 	rg.GET("/processes/:id", p.getProcess)
 	rg.GET("/processes/:id/output", p.getProcessOutput)
 	rg.POST("/processes/:id/wait", p.waitProcess)
@@ -200,6 +202,68 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 						"pid":       map[string]any{"type": "integer"},
 					},
 				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes",
+			Summary:     "Start a managed process",
+			Description: "Starts a process asynchronously and returns its initial snapshot immediately.",
+			Tags:        []string{"process"},
+			RequestBody: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"command":        map[string]any{"type": "string"},
+					"args":           map[string]any{"type": "array"},
+					"dir":            map[string]any{"type": "string"},
+					"env":            map[string]any{"type": "array"},
+					"disableCapture": map[string]any{"type": "boolean"},
+					"detach":         map[string]any{"type": "boolean"},
+					"timeout":        map[string]any{"type": "integer"},
+					"gracePeriod":    map[string]any{"type": "integer"},
+					"killGroup":      map[string]any{"type": "boolean"},
+				},
+				"required": []string{"command"},
+			},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":        map[string]any{"type": "string"},
+					"command":   map[string]any{"type": "string"},
+					"args":      map[string]any{"type": "array"},
+					"dir":       map[string]any{"type": "string"},
+					"startedAt": map[string]any{"type": "string", "format": "date-time"},
+					"running":   map[string]any{"type": "boolean"},
+					"status":    map[string]any{"type": "string"},
+					"exitCode":  map[string]any{"type": "integer"},
+					"duration":  map[string]any{"type": "integer"},
+					"pid":       map[string]any{"type": "integer"},
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/run",
+			Summary:     "Run a managed process",
+			Description: "Runs a process synchronously and returns its combined output on success.",
+			Tags:        []string{"process"},
+			RequestBody: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"command":        map[string]any{"type": "string"},
+					"args":           map[string]any{"type": "array"},
+					"dir":            map[string]any{"type": "string"},
+					"env":            map[string]any{"type": "array"},
+					"disableCapture": map[string]any{"type": "boolean"},
+					"detach":         map[string]any{"type": "boolean"},
+					"timeout":        map[string]any{"type": "integer"},
+					"gracePeriod":    map[string]any{"type": "integer"},
+					"killGroup":      map[string]any{"type": "boolean"},
+				},
+				"required": []string{"command"},
+			},
+			Response: map[string]any{
+				"type": "string",
 			},
 		},
 		{
@@ -468,6 +532,78 @@ func (p *ProcessProvider) listProcesses(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(infos))
+}
+
+func (p *ProcessProvider) startProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req process.TaskProcessStart
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+	if strings.TrimSpace(req.Command) == "" {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		return
+	}
+
+	proc, err := p.service.StartWithOptions(c.Request.Context(), process.RunOptions{
+		Command:        req.Command,
+		Args:           req.Args,
+		Dir:            req.Dir,
+		Env:            req.Env,
+		DisableCapture: req.DisableCapture,
+		Detach:         req.Detach,
+		Timeout:        req.Timeout,
+		GracePeriod:    req.GracePeriod,
+		KillGroup:      req.KillGroup,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(proc.Info()))
+}
+
+func (p *ProcessProvider) runProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req process.TaskProcessRun
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+	if strings.TrimSpace(req.Command) == "" {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		return
+	}
+
+	output, err := p.service.RunWithOptions(c.Request.Context(), process.RunOptions{
+		Command:        req.Command,
+		Args:           req.Args,
+		Dir:            req.Dir,
+		Env:            req.Env,
+		DisableCapture: req.DisableCapture,
+		Detach:         req.Detach,
+		Timeout:        req.Timeout,
+		GracePeriod:    req.GracePeriod,
+		KillGroup:      req.KillGroup,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.FailWithDetails("run_failed", err.Error(), map[string]any{
+			"output": output,
+		}))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(output))
 }
 
 func (p *ProcessProvider) getProcess(c *gin.Context) {

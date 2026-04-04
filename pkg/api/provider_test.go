@@ -311,6 +311,70 @@ func TestProcessProvider_ListProcesses_RunningOnly_Good(t *testing.T) {
 	<-runningProc.Done()
 }
 
+func TestProcessProvider_StartProcess_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	body := strings.NewReader(`{
+		"command": "sleep",
+		"args": ["60"],
+		"detach": true,
+		"killGroup": true
+	}`)
+	req, err := http.NewRequest("POST", "/api/process/processes", body)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[process.Info]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, "sleep", resp.Data.Command)
+	assert.Equal(t, process.StatusRunning, resp.Data.Status)
+	assert.True(t, resp.Data.Running)
+	assert.NotEmpty(t, resp.Data.ID)
+
+	managed, err := svc.Get(resp.Data.ID)
+	require.NoError(t, err)
+	require.NoError(t, svc.Kill(managed.ID))
+	select {
+	case <-managed.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("process should have been killed after start test")
+	}
+}
+
+func TestProcessProvider_RunProcess_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	body := strings.NewReader(`{
+		"command": "echo",
+		"args": ["run-check"]
+	}`)
+	req, err := http.NewRequest("POST", "/api/process/processes/run", body)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[string]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Contains(t, resp.Data, "run-check")
+}
+
 func TestProcessProvider_GetProcess_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "single")
