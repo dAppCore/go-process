@@ -22,6 +22,7 @@ func TestProcess_Info(t *testing.T) {
 	assert.Equal(t, proc.ID, info.ID)
 	assert.Equal(t, "echo", info.Command)
 	assert.Equal(t, []string{"hello"}, info.Args)
+	assert.False(t, info.Running)
 	assert.Equal(t, StatusExited, info.Status)
 	assert.Equal(t, 0, info.ExitCode)
 	assert.Greater(t, info.Duration, time.Duration(0))
@@ -65,11 +66,13 @@ func TestProcess_IsRunning(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.True(t, proc.IsRunning())
+		assert.True(t, proc.Info().Running)
 
 		cancel()
 		<-proc.Done()
 
 		assert.False(t, proc.IsRunning())
+		assert.False(t, proc.Info().Running)
 	})
 
 	t.Run("false after completion", func(t *testing.T) {

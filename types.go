@@ -98,6 +98,7 @@ type Info struct {
 	Args      []string      `json:"args"`
 	Dir       string        `json:"dir"`
 	StartedAt time.Time     `json:"startedAt"`
+	Running   bool          `json:"running"`
 	Status    Status        `json:"status"`
 	ExitCode  int           `json:"exitCode"`
 	Duration  time.Duration `json:"duration"`

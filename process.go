@@ -52,6 +52,7 @@ func (p *Process) Info() Info {
 		Args:      p.Args,
 		Dir:       p.Dir,
 		StartedAt: p.StartedAt,
+		Running:   p.Status == StatusRunning,
 		Status:    p.Status,
 		ExitCode:  p.ExitCode,
 		Duration:  p.Duration,
