@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -298,6 +299,33 @@ func TestProcess_Signal(t *testing.T) {
 			// Good - the whole process group responded to the signal.
 		case <-time.After(5 * time.Second):
 			t.Fatal("process group should have been terminated by signal")
+		}
+	})
+
+	t.Run("signal zero only probes process group liveness", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:   "sh",
+			Args:      []string{"-c", "sleep 60 & wait"},
+			Detach:    true,
+			KillGroup: true,
+		})
+		require.NoError(t, err)
+
+		err = proc.Signal(syscall.Signal(0))
+		assert.NoError(t, err)
+
+		time.Sleep(300 * time.Millisecond)
+		assert.True(t, proc.IsRunning())
+
+		err = proc.Kill()
+		assert.NoError(t, err)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatal("process group should have been killed for cleanup")
 		}
 	})
 }

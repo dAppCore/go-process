@@ -927,6 +927,34 @@ func TestService_OnStartup(t *testing.T) {
 		<-proc.Done()
 	})
 
+	t.Run("signal zero does not kill process groups", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+			Command:   "sh",
+			Args:      []string{"-c", "sleep 60 & wait"},
+			Detach:    true,
+			KillGroup: true,
+		})
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessSignal{
+			ID:     proc.ID,
+			Signal: syscall.Signal(0),
+		})
+		require.True(t, result.OK)
+
+		time.Sleep(300 * time.Millisecond)
+		assert.True(t, proc.IsRunning())
+
+		err = proc.Kill()
+		require.NoError(t, err)
+		<-proc.Done()
+	})
+
 	t.Run("registers process.wait task", func(t *testing.T) {
 		svc, c := newTestService(t)
 

@@ -269,6 +269,10 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 		return cmd.Process.Signal(sig)
 	}
 
+	if sysSig == 0 {
+		return syscall.Kill(-cmd.Process.Pid, 0)
+	}
+
 	if err := syscall.Kill(-cmd.Process.Pid, sysSig); err != nil {
 		return err
 	}
