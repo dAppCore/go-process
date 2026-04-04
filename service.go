@@ -586,7 +586,7 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 			if signalName == "" {
 				signalName = "signal"
 			}
-			return StatusKilled, -1, nil, signalName
+			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
 		}
 		return StatusExited, exitErr.ExitCode(), nil, ""
 	}
