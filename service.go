@@ -624,6 +624,21 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 		}
 
 		return core.Result{Value: output, OK: true}
+	case TaskProcessInput:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process input requires an id", nil), OK: false}
+		}
+
+		proc, err := s.Get(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		if err := proc.SendInput(m.Input); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{OK: true}
 	case TaskProcessList:
 		procs := s.List()
 		if m.RunningOnly {

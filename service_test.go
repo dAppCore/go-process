@@ -753,6 +753,29 @@ func TestService_OnStartup(t *testing.T) {
 		require.True(t, ok)
 		assert.Contains(t, output, "snapshot-output")
 	})
+
+	t.Run("registers process.input task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "cat")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessInput{
+			ID:    proc.ID,
+			Input: "typed-through-core\n",
+		})
+		require.True(t, result.OK)
+
+		err = proc.CloseStdin()
+		require.NoError(t, err)
+
+		<-proc.Done()
+
+		assert.Contains(t, proc.Output(), "typed-through-core")
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

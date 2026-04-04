@@ -82,6 +82,18 @@ type TaskProcessOutput struct {
 	ID string
 }
 
+// TaskProcessInput writes data to the stdin of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessInput{ID: "proc-1", Input: "hello\n"})
+type TaskProcessInput struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// Input is written verbatim to the process stdin pipe.
+	Input string
+}
+
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
 // If RunningOnly is true, only active processes are returned.
 //
