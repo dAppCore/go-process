@@ -28,6 +28,23 @@ func TestProcess_Info(t *testing.T) {
 	assert.Greater(t, info.Duration, time.Duration(0))
 }
 
+func TestProcess_InfoSnapshot(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	proc, err := svc.Start(context.Background(), "echo", "snapshot")
+	require.NoError(t, err)
+
+	<-proc.Done()
+
+	info := proc.Info()
+	require.NotEmpty(t, info.Args)
+
+	info.Args[0] = "mutated"
+
+	assert.Equal(t, "snapshot", proc.Args[0])
+	assert.Equal(t, "mutated", info.Args[0])
+}
+
 func TestProcess_Output(t *testing.T) {
 	t.Run("captures stdout", func(t *testing.T) {
 		svc, _ := newTestService(t)

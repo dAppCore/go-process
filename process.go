@@ -49,7 +49,7 @@ func (p *Process) Info() Info {
 	return Info{
 		ID:        p.ID,
 		Command:   p.Command,
-		Args:      p.Args,
+		Args:      append([]string(nil), p.Args...),
 		Dir:       p.Dir,
 		StartedAt: p.StartedAt,
 		Running:   p.Status == StatusRunning,

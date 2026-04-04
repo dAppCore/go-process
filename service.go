@@ -157,9 +157,9 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 	proc := &Process{
 		ID:          id,
 		Command:     opts.Command,
-		Args:        opts.Args,
+		Args:        append([]string(nil), opts.Args...),
 		Dir:         opts.Dir,
-		Env:         opts.Env,
+		Env:         append([]string(nil), opts.Env...),
 		StartedAt:   startedAt,
 		Status:      StatusRunning,
 		cmd:         cmd,
