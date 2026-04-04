@@ -17,6 +17,7 @@ import (
 	"dappco.re/go/core"
 	"dappco.re/go/core/api"
 	"dappco.re/go/core/api/pkg/provider"
+	coreerr "dappco.re/go/core/log"
 	process "dappco.re/go/core/process"
 	"dappco.re/go/core/ws"
 	"github.com/gin-gonic/gin"
@@ -102,6 +103,7 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/processes/:id/input", p.inputProcess)
 	rg.POST("/processes/:id/close-stdin", p.closeProcessStdin)
 	rg.POST("/processes/:id/kill", p.killProcess)
+	rg.POST("/processes/:id/signal", p.signalProcess)
 	rg.POST("/pipelines/run", p.runPipeline)
 }
 
@@ -297,6 +299,26 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 				"type": "object",
 				"properties": map[string]any{
 					"killed": map[string]any{"type": "boolean"},
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/:id/signal",
+			Summary:     "Signal a managed process",
+			Description: "Sends a Unix signal to the managed process identified by ID.",
+			Tags:        []string{"process"},
+			RequestBody: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"signal": map[string]any{"type": "string"},
+				},
+				"required": []string{"signal"},
+			},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"signalled": map[string]any{"type": "boolean"},
 				},
 			},
 		},
@@ -565,6 +587,40 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
 }
 
+type processSignalRequest struct {
+	Signal string `json:"signal"`
+}
+
+func (p *ProcessProvider) signalProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req processSignalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+
+	sig, err := parseSignal(req.Signal)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_signal", err.Error()))
+		return
+	}
+
+	if err := p.service.Signal(c.Param("id"), sig); err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("signal_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
+}
+
 type pipelineRunRequest struct {
 	Mode  string            `json:"mode"`
 	Specs []process.RunSpec `json:"specs"`
@@ -662,6 +718,40 @@ func PIDAlive(pid int) bool {
 func intParam(c *gin.Context, name string) int {
 	v, _ := strconv.Atoi(c.Param(name))
 	return v
+}
+
+func parseSignal(value string) (syscall.Signal, error) {
+	trimmed := strings.TrimSpace(strings.ToUpper(value))
+	if trimmed == "" {
+		return 0, coreerr.E("ProcessProvider.parseSignal", "signal is required", nil)
+	}
+
+	if n, err := strconv.Atoi(trimmed); err == nil {
+		return syscall.Signal(n), nil
+	}
+
+	switch trimmed {
+	case "SIGTERM", "TERM":
+		return syscall.SIGTERM, nil
+	case "SIGKILL", "KILL":
+		return syscall.SIGKILL, nil
+	case "SIGINT", "INT":
+		return syscall.SIGINT, nil
+	case "SIGQUIT", "QUIT":
+		return syscall.SIGQUIT, nil
+	case "SIGHUP", "HUP":
+		return syscall.SIGHUP, nil
+	case "SIGSTOP", "STOP":
+		return syscall.SIGSTOP, nil
+	case "SIGCONT", "CONT":
+		return syscall.SIGCONT, nil
+	case "SIGUSR1", "USR1":
+		return syscall.SIGUSR1, nil
+	case "SIGUSR2", "USR2":
+		return syscall.SIGUSR2, nil
+	default:
+		return 0, coreerr.E("ProcessProvider.parseSignal", "unsupported signal", nil)
+	}
 }
 
 func (p *ProcessProvider) registerProcessEvents() {
