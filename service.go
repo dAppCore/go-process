@@ -138,10 +138,10 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 //	proc, err := svc.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	if opts.Command == "" {
-		return nil, coreerr.E("Service.StartWithOptions", "command is required", nil)
+		return nil, ServiceError("command is required", nil)
 	}
 	if ctx == nil {
-		return nil, coreerr.E("Service.StartWithOptions", "context is required", ErrContextRequired)
+		return nil, ServiceError("context is required", ErrContextRequired)
 	}
 
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
@@ -426,7 +426,7 @@ func (s *Service) Kill(id string) error {
 //	_ = svc.KillPID(1234)
 func (s *Service) KillPID(pid int) error {
 	if pid <= 0 {
-		return coreerr.E("Service.KillPID", "pid must be positive", nil)
+		return ServiceError("pid must be positive", nil)
 	}
 
 	if proc := s.findByPID(pid); proc != nil {
@@ -467,7 +467,7 @@ func (s *Service) Signal(id string, sig os.Signal) error {
 //	_ = svc.SignalPID(1234, syscall.SIGTERM)
 func (s *Service) SignalPID(pid int, sig os.Signal) error {
 	if pid <= 0 {
-		return coreerr.E("Service.SignalPID", "pid must be positive", nil)
+		return ServiceError("pid must be positive", nil)
 	}
 
 	if proc := s.findByPID(pid); proc != nil {
