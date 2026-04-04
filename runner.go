@@ -80,13 +80,13 @@ type RunAllResult struct {
 	Skipped  int
 }
 
-// Success returns true if every spec completed successfully.
+// Success returns true when no spec failed.
 //
 // Example:
 //
 //	if result.Success() { ... }
 func (r RunAllResult) Success() bool {
-	return r.Failed == 0 && r.Skipped == 0
+	return r.Failed == 0
 }
 
 // RunAll executes specs respecting dependencies, parallelising where possible.

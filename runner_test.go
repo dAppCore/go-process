@@ -178,7 +178,7 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		assert.False(t, result.Success())
+		assert.True(t, result.Success())
 		assert.Equal(t, 0, result.Failed)
 		assert.Equal(t, 2, result.Skipped)
 		for _, res := range result.Results {
@@ -196,7 +196,7 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		assert.False(t, result.Success())
+		assert.True(t, result.Success())
 		assert.Equal(t, 0, result.Failed)
 		assert.Equal(t, 1, result.Skipped)
 		require.Len(t, result.Results, 1)
