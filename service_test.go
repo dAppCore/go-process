@@ -63,6 +63,14 @@ func TestService_Start(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("empty command is rejected", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		_, err := svc.StartWithOptions(context.Background(), RunOptions{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "command is required")
+	})
+
 	t.Run("with working directory", func(t *testing.T) {
 		svc, _ := newTestService(t)
 

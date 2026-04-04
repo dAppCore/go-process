@@ -102,6 +102,10 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) (*P
 
 // StartWithOptions spawns a process with full configuration.
 func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
+	if opts.Command == "" {
+		return nil, coreerr.E("Service.StartWithOptions", "command is required", nil)
+	}
+
 	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
 	startedAt := time.Now()
 
