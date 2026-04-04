@@ -214,26 +214,50 @@ func (p *Process) terminate() error {
 //
 //	_ = proc.Signal(os.Interrupt)
 func (p *Process) Signal(sig os.Signal) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	status := p.Status
+	cmd := p.cmd
+	killGroup := p.killGroup
+	p.mu.RUnlock()
 
-	if p.Status != StatusRunning {
+	if status != StatusRunning {
 		return ErrProcessNotRunning
 	}
 
-	if p.cmd == nil || p.cmd.Process == nil {
+	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
 
-	if p.killGroup {
-		sysSig, ok := sig.(syscall.Signal)
-		if !ok {
-			return p.cmd.Process.Signal(sig)
-		}
-		return syscall.Kill(-p.cmd.Process.Pid, sysSig)
+	if !killGroup {
+		return cmd.Process.Signal(sig)
 	}
 
-	return p.cmd.Process.Signal(sig)
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		return cmd.Process.Signal(sig)
+	}
+
+	if err := syscall.Kill(-cmd.Process.Pid, sysSig); err != nil {
+		return err
+	}
+
+	// Some shells briefly ignore or defer the signal while they are still
+	// initialising child jobs. Retry once after a short delay so the whole
+	// process group is more reliably terminated.
+	go func(pid int, sig syscall.Signal, done <-chan struct{}) {
+		timer := time.NewTimer(50 * time.Millisecond)
+		defer timer.Stop()
+
+		select {
+		case <-done:
+			return
+		case <-timer.C:
+		}
+
+		_ = syscall.Kill(-pid, sig)
+	}(cmd.Process.Pid, sysSig, p.done)
+
+	return nil
 }
 
 // SendInput writes to the process stdin.
