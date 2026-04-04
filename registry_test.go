@@ -65,6 +65,14 @@ func TestRegistry_Unregister(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestRegistry_UnregisterMissingIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	reg := NewRegistry(dir)
+
+	err := reg.Unregister("missing", "entry")
+	require.NoError(t, err)
+}
+
 func TestRegistry_List(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)

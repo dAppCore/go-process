@@ -89,6 +89,9 @@ func (r *Registry) Register(entry DaemonEntry) error {
 //	_ = reg.Unregister("app", "serve")
 func (r *Registry) Unregister(code, daemon string) error {
 	if err := coreio.Local.Delete(r.entryPath(code, daemon)); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return coreerr.E("Registry.Unregister", "failed to delete entry file", err)
 	}
 	return nil
