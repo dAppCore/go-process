@@ -76,7 +76,9 @@ func TestRegistry_List(t *testing.T) {
 
 	entries, err := reg.List()
 	require.NoError(t, err)
-	assert.Len(t, entries, 2)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "app1", entries[0].Code)
+	assert.Equal(t, "app2", entries[1].Code)
 }
 
 func TestRegistry_List_PrunesStale(t *testing.T) {

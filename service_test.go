@@ -341,6 +341,8 @@ func TestService_List(t *testing.T) {
 
 		list := svc.List()
 		assert.Len(t, list, 2)
+		assert.Equal(t, proc1.ID, list[0].ID)
+		assert.Equal(t, proc2.ID, list[1].ID)
 	})
 
 	t.Run("get by id", func(t *testing.T) {
@@ -583,15 +585,24 @@ func TestService_Running(t *testing.T) {
 		proc1, err := svc.Start(ctx, "sleep", "60")
 		require.NoError(t, err)
 
-		proc2, err := svc.Start(context.Background(), "echo", "done")
+		doneProc, err := svc.Start(context.Background(), "echo", "done")
 		require.NoError(t, err)
-		<-proc2.Done()
+		<-doneProc.Done()
 
 		running := svc.Running()
 		assert.Len(t, running, 1)
 		assert.Equal(t, proc1.ID, running[0].ID)
 
+		proc2, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		running = svc.Running()
+		assert.Len(t, running, 2)
+		assert.Equal(t, proc1.ID, running[0].ID)
+		assert.Equal(t, proc2.ID, running[1].ID)
+
 		cancel()
 		<-proc1.Done()
+		<-proc2.Done()
 	})
 }

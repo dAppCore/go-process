@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -124,6 +125,16 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 
 		alive = append(alive, entry)
 	}
+
+	sort.Slice(alive, func(i, j int) bool {
+		if alive[i].Started.Equal(alive[j].Started) {
+			if alive[i].Code == alive[j].Code {
+				return alive[i].Daemon < alive[j].Daemon
+			}
+			return alive[i].Code < alive[j].Code
+		}
+		return alive[i].Started.Before(alive[j].Started)
+	})
 
 	return alive, nil
 }

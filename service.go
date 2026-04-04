@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -311,6 +312,7 @@ func (s *Service) List() []*Process {
 	for _, p := range s.processes {
 		result = append(result, p)
 	}
+	sortProcesses(result)
 	return result
 }
 
@@ -325,6 +327,7 @@ func (s *Service) Running() []*Process {
 			result = append(result, p)
 		}
 	}
+	sortProcesses(result)
 	return result
 }
 
@@ -487,4 +490,14 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 	}
 
 	return StatusFailed, 0, err, ""
+}
+
+// sortProcesses orders processes by start time, then ID for stable output.
+func sortProcesses(procs []*Process) {
+	sort.Slice(procs, func(i, j int) bool {
+		if procs[i].StartedAt.Equal(procs[j].StartedAt) {
+			return procs[i].ID < procs[j].ID
+		}
+		return procs[i].StartedAt.Before(procs[j].StartedAt)
+	})
 }
