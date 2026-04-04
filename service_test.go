@@ -78,8 +78,18 @@ func TestService_Start(t *testing.T) {
 	t.Run("non-existent command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Start(context.Background(), "nonexistent_command_xyz")
+		proc, err := svc.Start(context.Background(), "nonexistent_command_xyz")
 		assert.Error(t, err)
+		require.NotNil(t, proc)
+		assert.Equal(t, StatusFailed, proc.Status)
+		assert.Equal(t, -1, proc.ExitCode)
+		assert.NotNil(t, proc.Done())
+		<-proc.Done()
+
+		got, getErr := svc.Get(proc.ID)
+		require.NoError(t, getErr)
+		assert.Equal(t, proc.ID, got.ID)
+		assert.Equal(t, StatusFailed, got.Status)
 	})
 
 	t.Run("empty command is rejected", func(t *testing.T) {
