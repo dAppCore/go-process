@@ -9,10 +9,6 @@ import type { RunResult, RunAllResult } from './shared/api.js';
  *
  * Shows RunSpec execution results with pass/fail/skip badges, duration,
  * dependency chains, and aggregate summary.
- *
- * Note: Pipeline runner REST endpoints are not yet in the provider.
- * This element renders from WS events and accepts data via properties
- * until those endpoints are available.
  */
 @customElement('core-process-runner')
 export class ProcessRunner extends LitElement {
@@ -223,8 +219,9 @@ export class ProcessRunner extends LitElement {
   }
 
   async loadResults() {
-    // Pipeline runner REST endpoints are not yet available.
-    // Results can be passed in via the `result` property.
+    // Results are supplied via the `result` property. The REST API can be
+    // used by the surrounding application to execute a pipeline and then
+    // assign the returned data here.
   }
 
   private toggleOutput(name: string) {
@@ -253,9 +250,7 @@ export class ProcessRunner extends LitElement {
     if (!this.result) {
       return html`
         <div class="info-notice">
-          Pipeline runner endpoints are pending. Pass pipeline results via the
-          <code>result</code> property, or results will appear here once the REST
-          API for pipeline execution is available.
+          Pass pipeline results via the <code>result</code> property.
         </div>
         <div class="empty">No pipeline results.</div>
       `;

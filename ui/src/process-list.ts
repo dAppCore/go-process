@@ -2,7 +2,7 @@
 
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { ProcessInfo } from './shared/api.js';
+import { ProcessApi, type ProcessInfo } from './shared/api.js';
 
 /**
  * <core-process-list> — Running processes with status and actions.
@@ -192,16 +192,25 @@ export class ProcessList extends LitElement {
   @state() private error = '';
   @state() private killing = new Set<string>();
 
+  private api!: ProcessApi;
+
   connectedCallback() {
     super.connectedCallback();
+    this.api = new ProcessApi(this.apiUrl);
     this.loadProcesses();
   }
 
   async loadProcesses() {
-    // Process-level REST endpoints are not yet available.
-    // This element will populate via WS events once endpoints exist.
-    this.loading = false;
-    this.processes = [];
+    this.loading = true;
+    this.error = '';
+    try {
+      this.processes = await this.api.listProcesses();
+    } catch (e: any) {
+      this.error = e.message ?? 'Failed to load processes';
+      this.processes = [];
+    } finally {
+      this.loading = false;
+    }
   }
 
   private handleSelect(proc: ProcessInfo) {
@@ -212,6 +221,20 @@ export class ProcessList extends LitElement {
         composed: true,
       }),
     );
+  }
+
+  private async handleKill(proc: ProcessInfo) {
+    this.killing = new Set([...this.killing, proc.id]);
+    try {
+      await this.api.killProcess(proc.id);
+      await this.loadProcesses();
+    } catch (e: any) {
+      this.error = e.message ?? 'Failed to kill process';
+    } finally {
+      const next = new Set(this.killing);
+      next.delete(proc.id);
+      this.killing = next;
+    }
   }
 
   private formatUptime(started: string): string {
@@ -238,8 +261,7 @@ export class ProcessList extends LitElement {
       ${this.processes.length === 0
         ? html`
             <div class="info-notice">
-              Process list endpoints are pending. Processes will appear here once
-              the REST API for managed processes is available.
+              Managed processes are loaded from the process REST API.
             </div>
             <div class="empty">No managed processes.</div>
           `
@@ -278,6 +300,7 @@ export class ProcessList extends LitElement {
                               ?disabled=${this.killing.has(proc.id)}
                               @click=${(e: Event) => {
                                 e.stopPropagation();
+                                void this.handleKill(proc);
                               }}
                             >
                               ${this.killing.has(proc.id) ? 'Killing\u2026' : 'Kill'}

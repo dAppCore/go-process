@@ -38,6 +38,19 @@ export interface ProcessInfo {
 }
 
 /**
+ * RunSpec payload for pipeline execution.
+ */
+export interface RunSpec {
+  name: string;
+  command: string;
+  args?: string[];
+  dir?: string;
+  env?: string[];
+  after?: string[];
+  allowFailure?: boolean;
+}
+
+/**
  * Pipeline run result for a single spec.
  */
 export interface RunResult {
@@ -101,5 +114,31 @@ export class ProcessApi {
   /** Check daemon health endpoint. */
   healthCheck(code: string, daemon: string): Promise<HealthResult> {
     return this.request<HealthResult>(`/daemons/${code}/${daemon}/health`);
+  }
+
+  /** List all managed processes. */
+  listProcesses(): Promise<ProcessInfo[]> {
+    return this.request<ProcessInfo[]>('/processes');
+  }
+
+  /** Get a single managed process by ID. */
+  getProcess(id: string): Promise<ProcessInfo> {
+    return this.request<ProcessInfo>(`/processes/${id}`);
+  }
+
+  /** Kill a managed process by ID. */
+  killProcess(id: string): Promise<{ killed: boolean }> {
+    return this.request<{ killed: boolean }>(`/processes/${id}/kill`, {
+      method: 'POST',
+    });
+  }
+
+  /** Run a process pipeline using the configured runner. */
+  runPipeline(mode: 'all' | 'sequential' | 'parallel', specs: RunSpec[]): Promise<RunAllResult> {
+    return this.request<RunAllResult>('/pipelines/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, specs }),
+    });
   }
 }
