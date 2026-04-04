@@ -77,6 +77,35 @@ func TestHealthServer_WithChecks(t *testing.T) {
 	_ = resp.Body.Close()
 }
 
+func TestHealthServer_NilCheckIgnored(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+
+	var check HealthCheck
+	hs.AddCheck(check)
+
+	err := hs.Start()
+	require.NoError(t, err)
+	defer func() { _ = hs.Stop(context.Background()) }()
+
+	addr := hs.Addr()
+
+	resp, err := http.Get("http://" + addr + "/health")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	_ = resp.Body.Close()
+}
+
+func TestHealthServer_ChecksSnapshotIsStable(t *testing.T) {
+	hs := NewHealthServer("127.0.0.1:0")
+
+	hs.AddCheck(func() error { return nil })
+	snapshot := hs.checksSnapshot()
+	hs.AddCheck(func() error { return assert.AnError })
+
+	require.Len(t, snapshot, 1)
+	require.NotNil(t, snapshot[0])
+}
+
 func TestWaitForHealth_Reachable(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	require.NoError(t, hs.Start())

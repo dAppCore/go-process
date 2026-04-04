@@ -21,7 +21,7 @@ type HealthServer struct {
 	addr     string
 	server   *http.Server
 	listener net.Listener
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	ready    bool
 	checks   []HealthCheck
 }
@@ -68,8 +68,8 @@ func (h *HealthServer) SetReady(ready bool) {
 //	    // publish the service
 //	}
 func (h *HealthServer) Ready() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.ready
 }
 
@@ -82,11 +82,12 @@ func (h *HealthServer) Start() error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		h.mu.Lock()
-		checks := h.checks
-		h.mu.Unlock()
+		checks := h.checksSnapshot()
 
 		for _, check := range checks {
+			if check == nil {
+				continue
+			}
 			if err := check(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = fmt.Fprintf(w, "unhealthy: %v\n", err)
@@ -99,9 +100,9 @@ func (h *HealthServer) Start() error {
 	})
 
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
-		h.mu.Lock()
+		h.mu.RLock()
 		ready := h.ready
-		h.mu.Unlock()
+		h.mu.RUnlock()
 
 		if !ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -131,6 +132,20 @@ func (h *HealthServer) Start() error {
 	return nil
 }
 
+// checksSnapshot returns a stable copy of the registered health checks.
+func (h *HealthServer) checksSnapshot() []HealthCheck {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if len(h.checks) == 0 {
+		return nil
+	}
+
+	checks := make([]HealthCheck, len(h.checks))
+	copy(checks, h.checks)
+	return checks
+}
+
 // Stop gracefully shuts down the health server.
 //
 // Example:
@@ -156,8 +171,8 @@ func (h *HealthServer) Stop(ctx context.Context) error {
 //
 //	addr := server.Addr()
 func (h *HealthServer) Addr() string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.listener != nil {
 		return h.listener.Addr().String()
 	}
