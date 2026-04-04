@@ -337,7 +337,7 @@ func TestService_Actions(t *testing.T) {
 		defer mu.Unlock()
 		assert.Len(t, exited, 1)
 		assert.Equal(t, proc.ID, exited[0].ID)
-		assert.Error(t, exited[0].Error)
+		assert.Nil(t, exited[0].Error)
 		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
@@ -370,7 +370,7 @@ func TestService_Actions(t *testing.T) {
 		defer mu.Unlock()
 		require.Len(t, exited, 1)
 		assert.Equal(t, -1, exited[0].ExitCode)
-		assert.Error(t, exited[0].Error)
+		assert.Nil(t, exited[0].Error)
 	})
 }
 
