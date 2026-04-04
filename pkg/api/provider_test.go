@@ -253,6 +253,29 @@ func TestProcessProvider_GetProcess_Good(t *testing.T) {
 	assert.Equal(t, "echo", resp.Data.Command)
 }
 
+func TestProcessProvider_GetProcessOutput_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "echo", "output-check")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", "/api/process/processes/"+proc.ID+"/output", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[string]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Contains(t, resp.Data, "output-check")
+}
+
 func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
@@ -289,6 +312,7 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 	cases := []string{
 		"/api/process/processes",
 		"/api/process/processes/anything",
+		"/api/process/processes/anything/output",
 		"/api/process/processes/anything/kill",
 	}
 

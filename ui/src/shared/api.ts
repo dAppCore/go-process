@@ -31,6 +31,7 @@ export interface ProcessInfo {
   args: string[];
   dir: string;
   startedAt: string;
+  running: boolean;
   status: 'pending' | 'running' | 'exited' | 'failed' | 'killed';
   exitCode: number;
   duration: number;
@@ -124,6 +125,11 @@ export class ProcessApi {
   /** Get a single managed process by ID. */
   getProcess(id: string): Promise<ProcessInfo> {
     return this.request<ProcessInfo>(`/processes/${id}`);
+  }
+
+  /** Get the captured stdout/stderr for a managed process by ID. */
+  getProcessOutput(id: string): Promise<string> {
+    return this.request<string>(`/processes/${id}/output`);
   }
 
   /** Kill a managed process by ID. */

@@ -92,6 +92,7 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/daemons/:code/:daemon/health", p.healthCheck)
 	rg.GET("/processes", p.listProcesses)
 	rg.GET("/processes/:id", p.getProcess)
+	rg.GET("/processes/:id/output", p.getProcessOutput)
 	rg.POST("/processes/:id/kill", p.killProcess)
 	rg.POST("/pipelines/run", p.runPipeline)
 }
@@ -211,6 +212,16 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 					"duration":  map[string]any{"type": "integer"},
 					"pid":       map[string]any{"type": "integer"},
 				},
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/processes/:id/output",
+			Summary:     "Get process output",
+			Description: "Returns the captured stdout and stderr for a managed process.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "string",
 			},
 		},
 		{
@@ -380,6 +391,25 @@ func (p *ProcessProvider) getProcess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(proc.Info()))
+}
+
+func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	output, err := p.service.Output(c.Param("id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("not_found", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(output))
 }
 
 func (p *ProcessProvider) killProcess(c *gin.Context) {
