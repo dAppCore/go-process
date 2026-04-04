@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	core "dappco.re/go/core"
 	goapi "dappco.re/go/core/api"
 	process "dappco.re/go/core/process"
 	processapi "dappco.re/go/core/process/pkg/api"
@@ -23,17 +24,17 @@ func init() {
 }
 
 func TestProcessProvider_Name_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 	assert.Equal(t, "process", p.Name())
 }
 
 func TestProcessProvider_BasePath_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 	assert.Equal(t, "/api/process", p.BasePath())
 }
 
 func TestProcessProvider_Channels_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 	channels := p.Channels()
 	assert.Contains(t, channels, "process.daemon.started")
 	assert.Contains(t, channels, "process.daemon.stopped")
@@ -41,9 +42,9 @@ func TestProcessProvider_Channels_Good(t *testing.T) {
 }
 
 func TestProcessProvider_Describe_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 	descs := p.Describe()
-	assert.GreaterOrEqual(t, len(descs), 4)
+	assert.GreaterOrEqual(t, len(descs), 5)
 
 	// Verify all descriptions have required fields
 	for _, d := range descs {
@@ -52,13 +53,22 @@ func TestProcessProvider_Describe_Good(t *testing.T) {
 		assert.NotEmpty(t, d.Summary)
 		assert.NotEmpty(t, d.Tags)
 	}
+
+	foundPipelineRoute := false
+	for _, d := range descs {
+		if d.Method == "POST" && d.Path == "/pipelines/run" {
+			foundPipelineRoute = true
+			break
+		}
+	}
+	assert.True(t, foundPipelineRoute, "pipeline route should be described")
 }
 
 func TestProcessProvider_ListDaemons_Good(t *testing.T) {
 	// Use a temp directory so the registry has no daemons
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
-	p := processapi.NewProvider(registry, nil)
+	p := processapi.NewProvider(registry, nil, nil)
 
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
@@ -76,7 +86,7 @@ func TestProcessProvider_ListDaemons_Good(t *testing.T) {
 func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
-	p := processapi.NewProvider(registry, nil)
+	p := processapi.NewProvider(registry, nil, nil)
 
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
@@ -104,7 +114,7 @@ func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
 		Health: hostPort,
 	}))
 
-	p := processapi.NewProvider(registry, nil)
+	p := processapi.NewProvider(registry, nil, nil)
 
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
@@ -124,7 +134,7 @@ func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
 }
 
 func TestProcessProvider_RegistersAsRouteGroup_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 
 	engine, err := goapi.New()
 	require.NoError(t, err)
@@ -135,7 +145,7 @@ func TestProcessProvider_RegistersAsRouteGroup_Good(t *testing.T) {
 }
 
 func TestProcessProvider_Channels_RegisterAsStreamGroup_Good(t *testing.T) {
-	p := processapi.NewProvider(nil, nil)
+	p := processapi.NewProvider(nil, nil, nil)
 
 	engine, err := goapi.New()
 	require.NoError(t, err)
@@ -145,6 +155,51 @@ func TestProcessProvider_Channels_RegisterAsStreamGroup_Good(t *testing.T) {
 	// Engine.Channels() discovers StreamGroups
 	channels := engine.Channels()
 	assert.Contains(t, channels, "process.daemon.started")
+}
+
+func TestProcessProvider_RunPipeline_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	body := strings.NewReader(`{
+		"mode": "parallel",
+		"specs": [
+			{"name": "first", "command": "echo", "args": ["1"]},
+			{"name": "second", "command": "echo", "args": ["2"]}
+		]
+	}`)
+	req, err := http.NewRequest("POST", "/api/process/pipelines/run", body)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[process.RunAllResult]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.Equal(t, 2, resp.Data.Passed)
+	assert.Len(t, resp.Data.Results, 2)
+}
+
+func TestProcessProvider_RunPipeline_Unavailable(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("POST", "/api/process/pipelines/run", strings.NewReader(`{"mode":"all","specs":[]}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 // -- Test helpers -------------------------------------------------------------
@@ -159,4 +214,15 @@ func setupRouter(p *processapi.ProcessProvider) *gin.Engine {
 // newTestRegistry creates a process.Registry backed by a test directory.
 func newTestRegistry(dir string) *process.Registry {
 	return process.NewRegistry(dir)
+}
+
+func newTestProcessService(t *testing.T) *process.Service {
+	t.Helper()
+
+	c := core.New()
+	factory := process.NewService(process.Options{})
+	raw, err := factory(c)
+	require.NoError(t, err)
+
+	return raw.(*process.Service)
 }

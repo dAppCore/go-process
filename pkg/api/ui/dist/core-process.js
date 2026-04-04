@@ -1453,9 +1453,8 @@ let R = class extends $ {
     if (!this.result)
       return c`
         <div class="info-notice">
-          Pipeline runner endpoints are pending. Pass pipeline results via the
-          <code>result</code> property, or results will appear here once the REST
-          API for pipeline execution is available.
+          Pass pipeline results via the <code>result</code> property, or load
+          them from the REST API when your app executes a pipeline.
         </div>
         <div class="empty">No pipeline results.</div>
       `;

@@ -5,9 +5,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"dappco.re/go/core/api"
@@ -22,6 +24,8 @@ import (
 // and provider.Renderable.
 type ProcessProvider struct {
 	registry *process.Registry
+	service  *process.Service
+	runner   *process.Runner
 	hub      *ws.Hub
 }
 
@@ -33,17 +37,24 @@ var (
 	_ provider.Renderable  = (*ProcessProvider)(nil)
 )
 
-// NewProvider creates a process provider backed by the given daemon registry.
+// NewProvider creates a process provider backed by the given daemon registry
+// and optional process service for pipeline execution.
+//
 // The WS hub is used to emit daemon state change events. Pass nil for hub
 // if WebSocket streaming is not needed.
-func NewProvider(registry *process.Registry, hub *ws.Hub) *ProcessProvider {
+func NewProvider(registry *process.Registry, service *process.Service, hub *ws.Hub) *ProcessProvider {
 	if registry == nil {
 		registry = process.DefaultRegistry()
 	}
-	return &ProcessProvider{
+	p := &ProcessProvider{
 		registry: registry,
+		service:  service,
 		hub:      hub,
 	}
+	if service != nil {
+		p.runner = process.NewRunner(service)
+	}
+	return p
 }
 
 // Name implements api.RouteGroup.
@@ -79,6 +90,7 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/daemons/:code/:daemon", p.getDaemon)
 	rg.POST("/daemons/:code/:daemon/stop", p.stopDaemon)
 	rg.GET("/daemons/:code/:daemon/health", p.healthCheck)
+	rg.POST("/pipelines/run", p.runPipeline)
 }
 
 // Describe implements api.DescribableGroup.
@@ -148,6 +160,25 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 					"healthy": map[string]any{"type": "boolean"},
 					"address": map[string]any{"type": "string"},
 					"reason":  map[string]any{"type": "string"},
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/pipelines/run",
+			Summary:     "Run a process pipeline",
+			Description: "Executes a list of process specs using the configured runner in sequential, parallel, or dependency-aware mode.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"results": map[string]any{
+						"type": "array",
+					},
+					"duration": map[string]any{"type": "integer"},
+					"passed":   map[string]any{"type": "integer"},
+					"failed":   map[string]any{"type": "integer"},
+					"skipped":  map[string]any{"type": "integer"},
 				},
 			},
 		},
@@ -256,6 +287,57 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	c.JSON(statusCode, api.OK(result))
+}
+
+type pipelineRunRequest struct {
+	Mode  string            `json:"mode"`
+	Specs []process.RunSpec `json:"specs"`
+}
+
+func (p *ProcessProvider) runPipeline(c *gin.Context) {
+	if p.runner == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("runner_unavailable", "pipeline runner is not configured"))
+		return
+	}
+
+	var req pipelineRunRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "all"
+	}
+
+	ctx := c.Request.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var (
+		result *process.RunAllResult
+		err    error
+	)
+
+	switch mode {
+	case "all":
+		result, err = p.runner.RunAll(ctx, req.Specs)
+	case "sequential":
+		result, err = p.runner.RunSequential(ctx, req.Specs)
+	case "parallel":
+		result, err = p.runner.RunParallel(ctx, req.Specs)
+	default:
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_mode", "mode must be one of: all, sequential, parallel"))
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("pipeline_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(result))
 }
 
 // emitEvent sends a WS event if the hub is available.
