@@ -685,6 +685,29 @@ func TestService_OnStartup(t *testing.T) {
 		cancel()
 		<-proc.Done()
 	})
+
+	t.Run("registers process.get task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "echo", "snapshot")
+		require.NoError(t, err)
+		<-proc.Done()
+
+		result := c.PERFORM(TaskProcessGet{ID: proc.ID})
+		require.True(t, result.OK)
+
+		info, ok := result.Value.(Info)
+		require.True(t, ok)
+		assert.Equal(t, proc.ID, info.ID)
+		assert.Equal(t, proc.Command, info.Command)
+		assert.Equal(t, proc.Args, info.Args)
+		assert.Equal(t, proc.Status, info.Status)
+		assert.Equal(t, proc.ExitCode, info.ExitCode)
+		assert.Equal(t, proc.Info().PID, info.PID)
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

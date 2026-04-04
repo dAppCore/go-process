@@ -39,6 +39,16 @@ type TaskProcessKill struct {
 	PID int
 }
 
+// TaskProcessGet requests a snapshot of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessGet{ID: "proc-1"})
+type TaskProcessGet struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
 // If RunningOnly is true, only active processes are returned.
 //
