@@ -206,6 +206,7 @@ export class ProcessPanel extends LitElement {
         return html`
           <core-process-list
             api-url=${this.apiUrl}
+            ws-url=${this.wsUrl}
             @process-selected=${this.handleProcessSelected}
           ></core-process-list>
           ${this.selectedProcessId
