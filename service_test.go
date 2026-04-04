@@ -337,7 +337,8 @@ func TestService_Actions(t *testing.T) {
 		defer mu.Unlock()
 		assert.Len(t, exited, 1)
 		assert.Equal(t, proc.ID, exited[0].ID)
-		assert.Nil(t, exited[0].Error)
+		require.Error(t, exited[0].Error)
+		assert.Contains(t, exited[0].Error.Error(), "process was killed")
 		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
@@ -370,7 +371,42 @@ func TestService_Actions(t *testing.T) {
 		defer mu.Unlock()
 		require.Len(t, exited, 1)
 		assert.Equal(t, -1, exited[0].ExitCode)
-		assert.Nil(t, exited[0].Error)
+		require.Error(t, exited[0].Error)
+		assert.Contains(t, exited[0].Error.Error(), "failed to start process")
+	})
+
+	t.Run("broadcasts exited error on non-zero exit", func(t *testing.T) {
+		c := framework.New()
+
+		factory := NewService(Options{})
+		raw, err := factory(c)
+		require.NoError(t, err)
+		svc := raw.(*Service)
+
+		var exited []ActionProcessExited
+		var mu sync.Mutex
+
+		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
+			mu.Lock()
+			defer mu.Unlock()
+			if m, ok := msg.(ActionProcessExited); ok {
+				exited = append(exited, m)
+			}
+			return framework.Result{OK: true}
+		})
+
+		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		require.NoError(t, err)
+
+		<-proc.Done()
+		time.Sleep(10 * time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, exited, 1)
+		assert.Equal(t, 7, exited[0].ExitCode)
+		require.Error(t, exited[0].Error)
+		assert.Contains(t, exited[0].Error.Error(), "process exited with code 7")
 	})
 }
 
