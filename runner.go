@@ -16,6 +16,9 @@ type Runner struct {
 // ErrRunnerNoService is returned when a runner was created without a service.
 var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
 
+// ErrRunnerInvalidSpecName is returned when a RunSpec name is empty or duplicated.
+var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
+
 // NewRunner creates a runner for the given service.
 func NewRunner(svc *Service) *Runner {
 	return &Runner{service: svc}
@@ -72,6 +75,9 @@ func (r RunAllResult) Success() bool {
 // RunAll executes specs respecting dependencies, parallelising where possible.
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
+	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
 	start := time.Now()
@@ -239,6 +245,9 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 	if err := r.ensureService(); err != nil {
 		return nil, err
 	}
+	if err := validateSpecs(specs); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
 
@@ -282,6 +291,9 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	if err := r.ensureService(); err != nil {
 		return nil, err
 	}
+	if err := validateSpecs(specs); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	results := make([]RunResult, len(specs))
 
@@ -311,4 +323,18 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	}
 
 	return aggResult, nil
+}
+
+func validateSpecs(specs []RunSpec) error {
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		if spec.Name == "" {
+			return coreerr.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName)
+		}
+		if _, ok := seen[spec.Name]; ok {
+			return coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName)
+		}
+		seen[spec.Name] = struct{}{}
+	}
+	return nil
 }

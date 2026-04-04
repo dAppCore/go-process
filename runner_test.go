@@ -243,3 +243,33 @@ func TestRunner_NilService(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrRunnerNoService)
 }
+
+func TestRunner_InvalidSpecNames(t *testing.T) {
+	runner := newTestRunner(t)
+
+	t.Run("rejects empty names", func(t *testing.T) {
+		_, err := runner.RunSequential(context.Background(), []RunSpec{
+			{Name: "", Command: "echo", Args: []string{"a"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
+
+	t.Run("rejects duplicate names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "same", Command: "echo", Args: []string{"a"}},
+			{Name: "same", Command: "echo", Args: []string{"b"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
+
+	t.Run("rejects duplicate names in parallel mode", func(t *testing.T) {
+		_, err := runner.RunParallel(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}},
+			{Name: "one", Command: "echo", Args: []string{"b"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
+}
