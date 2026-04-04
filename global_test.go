@@ -30,6 +30,9 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	_, err = Get("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
+	_, err = Output("proc-1")
+	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+
 	assert.Nil(t, List())
 	assert.Nil(t, Running())
 
@@ -240,6 +243,25 @@ func TestGlobal_RunWithOptions(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Contains(t, output, "run options")
+}
+
+func TestGlobal_Output(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	old := defaultService.Swap(svc)
+	defer func() {
+		if old != nil {
+			defaultService.Store(old)
+		}
+	}()
+
+	proc, err := Start(context.Background(), "echo", "global-output")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	output, err := Output(proc.ID)
+	require.NoError(t, err)
+	assert.Contains(t, output, "global-output")
 }
 
 func TestGlobal_Running(t *testing.T) {

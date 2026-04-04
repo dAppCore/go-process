@@ -100,6 +100,19 @@ func Get(id string) (*Process, error) {
 	return svc.Get(id)
 }
 
+// Output returns the captured output for a process from the default service.
+//
+// Example:
+//
+//	out, err := process.Output("proc-1")
+func Output(id string) (string, error) {
+	svc := Default()
+	if svc == nil {
+		return "", ErrServiceNotInitialized
+	}
+	return svc.Output(id)
+}
+
 // List returns all processes from the default service.
 //
 // Example:
