@@ -320,6 +320,60 @@ func TestProcessProvider_GetProcessOutput_Good(t *testing.T) {
 	assert.Contains(t, resp.Data, "output-check")
 }
 
+func TestProcessProvider_WaitProcess_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "echo", "wait-check")
+	require.NoError(t, err)
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/wait", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[process.Info]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, proc.ID, resp.Data.ID)
+	assert.Equal(t, process.StatusExited, resp.Data.Status)
+	assert.Equal(t, 0, resp.Data.ExitCode)
+}
+
+func TestProcessProvider_WaitProcess_NonZeroExit_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+	require.NoError(t, err)
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/wait", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var resp goapi.Response[any]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.False(t, resp.Success)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, "wait_failed", resp.Error.Code)
+	assert.Contains(t, resp.Error.Message, "process exited with code 7")
+
+	details, ok := resp.Error.Details.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "exited", details["status"])
+	assert.Equal(t, float64(7), details["exitCode"])
+	assert.Equal(t, proc.ID, details["id"])
+}
+
 func TestProcessProvider_InputAndCloseStdin_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "cat")
@@ -484,6 +538,7 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 		"/api/process/processes",
 		"/api/process/processes/anything",
 		"/api/process/processes/anything/output",
+		"/api/process/processes/anything/wait",
 		"/api/process/processes/anything/input",
 		"/api/process/processes/anything/close-stdin",
 		"/api/process/processes/anything/kill",
@@ -494,6 +549,7 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 		method := "GET"
 		switch {
 		case strings.HasSuffix(path, "/kill"),
+			strings.HasSuffix(path, "/wait"),
 			strings.HasSuffix(path, "/input"),
 			strings.HasSuffix(path, "/close-stdin"):
 			method = "POST"

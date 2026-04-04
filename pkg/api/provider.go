@@ -98,6 +98,7 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/processes", p.listProcesses)
 	rg.GET("/processes/:id", p.getProcess)
 	rg.GET("/processes/:id/output", p.getProcessOutput)
+	rg.POST("/processes/:id/wait", p.waitProcess)
 	rg.POST("/processes/:id/input", p.inputProcess)
 	rg.POST("/processes/:id/close-stdin", p.closeProcessStdin)
 	rg.POST("/processes/:id/kill", p.killProcess)
@@ -229,6 +230,28 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "string",
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/processes/:id/wait",
+			Summary:     "Wait for a managed process",
+			Description: "Blocks until the process exits and returns the final process snapshot. Non-zero exits include the snapshot in the error details payload.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":        map[string]any{"type": "string"},
+					"command":   map[string]any{"type": "string"},
+					"args":      map[string]any{"type": "array"},
+					"dir":       map[string]any{"type": "string"},
+					"startedAt": map[string]any{"type": "string", "format": "date-time"},
+					"running":   map[string]any{"type": "boolean"},
+					"status":    map[string]any{"type": "string"},
+					"exitCode":  map[string]any{"type": "integer"},
+					"duration":  map[string]any{"type": "integer"},
+					"pid":       map[string]any{"type": "integer"},
+				},
 			},
 		},
 		{
@@ -454,6 +477,28 @@ func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(output))
+}
+
+func (p *ProcessProvider) waitProcess(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	info, err := p.service.Wait(c.Param("id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case err == process.ErrProcessNotFound:
+			status = http.StatusNotFound
+		case info.Status == process.StatusExited || info.Status == process.StatusKilled:
+			status = http.StatusConflict
+		}
+		c.JSON(status, api.FailWithDetails("wait_failed", err.Error(), info))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(info))
 }
 
 type processInputRequest struct {
