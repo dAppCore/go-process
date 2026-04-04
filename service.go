@@ -417,6 +417,17 @@ func (s *Service) KillPID(pid int) error {
 		return coreerr.E("Service.KillPID", "pid must be positive", nil)
 	}
 
+	if proc := s.findByPID(pid); proc != nil {
+		sent, err := proc.kill()
+		if err != nil {
+			return err
+		}
+		if sent {
+			s.emitKilledAction(proc, "SIGKILL")
+		}
+		return nil
+	}
+
 	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
 	}
@@ -473,6 +484,22 @@ func (s *Service) Output(id string) (string, error) {
 		return "", err
 	}
 	return proc.Output(), nil
+}
+
+// findByPID locates a managed process by operating-system PID.
+func (s *Service) findByPID(pid int) *Process {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, proc := range s.processes {
+		proc.mu.RLock()
+		matches := proc.cmd != nil && proc.cmd.Process != nil && proc.cmd.Process.Pid == pid
+		proc.mu.RUnlock()
+		if matches {
+			return proc
+		}
+	}
+	return nil
 }
 
 // Run executes a command and waits for completion.

@@ -585,6 +585,14 @@ func TestService_OnStartup(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, proc.IsRunning())
 
+		var killed []ActionProcessKilled
+		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
+			if m, ok := msg.(ActionProcessKilled); ok {
+				killed = append(killed, m)
+			}
+			return framework.Result{OK: true}
+		})
+
 		result := c.PERFORM(TaskProcessKill{PID: proc.Info().PID})
 		require.True(t, result.OK)
 
@@ -595,6 +603,9 @@ func TestService_OnStartup(t *testing.T) {
 		}
 
 		assert.Equal(t, StatusKilled, proc.Status)
+		require.Len(t, killed, 1)
+		assert.Equal(t, proc.ID, killed[0].ID)
+		assert.NotEmpty(t, killed[0].Signal)
 	})
 
 	t.Run("registers process.list task", func(t *testing.T) {
