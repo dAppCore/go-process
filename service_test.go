@@ -957,6 +957,43 @@ func TestService_OnStartup(t *testing.T) {
 		assert.Equal(t, proc.Info().PID, info.PID)
 	})
 
+	t.Run("registers process.remove task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "echo", "remove-through-core")
+		require.NoError(t, err)
+		<-proc.Done()
+
+		result := c.PERFORM(TaskProcessRemove{ID: proc.ID})
+		require.True(t, result.OK)
+
+		_, err = svc.Get(proc.ID)
+		assert.ErrorIs(t, err, ErrProcessNotFound)
+	})
+
+	t.Run("registers process.clear task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		first, err := svc.Start(context.Background(), "echo", "clear-through-core-1")
+		require.NoError(t, err)
+		second, err := svc.Start(context.Background(), "echo", "clear-through-core-2")
+		require.NoError(t, err)
+		<-first.Done()
+		<-second.Done()
+
+		require.Len(t, svc.List(), 2)
+
+		result := c.PERFORM(TaskProcessClear{})
+		require.True(t, result.OK)
+		assert.Len(t, svc.List(), 0)
+	})
+
 	t.Run("registers process.output task", func(t *testing.T) {
 		svc, c := newTestService(t)
 

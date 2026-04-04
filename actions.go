@@ -142,6 +142,23 @@ type TaskProcessList struct {
 	RunningOnly bool
 }
 
+// TaskProcessRemove removes a completed managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessRemove{ID: "proc-1"})
+type TaskProcessRemove struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessClear removes all completed managed processes through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessClear{})
+type TaskProcessClear struct{}
+
 // ActionProcessStarted is broadcast when a process begins execution.
 //
 // Example:

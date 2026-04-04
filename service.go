@@ -783,6 +783,19 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 		}
 
 		return core.Result{Value: infos, OK: true}
+	case TaskProcessRemove:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process remove requires an id", nil), OK: false}
+		}
+
+		if err := s.Remove(m.ID); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{OK: true}
+	case TaskProcessClear:
+		s.Clear()
+		return core.Result{OK: true}
 	default:
 		return core.Result{}
 	}
