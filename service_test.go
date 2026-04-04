@@ -708,6 +708,24 @@ func TestService_OnStartup(t *testing.T) {
 		assert.Equal(t, proc.ExitCode, info.ExitCode)
 		assert.Equal(t, proc.Info().PID, info.PID)
 	})
+
+	t.Run("registers process.output task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "echo", "snapshot-output")
+		require.NoError(t, err)
+		<-proc.Done()
+
+		result := c.PERFORM(TaskProcessOutput{ID: proc.ID})
+		require.True(t, result.OK)
+
+		output, ok := result.Value.(string)
+		require.True(t, ok)
+		assert.Contains(t, output, "snapshot-output")
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

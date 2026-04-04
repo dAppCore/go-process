@@ -49,6 +49,16 @@ type TaskProcessGet struct {
 	ID string
 }
 
+// TaskProcessOutput requests the captured output of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessOutput{ID: "proc-1"})
+type TaskProcessOutput struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
 // If RunningOnly is true, only active processes are returned.
 //
