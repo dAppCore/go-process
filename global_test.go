@@ -95,6 +95,19 @@ func TestGlobal_SetDefault(t *testing.T) {
 	})
 }
 
+func TestGlobal_Register(t *testing.T) {
+	c := framework.New()
+
+	result := Register(c)
+	require.True(t, result.OK)
+
+	svc, ok := result.Value.(*Service)
+	require.True(t, ok)
+	require.NotNil(t, svc)
+	assert.NotNil(t, svc.ServiceRuntime)
+	assert.Equal(t, DefaultBufferSize, svc.bufSize)
+}
+
 func TestGlobal_ConcurrentDefault(t *testing.T) {
 	old := defaultService.Swap(nil)
 	defer func() {

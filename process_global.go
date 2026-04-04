@@ -60,6 +60,20 @@ func Init(c *core.Core) error {
 	return defaultErr
 }
 
+// Register creates a process service for Core registration.
+//
+// Example:
+//
+//	result := process.Register(coreInstance)
+func Register(c *core.Core) core.Result {
+	factory := NewService(Options{})
+	svc, err := factory(c)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+	return core.Result{Value: svc, OK: true}
+}
+
 // --- Global convenience functions ---
 
 // Start spawns a new process using the default service.
