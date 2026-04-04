@@ -727,7 +727,13 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 
 		info, err := s.Wait(m.ID)
 		if err != nil {
-			return core.Result{Value: err, OK: false}
+			return core.Result{
+				Value: &TaskProcessWaitError{
+					Info: info,
+					Err:  err,
+				},
+				OK: true,
+			}
 		}
 
 		return core.Result{Value: info, OK: true}

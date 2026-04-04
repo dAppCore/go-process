@@ -91,6 +91,8 @@ type TaskProcessGet struct {
 }
 
 // TaskProcessWait waits for a managed process to finish through Core.PERFORM.
+// Successful exits return an Info snapshot. Unsuccessful exits return a
+// TaskProcessWaitError value that preserves the final snapshot.
 //
 // Example:
 //
@@ -98,6 +100,30 @@ type TaskProcessGet struct {
 type TaskProcessWait struct {
 	// ID identifies a managed process started by this service.
 	ID string
+}
+
+// TaskProcessWaitError is returned as the task value when TaskProcessWait
+// completes with a non-successful process outcome. It preserves the final
+// process snapshot while still behaving like the underlying wait error.
+type TaskProcessWaitError struct {
+	Info Info
+	Err  error
+}
+
+// Error implements error.
+func (e *TaskProcessWaitError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+// Unwrap returns the underlying wait error.
+func (e *TaskProcessWaitError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 // TaskProcessOutput requests the captured output of a managed process through Core.PERFORM.

@@ -946,6 +946,28 @@ func TestService_OnStartup(t *testing.T) {
 		assert.Equal(t, 0, info.ExitCode)
 	})
 
+	t.Run("preserves final snapshot when process.wait task fails", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessWait{ID: proc.ID})
+		require.True(t, result.OK)
+
+		errValue, ok := result.Value.(error)
+		require.True(t, ok)
+		var waitErr *TaskProcessWaitError
+		require.ErrorAs(t, errValue, &waitErr)
+		assert.Contains(t, waitErr.Error(), "process exited with code 7")
+		assert.Equal(t, proc.ID, waitErr.Info.ID)
+		assert.Equal(t, StatusExited, waitErr.Info.Status)
+		assert.Equal(t, 7, waitErr.Info.ExitCode)
+	})
+
 	t.Run("registers process.list task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
