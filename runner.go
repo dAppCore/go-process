@@ -80,13 +80,13 @@ type RunAllResult struct {
 	Skipped  int
 }
 
-// Success returns true if all non-skipped specs passed.
+// Success returns true if every spec completed successfully.
 //
 // Example:
 //
 //	if result.Success() { ... }
 func (r RunAllResult) Success() bool {
-	return r.Failed == 0
+	return r.Failed == 0 && r.Skipped == 0
 }
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
@@ -144,10 +144,10 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 			// Keep the output aligned with the input order.
 			for name := range remaining {
 				results[indexMap[name]] = RunResult{
-					Name:     name,
-					Spec:     remaining[name],
-					ExitCode: 1,
-					Error:    coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
+					Name:    name,
+					Spec:    remaining[name],
+					Skipped: true,
+					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				}
 			}
 			break
