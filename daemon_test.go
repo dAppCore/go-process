@@ -144,6 +144,10 @@ func TestDaemon_StopIdempotent(t *testing.T) {
 func TestDaemon_AutoRegisters(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(filepath.Join(dir, "daemons"))
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	exe, err := os.Executable()
+	require.NoError(t, err)
 
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
@@ -154,7 +158,7 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 		},
 	})
 
-	err := d.Start()
+	err = d.Start()
 	require.NoError(t, err)
 
 	// Should be registered
@@ -162,6 +166,8 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, os.Getpid(), entry.PID)
 	assert.NotEmpty(t, entry.Health)
+	assert.Equal(t, wd, entry.Project)
+	assert.Equal(t, exe, entry.Binary)
 
 	// Stop should unregister
 	err = d.Stop()

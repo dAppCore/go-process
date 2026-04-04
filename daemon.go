@@ -39,7 +39,7 @@ type DaemonOptions struct {
 	Registry *Registry
 
 	// RegistryEntry provides the code and daemon name for registration.
-	// PID, Health, and Started are filled automatically.
+	// PID, Health, Project, Binary, and Started are filled automatically.
 	RegistryEntry DaemonEntry
 }
 
@@ -112,6 +112,16 @@ func (d *Daemon) Start() error {
 		entry.PID = os.Getpid()
 		if d.health != nil {
 			entry.Health = d.health.Addr()
+		}
+		if entry.Project == "" {
+			if wd, err := os.Getwd(); err == nil {
+				entry.Project = wd
+			}
+		}
+		if entry.Binary == "" {
+			if binary, err := os.Executable(); err == nil {
+				entry.Binary = binary
+			}
 		}
 		if err := d.opts.Registry.Register(entry); err != nil {
 			if d.health != nil {
