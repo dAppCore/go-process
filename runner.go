@@ -147,7 +147,6 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 					Name:     name,
 					Spec:     remaining[name],
 					ExitCode: 1,
-					Skipped:  true,
 					Error:    coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				}
 			}
