@@ -28,6 +28,18 @@ func TestProcess_Info(t *testing.T) {
 	assert.Greater(t, info.Duration, time.Duration(0))
 }
 
+func TestProcess_Info_Pending(t *testing.T) {
+	proc := &Process{
+		ID:     "pending",
+		Status: StatusPending,
+		done:   make(chan struct{}),
+	}
+
+	info := proc.Info()
+	assert.Equal(t, StatusPending, info.Status)
+	assert.False(t, info.Running)
+}
+
 func TestProcess_InfoSnapshot(t *testing.T) {
 	svc, _ := newTestService(t)
 
