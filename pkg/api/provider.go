@@ -293,7 +293,7 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "POST",
 			Path:        "/processes/:id/kill",
 			Summary:     "Kill a managed process",
-			Description: "Sends SIGKILL to the managed process identified by ID.",
+			Description: "Sends SIGKILL to the managed process identified by ID, or to a raw OS PID when the path value is numeric.",
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "object",
@@ -306,7 +306,7 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "POST",
 			Path:        "/processes/:id/signal",
 			Summary:     "Signal a managed process",
-			Description: "Sends a Unix signal to the managed process identified by ID.",
+			Description: "Sends a Unix signal to the managed process identified by ID, or to a raw OS PID when the path value is numeric.",
 			Tags:        []string{"process"},
 			RequestBody: map[string]any{
 				"type": "object",
@@ -578,7 +578,16 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 		return
 	}
 
-	if err := p.service.Kill(c.Param("id")); err != nil {
+	id := c.Param("id")
+	if err := p.service.Kill(id); err != nil {
+		if pid, ok := pidFromString(id); ok {
+			if pidErr := p.service.KillPID(pid); pidErr == nil {
+				c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
+				return
+			} else {
+				err = pidErr
+			}
+		}
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
@@ -612,7 +621,16 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 		return
 	}
 
-	if err := p.service.Signal(c.Param("id"), sig); err != nil {
+	id := c.Param("id")
+	if err := p.service.Signal(id, sig); err != nil {
+		if pid, ok := pidFromString(id); ok {
+			if pidErr := p.service.SignalPID(pid, sig); pidErr == nil {
+				c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
+				return
+			} else {
+				err = pidErr
+			}
+		}
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
 			status = http.StatusNotFound
@@ -721,6 +739,14 @@ func PIDAlive(pid int) bool {
 func intParam(c *gin.Context, name string) int {
 	v, _ := strconv.Atoi(c.Param(name))
 	return v
+}
+
+func pidFromString(value string) (int, bool) {
+	pid, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, true
 }
 
 func parseSignal(value string) (syscall.Signal, error) {

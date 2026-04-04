@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -474,6 +476,50 @@ func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	assert.Equal(t, process.StatusKilled, proc.Status)
 }
 
+func TestProcessProvider_KillProcess_ByPID_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	cmd := exec.Command("sleep", "60")
+	require.NoError(t, cmd.Start())
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-waitCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(cmd.Process.Pid)+"/kill", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[map[string]any]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, true, resp.Data["killed"])
+
+	select {
+	case err := <-waitCh:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("unmanaged process should have been killed by PID")
+	}
+}
+
 func TestProcessProvider_SignalProcess_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
@@ -502,6 +548,51 @@ func TestProcessProvider_SignalProcess_Good(t *testing.T) {
 		t.Fatal("process should have been signalled")
 	}
 	assert.Equal(t, process.StatusKilled, proc.Status)
+}
+
+func TestProcessProvider_SignalProcess_ByPID_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	cmd := exec.Command("sleep", "60")
+	require.NoError(t, cmd.Start())
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-waitCh:
+		case <-time.After(2 * time.Second):
+		}
+	})
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(cmd.Process.Pid)+"/signal", strings.NewReader(`{"signal":"SIGTERM"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[map[string]any]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	assert.Equal(t, true, resp.Data["signalled"])
+
+	select {
+	case err := <-waitCh:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("unmanaged process should have been signalled by PID")
+	}
 }
 
 func TestProcessProvider_SignalProcess_InvalidSignal_Bad(t *testing.T) {
