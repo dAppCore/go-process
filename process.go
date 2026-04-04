@@ -56,6 +56,11 @@ func (p *Process) Info() Info {
 		pid = p.cmd.Process.Pid
 	}
 
+	duration := p.Duration
+	if p.Status == StatusRunning {
+		duration = time.Since(p.StartedAt)
+	}
+
 	return Info{
 		ID:        p.ID,
 		Command:   p.Command,
@@ -65,7 +70,7 @@ func (p *Process) Info() Info {
 		Running:   p.Status == StatusRunning,
 		Status:    p.Status,
 		ExitCode:  p.ExitCode,
-		Duration:  p.Duration,
+		Duration:  duration,
 		PID:       pid,
 	}
 }

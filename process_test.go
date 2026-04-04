@@ -40,6 +40,25 @@ func TestProcess_Info_Pending(t *testing.T) {
 	assert.False(t, info.Running)
 }
 
+func TestProcess_Info_RunningDuration(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	proc, err := svc.Start(ctx, "sleep", "10")
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	info := proc.Info()
+	assert.True(t, info.Running)
+	assert.Equal(t, StatusRunning, info.Status)
+	assert.Greater(t, info.Duration, time.Duration(0))
+
+	cancel()
+	<-proc.Done()
+}
+
 func TestProcess_InfoSnapshot(t *testing.T) {
 	svc, _ := newTestService(t)
 
