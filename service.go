@@ -555,6 +555,22 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 // handleTask dispatches Core.PERFORM messages for the process service.
 func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 	switch m := task.(type) {
+	case TaskProcessStart:
+		proc, err := s.StartWithOptions(c.Context(), RunOptions{
+			Command:        m.Command,
+			Args:           m.Args,
+			Dir:            m.Dir,
+			Env:            m.Env,
+			DisableCapture: m.DisableCapture,
+			Detach:         m.Detach,
+			Timeout:        m.Timeout,
+			GracePeriod:    m.GracePeriod,
+			KillGroup:      m.KillGroup,
+		})
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+		return core.Result{Value: proc.Info(), OK: true}
 	case TaskProcessRun:
 		output, err := s.RunWithOptions(c.Context(), RunOptions{
 			Command:        m.Command,

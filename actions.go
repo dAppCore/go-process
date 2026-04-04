@@ -4,6 +4,29 @@ import "time"
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
 
+// TaskProcessStart requests asynchronous process execution through Core.PERFORM.
+// The handler returns a snapshot of the started process immediately.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessStart{Command: "sleep", Args: []string{"10"}})
+type TaskProcessStart struct {
+	Command string
+	Args    []string
+	Dir     string
+	Env     []string
+	// DisableCapture skips buffering process output before returning it.
+	DisableCapture bool
+	// Detach runs the command in its own process group.
+	Detach bool
+	// Timeout bounds the execution duration.
+	Timeout time.Duration
+	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
+	GracePeriod time.Duration
+	// KillGroup terminates the entire process group instead of only the leader.
+	KillGroup bool
+}
+
 // TaskProcessRun requests synchronous command execution through Core.PERFORM.
 // The handler returns the combined command output on success.
 //

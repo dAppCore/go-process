@@ -596,6 +596,33 @@ func TestService_OnShutdown(t *testing.T) {
 }
 
 func TestService_OnStartup(t *testing.T) {
+	t.Run("registers process.start task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessStart{
+			Command: "sleep",
+			Args:    []string{"1"},
+		})
+
+		require.True(t, result.OK)
+
+		info, ok := result.Value.(Info)
+		require.True(t, ok)
+		assert.NotEmpty(t, info.ID)
+		assert.Equal(t, StatusRunning, info.Status)
+		assert.True(t, info.Running)
+
+		proc, err := svc.Get(info.ID)
+		require.NoError(t, err)
+		assert.True(t, proc.IsRunning())
+
+		<-proc.Done()
+		assert.Equal(t, StatusExited, proc.Status)
+	})
+
 	t.Run("registers process.run task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
