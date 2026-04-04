@@ -23,6 +23,14 @@ type TaskProcessRun struct {
 	KillGroup bool
 }
 
+// TaskProcessKill requests termination of a managed process by ID or PID.
+type TaskProcessKill struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// PID targets a process directly when ID is not available.
+	PID int
+}
+
 // ActionProcessStarted is broadcast when a process begins execution.
 type ActionProcessStarted struct {
 	ID      string

@@ -338,6 +338,19 @@ func (s *Service) Kill(id string) error {
 	return proc.Kill()
 }
 
+// KillPID terminates a process by operating-system PID.
+func (s *Service) KillPID(pid int) error {
+	if pid <= 0 {
+		return coreerr.E("Service.KillPID", "pid must be positive", nil)
+	}
+
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
 // Remove removes a completed process from the list.
 func (s *Service) Remove(id string) error {
 	s.mu.Lock()
@@ -435,6 +448,21 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 			return core.Result{Value: err, OK: false}
 		}
 		return core.Result{Value: output, OK: true}
+	case TaskProcessKill:
+		switch {
+		case m.ID != "":
+			if err := s.Kill(m.ID); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		case m.PID > 0:
+			if err := s.KillPID(m.PID); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		default:
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil), OK: false}
+		}
 	default:
 		return core.Result{}
 	}

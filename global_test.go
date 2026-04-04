@@ -36,6 +36,9 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	err = Kill("proc-1")
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 
+	err = KillPID(1234)
+	assert.ErrorIs(t, err, ErrServiceNotInitialized)
+
 	_, err = StartWithOptions(context.Background(), RunOptions{Command: "echo"})
 	assert.ErrorIs(t, err, ErrServiceNotInitialized)
 

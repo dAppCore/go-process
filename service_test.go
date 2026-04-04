@@ -525,6 +525,28 @@ func TestService_OnStartup(t *testing.T) {
 		require.False(t, result.OK)
 		assert.Nil(t, result.Value)
 	})
+
+	t.Run("registers process.kill task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		proc, err := svc.Start(context.Background(), "sleep", "60")
+		require.NoError(t, err)
+		require.True(t, proc.IsRunning())
+
+		result := c.PERFORM(TaskProcessKill{PID: proc.Info().PID})
+		require.True(t, result.OK)
+
+		select {
+		case <-proc.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatal("process should have been killed by pid")
+		}
+
+		assert.Equal(t, StatusKilled, proc.Status)
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {

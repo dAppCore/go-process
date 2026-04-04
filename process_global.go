@@ -94,6 +94,15 @@ func Kill(id string) error {
 	return svc.Kill(id)
 }
 
+// KillPID terminates a process by operating-system PID using the default service.
+func KillPID(pid int) error {
+	svc := Default()
+	if svc == nil {
+		return ErrServiceNotInitialized
+	}
+	return svc.KillPID(pid)
+}
+
 // StartWithOptions spawns a process with full configuration using the default service.
 func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	svc := Default()
