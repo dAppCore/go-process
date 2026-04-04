@@ -530,6 +530,18 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 		default:
 			return core.Result{Value: coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil), OK: false}
 		}
+	case TaskProcessList:
+		procs := s.List()
+		if m.RunningOnly {
+			procs = s.Running()
+		}
+
+		infos := make([]Info, 0, len(procs))
+		for _, proc := range procs {
+			infos = append(infos, proc.Info())
+		}
+
+		return core.Result{Value: infos, OK: true}
 	default:
 		return core.Result{}
 	}

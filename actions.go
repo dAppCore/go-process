@@ -39,6 +39,16 @@ type TaskProcessKill struct {
 	PID int
 }
 
+// TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
+// If RunningOnly is true, only active processes are returned.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessList{RunningOnly: true})
+type TaskProcessList struct {
+	RunningOnly bool
+}
+
 // ActionProcessStarted is broadcast when a process begins execution.
 //
 // Example:

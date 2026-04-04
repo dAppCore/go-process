@@ -549,6 +549,31 @@ func TestService_OnStartup(t *testing.T) {
 
 		assert.Equal(t, StatusKilled, proc.Status)
 	})
+
+	t.Run("registers process.list task", func(t *testing.T) {
+		svc, c := newTestService(t)
+
+		err := svc.OnStartup(context.Background())
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		proc, err := svc.Start(ctx, "sleep", "60")
+		require.NoError(t, err)
+
+		result := c.PERFORM(TaskProcessList{RunningOnly: true})
+		require.True(t, result.OK)
+
+		infos, ok := result.Value.([]Info)
+		require.True(t, ok)
+		require.Len(t, infos, 1)
+		assert.Equal(t, proc.ID, infos[0].ID)
+		assert.True(t, infos[0].Running)
+
+		cancel()
+		<-proc.Done()
+	})
 }
 
 func TestService_RunWithOptions(t *testing.T) {
