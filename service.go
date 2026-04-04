@@ -282,20 +282,15 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 
 		close(proc.done)
 
+		if status == StatusKilled {
+			s.emitKilledAction(proc, signalName)
+		}
+
 		exitAction := ActionProcessExited{
 			ID:       id,
 			ExitCode: exitCode,
 			Duration: duration,
 			Error:    exitErr,
-		}
-		if status == StatusKilled {
-			exitAction.Error = coreerr.E("Service.StartWithOptions", "process was killed", nil)
-			if c := s.coreApp(); c != nil {
-				_ = c.ACTION(ActionProcessKilled{
-					ID:     id,
-					Signal: signalName,
-				})
-			}
 		}
 
 		if c := s.coreApp(); c != nil {
@@ -394,7 +389,14 @@ func (s *Service) Kill(id string) error {
 		return err
 	}
 
-	return proc.Kill()
+	sent, err := proc.kill()
+	if err != nil {
+		return err
+	}
+	if sent {
+		s.emitKilledAction(proc, "SIGKILL")
+	}
+	return nil
 }
 
 // KillPID terminates a process by operating-system PID.
@@ -582,6 +584,34 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 	}
 
 	return StatusFailed, 0, err, ""
+}
+
+// emitKilledAction broadcasts a kill event once for the given process.
+func (s *Service) emitKilledAction(proc *Process, signalName string) {
+	if proc == nil {
+		return
+	}
+
+	proc.mu.Lock()
+	if proc.killNotified {
+		proc.mu.Unlock()
+		return
+	}
+	proc.killNotified = true
+	if signalName != "" {
+		proc.killSignal = signalName
+	} else if proc.killSignal == "" {
+		proc.killSignal = "SIGKILL"
+	}
+	signal := proc.killSignal
+	proc.mu.Unlock()
+
+	if c := s.coreApp(); c != nil {
+		_ = c.ACTION(ActionProcessKilled{
+			ID:     proc.ID,
+			Signal: signal,
+		})
+	}
 }
 
 // sortProcesses orders processes by start time, then ID for stable output.

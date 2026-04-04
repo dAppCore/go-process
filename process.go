@@ -29,15 +29,17 @@ type Process struct {
 	ExitCode  int
 	Duration  time.Duration
 
-	cmd         *exec.Cmd
-	ctx         context.Context
-	cancel      context.CancelFunc
-	output      *RingBuffer
-	stdin       io.WriteCloser
-	done        chan struct{}
-	mu          sync.RWMutex
-	gracePeriod time.Duration
-	killGroup   bool
+	cmd          *exec.Cmd
+	ctx          context.Context
+	cancel       context.CancelFunc
+	output       *RingBuffer
+	stdin        io.WriteCloser
+	done         chan struct{}
+	mu           sync.RWMutex
+	gracePeriod  time.Duration
+	killGroup    bool
+	killNotified bool
+	killSignal   string
 }
 
 // Info returns a snapshot of process state.
@@ -140,22 +142,28 @@ func (p *Process) Done() <-chan struct{} {
 //
 //	_ = proc.Kill()
 func (p *Process) Kill() error {
+	_, err := p.kill()
+	return err
+}
+
+// kill terminates the process and reports whether a signal was actually sent.
+func (p *Process) kill() (bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.Status != StatusRunning {
-		return nil
+		return false, nil
 	}
 
 	if p.cmd == nil || p.cmd.Process == nil {
-		return nil
+		return false, nil
 	}
 
 	if p.killGroup {
 		// Kill entire process group (negative PID)
-		return syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		return true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 	}
-	return p.cmd.Process.Kill()
+	return true, p.cmd.Process.Kill()
 }
 
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.

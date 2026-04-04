@@ -294,6 +294,14 @@ func TestService_Actions(t *testing.T) {
 		err = svc.Kill(proc.ID)
 		require.NoError(t, err)
 
+		time.Sleep(10 * time.Millisecond)
+
+		mu.Lock()
+		require.Len(t, killed, 1)
+		assert.Equal(t, proc.ID, killed[0].ID)
+		assert.NotEmpty(t, killed[0].Signal)
+		mu.Unlock()
+
 		select {
 		case <-proc.Done():
 		case <-time.After(2 * time.Second):
@@ -304,12 +312,9 @@ func TestService_Actions(t *testing.T) {
 
 		mu.Lock()
 		defer mu.Unlock()
-		assert.Len(t, killed, 1)
-		assert.Equal(t, proc.ID, killed[0].ID)
-		assert.NotEmpty(t, killed[0].Signal)
 		assert.Len(t, exited, 1)
 		assert.Equal(t, proc.ID, exited[0].ID)
-		assert.Error(t, exited[0].Error)
+		assert.NoError(t, exited[0].Error)
 		assert.Equal(t, StatusKilled, proc.Status)
 	})
 
