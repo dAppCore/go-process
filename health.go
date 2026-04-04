@@ -3,8 +3,10 @@ package process
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,21 +118,40 @@ func (h *HealthServer) Addr() string {
 // WaitForHealth polls a health endpoint until it responds 200 or the timeout
 // (in milliseconds) expires. Returns true if healthy, false on timeout.
 func WaitForHealth(addr string, timeoutMs int) bool {
+	ok, _ := ProbeHealth(addr, timeoutMs)
+	return ok
+}
+
+// ProbeHealth polls a health endpoint until it responds 200 or the timeout
+// (in milliseconds) expires. Returns the health status and the last observed
+// failure reason if the endpoint never becomes healthy.
+func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	url := fmt.Sprintf("http://%s/health", addr)
 
 	client := &http.Client{Timeout: 2 * time.Second}
+	var lastReason string
 
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return true
+				return true, ""
 			}
+			lastReason = strings.TrimSpace(string(body))
+			if lastReason == "" {
+				lastReason = resp.Status
+			}
+		} else {
+			lastReason = err.Error()
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	return false
+	if lastReason == "" {
+		lastReason = "health check timed out"
+	}
+	return false, lastReason
 }

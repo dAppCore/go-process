@@ -140,13 +140,14 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "GET",
 			Path:        "/daemons/:code/:daemon/health",
 			Summary:     "Check daemon health",
-			Description: "Probes the daemon's health endpoint and returns the result.",
+			Description: "Probes the daemon's health endpoint and returns the result, including a failure reason when unhealthy.",
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"healthy": map[string]any{"type": "boolean"},
 					"address": map[string]any{"type": "string"},
+					"reason":  map[string]any{"type": "string"},
 				},
 			},
 		},
@@ -232,11 +233,14 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 		return
 	}
 
-	healthy := process.WaitForHealth(entry.Health, 2000)
+	healthy, reason := process.ProbeHealth(entry.Health, 2000)
 
 	result := map[string]any{
 		"healthy": healthy,
 		"address": entry.Health,
+	}
+	if !healthy && reason != "" {
+		result["reason"] = reason
 	}
 
 	// Emit health event
@@ -244,6 +248,7 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 		"code":    code,
 		"daemon":  daemon,
 		"healthy": healthy,
+		"reason":  reason,
 	})
 
 	statusCode := http.StatusOK

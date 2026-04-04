@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	goapi "dappco.re/go/core/api"
@@ -82,6 +84,43 @@ func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(dir)
+
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("upstream health check failed"))
+	}))
+	defer healthSrv.Close()
+
+	hostPort := strings.TrimPrefix(healthSrv.URL, "http://")
+	require.NoError(t, registry.Register(process.DaemonEntry{
+		Code:   "test",
+		Daemon: "broken",
+		PID:    os.Getpid(),
+		Health: hostPort,
+	}))
+
+	p := processapi.NewProvider(registry, nil)
+
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/process/daemons/test/broken/health", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var resp goapi.Response[map[string]any]
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+
+	assert.Equal(t, false, resp.Data["healthy"])
+	assert.Equal(t, hostPort, resp.Data["address"])
+	assert.Equal(t, "upstream health check failed", resp.Data["reason"])
 }
 
 func TestProcessProvider_RegistersAsRouteGroup_Good(t *testing.T) {
