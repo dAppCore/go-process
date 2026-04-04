@@ -174,10 +174,14 @@ func (d *Daemon) Stop() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), d.opts.ShutdownTimeout)
 	defer cancel()
 
-	// Auto-unregister
-	if d.opts.Registry != nil {
-		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
+	// Mark the daemon unavailable before tearing down listeners or registry state.
+	if d.health != nil {
+		d.health.SetReady(false)
+	}
+
+	if d.health != nil {
+		if err := d.health.Stop(shutdownCtx); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
 		}
 	}
 
@@ -187,10 +191,10 @@ func (d *Daemon) Stop() error {
 		}
 	}
 
-	if d.health != nil {
-		d.health.SetReady(false)
-		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+	// Auto-unregister after the process is no longer serving traffic.
+	if d.opts.Registry != nil {
+		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
 		}
 	}
 
