@@ -84,7 +84,7 @@ type ActionProcessExited struct {
 	ID       string
 	ExitCode int
 	Duration time.Duration
-	Error    error // Non-nil if failed to start or was killed
+	Error    error // Reserved for future exit metadata; currently left unset by the service
 }
 
 // ActionProcessKilled is broadcast when a process is terminated.

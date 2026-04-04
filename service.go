@@ -224,7 +224,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 				ID:       id,
 				ExitCode: -1,
 				Duration: time.Since(startedAt),
-				Error:    coreerr.E("Service.StartWithOptions", "failed to start process", err),
+				Error:    nil,
 			})
 		}
 		return nil, coreerr.E("Service.StartWithOptions", "failed to start process", err)
@@ -283,7 +283,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		err := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
-		status, exitCode, exitErr, signalName := classifyProcessExit(err)
+		status, exitCode, _, signalName := classifyProcessExit(err)
 
 		proc.mu.Lock()
 		proc.Duration = duration
@@ -301,7 +301,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 			ID:       id,
 			ExitCode: exitCode,
 			Duration: duration,
-			Error:    exitErr,
+			Error:    nil,
 		}
 
 		if c := s.coreApp(); c != nil {
