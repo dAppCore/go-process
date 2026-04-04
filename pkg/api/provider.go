@@ -10,8 +10,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
+	"dappco.re/go/core"
 	"dappco.re/go/core/api"
 	"dappco.re/go/core/api/pkg/provider"
 	process "dappco.re/go/core/process"
@@ -27,6 +30,7 @@ type ProcessProvider struct {
 	service  *process.Service
 	runner   *process.Runner
 	hub      *ws.Hub
+	actions  sync.Once
 }
 
 // compile-time interface checks
@@ -54,6 +58,7 @@ func NewProvider(registry *process.Registry, service *process.Service, hub *ws.H
 	if service != nil {
 		p.runner = process.NewRunner(service)
 	}
+	p.registerProcessEvents()
 	return p
 }
 
@@ -486,10 +491,16 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 	if p.hub == nil {
 		return
 	}
-	_ = p.hub.SendToChannel(channel, ws.Message{
+	msg := ws.Message{
 		Type: ws.TypeEvent,
 		Data: data,
+	}
+	_ = p.hub.Broadcast(ws.Message{
+		Type:    msg.Type,
+		Channel: channel,
+		Data:    data,
 	})
+	_ = p.hub.SendToChannel(channel, msg)
 }
 
 // PIDAlive checks whether a PID is still running. Exported for use by
@@ -509,4 +520,84 @@ func PIDAlive(pid int) bool {
 func intParam(c *gin.Context, name string) int {
 	v, _ := strconv.Atoi(c.Param(name))
 	return v
+}
+
+func (p *ProcessProvider) registerProcessEvents() {
+	if p == nil || p.hub == nil || p.service == nil {
+		return
+	}
+
+	coreApp := p.service.Core()
+	if coreApp == nil {
+		return
+	}
+
+	p.actions.Do(func() {
+		coreApp.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+			p.forwardProcessEvent(msg)
+			return core.Result{OK: true}
+		})
+	})
+}
+
+func (p *ProcessProvider) forwardProcessEvent(msg core.Message) {
+	switch m := msg.(type) {
+	case process.ActionProcessStarted:
+		payload := p.processEventPayload(m.ID)
+		payload["id"] = m.ID
+		payload["command"] = m.Command
+		payload["args"] = append([]string(nil), m.Args...)
+		payload["dir"] = m.Dir
+		payload["pid"] = m.PID
+		if _, ok := payload["startedAt"]; !ok {
+			payload["startedAt"] = time.Now().UTC()
+		}
+		p.emitEvent("process.started", payload)
+	case process.ActionProcessOutput:
+		p.emitEvent("process.output", map[string]any{
+			"id":     m.ID,
+			"line":   m.Line,
+			"stream": m.Stream,
+		})
+	case process.ActionProcessExited:
+		payload := p.processEventPayload(m.ID)
+		payload["id"] = m.ID
+		payload["exitCode"] = m.ExitCode
+		payload["duration"] = m.Duration
+		if m.Error != nil {
+			payload["error"] = m.Error.Error()
+		}
+		p.emitEvent("process.exited", payload)
+	case process.ActionProcessKilled:
+		payload := p.processEventPayload(m.ID)
+		payload["id"] = m.ID
+		payload["signal"] = m.Signal
+		payload["exitCode"] = -1
+		p.emitEvent("process.killed", payload)
+	}
+}
+
+func (p *ProcessProvider) processEventPayload(id string) map[string]any {
+	if p == nil || p.service == nil || id == "" {
+		return map[string]any{}
+	}
+
+	proc, err := p.service.Get(id)
+	if err != nil {
+		return map[string]any{}
+	}
+
+	info := proc.Info()
+	return map[string]any{
+		"id":        info.ID,
+		"command":   info.Command,
+		"args":      append([]string(nil), info.Args...),
+		"dir":       info.Dir,
+		"startedAt": info.StartedAt,
+		"running":   info.Running,
+		"status":    info.Status,
+		"exitCode":  info.ExitCode,
+		"duration":  info.Duration,
+		"pid":       info.PID,
+	}
 }

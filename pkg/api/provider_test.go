@@ -16,7 +16,9 @@ import (
 	goapi "dappco.re/go/core/api"
 	process "dappco.re/go/core/process"
 	processapi "dappco.re/go/core/process/pkg/api"
+	corews "dappco.re/go/core/ws"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -305,6 +307,98 @@ func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	assert.Equal(t, process.StatusKilled, proc.Status)
 }
 
+func TestProcessProvider_BroadcastsProcessEvents_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	hub := corews.NewHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	_ = processapi.NewProvider(nil, svc, hub)
+
+	server := httptest.NewServer(hub.Handler())
+	defer server.Close()
+
+	conn := connectWS(t, server.URL)
+	defer conn.Close()
+
+	require.Eventually(t, func() bool {
+		return hub.ClientCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	proc, err := svc.Start(context.Background(), "sh", "-c", "echo live-event")
+	require.NoError(t, err)
+	<-proc.Done()
+
+	events := readWSEvents(t, conn, "process.started", "process.output", "process.exited")
+
+	started := events["process.started"]
+	require.NotNil(t, started)
+	startedData := started.Data.(map[string]any)
+	assert.Equal(t, proc.ID, startedData["id"])
+	assert.Equal(t, "sh", startedData["command"])
+	assert.Equal(t, float64(proc.Info().PID), startedData["pid"])
+
+	output := events["process.output"]
+	require.NotNil(t, output)
+	outputData := output.Data.(map[string]any)
+	assert.Equal(t, proc.ID, outputData["id"])
+	assert.Equal(t, "stdout", outputData["stream"])
+	assert.Contains(t, outputData["line"], "live-event")
+
+	exited := events["process.exited"]
+	require.NotNil(t, exited)
+	exitedData := exited.Data.(map[string]any)
+	assert.Equal(t, proc.ID, exitedData["id"])
+	assert.Equal(t, float64(0), exitedData["exitCode"])
+}
+
+func TestProcessProvider_BroadcastsKilledEvents_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	hub := corews.NewHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+
+	_ = processapi.NewProvider(nil, svc, hub)
+
+	server := httptest.NewServer(hub.Handler())
+	defer server.Close()
+
+	conn := connectWS(t, server.URL)
+	defer conn.Close()
+
+	require.Eventually(t, func() bool {
+		return hub.ClientCount() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	proc, err := svc.Start(context.Background(), "sleep", "60")
+	require.NoError(t, err)
+
+	require.NoError(t, svc.Kill(proc.ID))
+
+	select {
+	case <-proc.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("process should have been killed")
+	}
+
+	events := readWSEvents(t, conn, "process.killed", "process.exited")
+
+	killed := events["process.killed"]
+	require.NotNil(t, killed)
+	killedData := killed.Data.(map[string]any)
+	assert.Equal(t, proc.ID, killedData["id"])
+	assert.Equal(t, "SIGKILL", killedData["signal"])
+	assert.Equal(t, float64(-1), killedData["exitCode"])
+
+	exited := events["process.exited"]
+	require.NotNil(t, exited)
+	exitedData := exited.Data.(map[string]any)
+	assert.Equal(t, proc.ID, exitedData["id"])
+	assert.Equal(t, float64(-1), exitedData["exitCode"])
+}
+
 func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 	p := processapi.NewProvider(nil, nil, nil)
 	r := setupRouter(p)
@@ -351,4 +445,48 @@ func newTestProcessService(t *testing.T) *process.Service {
 	require.NoError(t, err)
 
 	return raw.(*process.Service)
+}
+
+func connectWS(t *testing.T, serverURL string) *websocket.Conn {
+	t.Helper()
+
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	return conn
+}
+
+func readWSEvents(t *testing.T, conn *websocket.Conn, channels ...string) map[string]corews.Message {
+	t.Helper()
+
+	want := make(map[string]struct{}, len(channels))
+	for _, channel := range channels {
+		want[channel] = struct{}{}
+	}
+
+	events := make(map[string]corews.Message, len(channels))
+	deadline := time.Now().Add(3 * time.Second)
+
+	for len(events) < len(channels) && time.Now().Before(deadline) {
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(500*time.Millisecond)))
+
+		_, payload, err := conn.ReadMessage()
+		require.NoError(t, err)
+
+		for _, line := range strings.Split(strings.TrimSpace(string(payload)), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+
+			var msg corews.Message
+			require.NoError(t, json.Unmarshal([]byte(line), &msg))
+
+			if _, ok := want[msg.Channel]; ok {
+				events[msg.Channel] = msg
+			}
+		}
+	}
+
+	require.Len(t, events, len(channels))
+	return events
 }
