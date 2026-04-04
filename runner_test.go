@@ -206,6 +206,56 @@ func TestRunner_RunAll_CircularDeps(t *testing.T) {
 	})
 }
 
+func TestRunner_ContextCancellation(t *testing.T) {
+	t.Run("run sequential skips pending specs", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := runner.RunSequential(ctx, []RunSpec{
+			{Name: "first", Command: "echo", Args: []string{"1"}},
+			{Name: "second", Command: "echo", Args: []string{"2"}},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, result.Passed)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		require.Len(t, result.Results, 2)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Equal(t, 1, res.ExitCode)
+			assert.Error(t, res.Error)
+			assert.Contains(t, res.Error.Error(), "context canceled")
+		}
+	})
+
+	t.Run("run all skips pending specs", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := runner.RunAll(ctx, []RunSpec{
+			{Name: "first", Command: "echo", Args: []string{"1"}},
+			{Name: "second", Command: "echo", Args: []string{"2"}, After: []string{"first"}},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, result.Passed)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		require.Len(t, result.Results, 2)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Equal(t, 1, res.ExitCode)
+			assert.Error(t, res.Error)
+			assert.Contains(t, res.Error.Error(), "context canceled")
+		}
+	})
+}
+
 func TestRunResult_Passed(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		r := RunResult{ExitCode: 0}

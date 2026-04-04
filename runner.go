@@ -123,6 +123,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 	}
 
 	for len(remaining) > 0 {
+		if err := ctx.Err(); err != nil {
+			for name := range remaining {
+				results[indexMap[name]] = cancelledRunResult("Runner.RunAll", remaining[name], err)
+			}
+			break
+		}
+
 		// Find specs ready to run (all dependencies satisfied)
 		ready := make([]RunSpec, 0)
 		for _, spec := range remaining {
@@ -276,17 +283,18 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 	results := make([]RunResult, 0, len(specs))
 
 	for _, spec := range specs {
+		if err := ctx.Err(); err != nil {
+			results = append(results, cancelledRunResult("Runner.RunSequential", spec, err))
+			continue
+		}
+
 		result := r.runSpec(ctx, spec)
 		results = append(results, result)
 
 		if !result.Passed() && !spec.AllowFailure {
 			// Mark remaining as skipped
 			for i := len(results); i < len(specs); i++ {
-				results = append(results, RunResult{
-					Name:    specs[i].Name,
-					Spec:    specs[i],
-					Skipped: true,
-				})
+				results = append(results, skippedRunResult("Runner.RunSequential", specs[i], nil))
 			}
 			break
 		}
@@ -330,6 +338,10 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 		wg.Add(1)
 		go func(i int, spec RunSpec) {
 			defer wg.Done()
+			if err := ctx.Err(); err != nil {
+				results[i] = cancelledRunResult("Runner.RunParallel", spec, err)
+				return
+			}
 			results[i] = r.runSpec(ctx, spec)
 		}(i, spec)
 	}
@@ -365,4 +377,26 @@ func validateSpecs(specs []RunSpec) error {
 		seen[spec.Name] = struct{}{}
 	}
 	return nil
+}
+
+func skippedRunResult(op string, spec RunSpec, err error) RunResult {
+	result := RunResult{
+		Name:    spec.Name,
+		Spec:    spec,
+		Skipped: true,
+	}
+	if err != nil {
+		result.ExitCode = 1
+		result.Error = coreerr.E(op, "skipped", err)
+	}
+	return result
+}
+
+func cancelledRunResult(op string, spec RunSpec, err error) RunResult {
+	result := skippedRunResult(op, spec, err)
+	if result.Error == nil {
+		result.ExitCode = 1
+		result.Error = coreerr.E(op, "context cancelled", err)
+	}
+	return result
 }
