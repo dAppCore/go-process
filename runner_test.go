@@ -327,6 +327,30 @@ func TestRunner_InvalidSpecNames(t *testing.T) {
 		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
 	})
 
+	t.Run("rejects empty dependency names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{""}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
+	t.Run("rejects duplicated dependency names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{"two", "two"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
+	t.Run("rejects self dependency", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{"one"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
 	t.Run("rejects duplicate names", func(t *testing.T) {
 		_, err := runner.RunAll(context.Background(), []RunSpec{
 			{Name: "same", Command: "echo", Args: []string{"a"}},

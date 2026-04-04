@@ -19,6 +19,9 @@ var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
 // ErrRunnerInvalidSpecName is returned when a RunSpec name is empty or duplicated.
 var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
 
+// ErrRunnerInvalidDependencyName is returned when a RunSpec dependency name is empty, duplicated, or self-referential.
+var ErrRunnerInvalidDependencyName = coreerr.E("", "runner dependency names must be non-empty, unique, and not self-referential", nil)
+
 // ErrRunnerContextRequired is returned when a runner method is called without a context.
 var ErrRunnerContextRequired = coreerr.E("", "runner context is required", nil)
 
@@ -399,6 +402,20 @@ func validateSpecs(specs []RunSpec) error {
 			return coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName)
 		}
 		seen[spec.Name] = struct{}{}
+
+		deps := make(map[string]struct{}, len(spec.After))
+		for _, dep := range spec.After {
+			if dep == "" {
+				return coreerr.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName)
+			}
+			if dep == spec.Name {
+				return coreerr.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName)
+			}
+			if _, ok := deps[dep]; ok {
+				return coreerr.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName)
+			}
+			deps[dep] = struct{}{}
+		}
 	}
 	return nil
 }
