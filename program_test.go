@@ -78,3 +78,19 @@ func TestProgram_Run_FailingCommand(t *testing.T) {
 	_, err := p.Run(testCtx(t))
 	require.Error(t, err)
 }
+
+func TestProgram_Run_NilContextRejected(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+
+	_, err := p.Run(nil, "test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, process.ErrProgramContextRequired)
+}
+
+func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
+	p := &process.Program{}
+
+	_, err := p.RunDir(testCtx(t), "", "test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, process.ErrProgramNameRequired)
+}

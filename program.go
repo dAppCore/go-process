@@ -14,6 +14,12 @@ import (
 // Callers may use errors.Is to detect this condition.
 var ErrProgramNotFound = coreerr.E("", "program: binary not found in PATH", nil)
 
+// ErrProgramContextRequired is returned when Run or RunDir is called without a context.
+var ErrProgramContextRequired = coreerr.E("", "program: command context is required", nil)
+
+// ErrProgramNameRequired is returned when Run or RunDir is called without a program name.
+var ErrProgramNameRequired = coreerr.E("", "program: program name is empty", nil)
+
 // Program represents a named executable located on the system PATH.
 // Create one with a Name, call Find to resolve its path, then Run or RunDir.
 type Program struct {
@@ -48,9 +54,17 @@ func (p *Program) Run(ctx context.Context, args ...string) (string, error) {
 // Returns trimmed combined stdout+stderr output and any error.
 // If dir is empty, the process inherits the caller's working directory.
 func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (string, error) {
+	if ctx == nil {
+		return "", coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired)
+	}
+
 	binary := p.Path
 	if binary == "" {
 		binary = p.Name
+	}
+
+	if binary == "" {
+		return "", coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired)
 	}
 
 	var out bytes.Buffer
