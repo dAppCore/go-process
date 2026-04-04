@@ -164,10 +164,10 @@ func (d *Daemon) Stop() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), d.opts.ShutdownTimeout)
 	defer cancel()
 
-	if d.health != nil {
-		d.health.SetReady(false)
-		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+	// Auto-unregister
+	if d.opts.Registry != nil {
+		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
 		}
 	}
 
@@ -177,9 +177,11 @@ func (d *Daemon) Stop() error {
 		}
 	}
 
-	// Auto-unregister
-	if d.opts.Registry != nil {
-		_ = d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon)
+	if d.health != nil {
+		d.health.SetReady(false)
+		if err := d.health.Stop(shutdownCtx); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+		}
 	}
 
 	d.running = false
