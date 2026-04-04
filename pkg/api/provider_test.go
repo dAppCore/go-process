@@ -277,6 +277,38 @@ func TestProcessProvider_ListProcesses_Good(t *testing.T) {
 	assert.Equal(t, "echo", resp.Data[0].Command)
 }
 
+func TestProcessProvider_ListProcesses_RunningOnly_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+
+	runningProc, err := svc.Start(context.Background(), "sleep", "60")
+	require.NoError(t, err)
+
+	exitedProc, err := svc.Start(context.Background(), "echo", "done")
+	require.NoError(t, err)
+	<-exitedProc.Done()
+
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+	w := httptest.NewRecorder()
+
+	req, err := http.NewRequest("GET", "/api/process/processes?runningOnly=true", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[[]process.Info]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.True(t, resp.Success)
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, runningProc.ID, resp.Data[0].ID)
+	assert.Equal(t, process.StatusRunning, resp.Data[0].Status)
+
+	require.NoError(t, svc.Kill(runningProc.ID))
+	<-runningProc.Done()
+}
+
 func TestProcessProvider_GetProcess_Good(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "single")

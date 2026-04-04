@@ -181,7 +181,7 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "GET",
 			Path:        "/processes",
 			Summary:     "List managed processes",
-			Description: "Returns the current process service snapshot as serialisable process info entries.",
+			Description: "Returns the current process service snapshot as serialisable process info entries. Pass runningOnly=true to limit results to active processes.",
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "array",
@@ -459,6 +459,9 @@ func (p *ProcessProvider) listProcesses(c *gin.Context) {
 	}
 
 	procs := p.service.List()
+	if runningOnly, _ := strconv.ParseBool(c.Query("runningOnly")); runningOnly {
+		procs = p.service.Running()
+	}
 	infos := make([]process.Info, 0, len(procs))
 	for _, proc := range procs {
 		infos = append(infos, proc.Info())
