@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,6 +137,29 @@ func TestSetDefaultLogger(t *testing.T) {
 	if _, ok := exec.DefaultLogger().(exec.NopLogger); !ok {
 		t.Error("expected NopLogger when setting nil")
 	}
+}
+
+func TestDefaultLogger_IsConcurrentSafe(t *testing.T) {
+	original := exec.DefaultLogger()
+	defer exec.SetDefaultLogger(original)
+
+	logger := &mockLogger{}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			exec.SetDefaultLogger(logger)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = exec.DefaultLogger()
+		}()
+	}
+	wg.Wait()
+
+	assert.NotNil(t, exec.DefaultLogger())
 }
 
 func TestCommand_UsesDefaultLogger(t *testing.T) {

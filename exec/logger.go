@@ -1,5 +1,7 @@
 package exec
 
+import "sync"
+
 // Logger interface for command execution logging.
 // Compatible with pkg/log.Logger and other structured loggers.
 type Logger interface {
@@ -26,7 +28,10 @@ func (NopLogger) Error(string, ...any) {}
 
 var _ Logger = NopLogger{}
 
-var defaultLogger Logger = NopLogger{}
+var (
+	defaultLoggerMu sync.RWMutex
+	defaultLogger   Logger = NopLogger{}
+)
 
 // SetDefaultLogger sets the package-level default logger.
 // Commands without an explicit logger will use this.
@@ -35,6 +40,9 @@ var defaultLogger Logger = NopLogger{}
 //
 //	exec.SetDefaultLogger(logger)
 func SetDefaultLogger(l Logger) {
+	defaultLoggerMu.Lock()
+	defer defaultLoggerMu.Unlock()
+
 	if l == nil {
 		l = NopLogger{}
 	}
@@ -47,5 +55,8 @@ func SetDefaultLogger(l Logger) {
 //
 //	logger := exec.DefaultLogger()
 func DefaultLogger() Logger {
+	defaultLoggerMu.RLock()
+	defer defaultLoggerMu.RUnlock()
+
 	return defaultLogger
 }
