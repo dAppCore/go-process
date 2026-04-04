@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os/exec"
 	"sort"
 	"sync"
@@ -15,6 +14,7 @@ import (
 
 	"dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
+	goio "io"
 )
 
 // Default buffer size for process output (1MB).
@@ -313,7 +313,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 }
 
 // streamOutput reads from a pipe and broadcasts lines via ACTION.
-func (s *Service) streamOutput(proc *Process, r io.Reader, stream Stream) {
+func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
 	scanner := bufio.NewScanner(r)
 	// Increase buffer for long lines
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)

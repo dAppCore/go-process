@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
 
 	coreerr "dappco.re/go/core/log"
+	goio "io"
 )
 
 // ErrCommandContextRequired is returned when a command is created without a context.
@@ -19,9 +19,9 @@ var ErrCommandContextRequired = coreerr.E("", "exec: command context is required
 type Options struct {
 	Dir    string
 	Env    []string
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
+	Stdin  goio.Reader
+	Stdout goio.Writer
+	Stderr goio.Writer
 	// Background runs the command asynchronously and returns from Run immediately.
 	Background bool
 }
@@ -74,7 +74,7 @@ func (c *Cmd) WithEnv(env []string) *Cmd {
 // Example:
 //
 //	cmd.WithStdin(strings.NewReader("input"))
-func (c *Cmd) WithStdin(r io.Reader) *Cmd {
+func (c *Cmd) WithStdin(r goio.Reader) *Cmd {
 	c.opts.Stdin = r
 	return c
 }
@@ -84,7 +84,7 @@ func (c *Cmd) WithStdin(r io.Reader) *Cmd {
 // Example:
 //
 //	cmd.WithStdout(os.Stdout)
-func (c *Cmd) WithStdout(w io.Writer) *Cmd {
+func (c *Cmd) WithStdout(w goio.Writer) *Cmd {
 	c.opts.Stdout = w
 	return c
 }
@@ -94,7 +94,7 @@ func (c *Cmd) WithStdout(w io.Writer) *Cmd {
 // Example:
 //
 //	cmd.WithStderr(os.Stderr)
-func (c *Cmd) WithStderr(w io.Writer) *Cmd {
+func (c *Cmd) WithStderr(w goio.Writer) *Cmd {
 	c.opts.Stderr = w
 	return c
 }

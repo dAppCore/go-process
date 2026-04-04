@@ -3,7 +3,6 @@ package process
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	coreerr "dappco.re/go/core/log"
+	goio "io"
 )
 
 // ManagedProcess represents a managed external process.
@@ -33,7 +33,7 @@ type ManagedProcess struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	output       *RingBuffer
-	stdin        io.WriteCloser
+	stdin        goio.WriteCloser
 	done         chan struct{}
 	mu           sync.RWMutex
 	gracePeriod  time.Duration

@@ -24,6 +24,8 @@ func (NopLogger) Debug(string, ...any) {}
 // Error discards the message (no-op implementation).
 func (NopLogger) Error(string, ...any) {}
 
+var _ Logger = NopLogger{}
+
 var defaultLogger Logger = NopLogger{}
 
 // SetDefaultLogger sets the package-level default logger.

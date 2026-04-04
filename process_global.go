@@ -17,7 +17,7 @@ var (
 )
 
 // Default returns the global process service.
-// Returns nil if not initialized.
+// Returns nil if not initialised.
 //
 // Example:
 //
@@ -219,7 +219,7 @@ func Clear() {
 
 // Errors
 var (
-	// ErrServiceNotInitialized is returned when the service is not initialized.
+	// ErrServiceNotInitialized is returned when the service is not initialised.
 	ErrServiceNotInitialized = coreerr.E("", "process: service not initialized; call process.Init(core) first", nil)
 	// ErrSetDefaultNil is returned when SetDefault is called with nil.
 	ErrSetDefaultNil = coreerr.E("", "process: SetDefault called with nil service", nil)
