@@ -16,7 +16,7 @@ Exported fields:
 
 ### Package Functions
 
-- `func NewProvider(registry *process.Registry, hub *ws.Hub) *ProcessProvider`: Returns a `ProcessProvider` for the supplied registry and WebSocket hub. When `registry` is `nil`, it uses `process.DefaultRegistry()`.
+- `func NewProvider(registry *process.Registry, service *process.Service, hub *ws.Hub) *ProcessProvider`: Returns a `ProcessProvider` for the supplied registry, optional process service, and WebSocket hub. When `registry` is `nil`, it uses `process.DefaultRegistry()`. When `service` is non-`nil`, provider-runner features are enabled.
 - `func PIDAlive(pid int) bool`: Returns `false` for non-positive PIDs and otherwise reports whether `os.FindProcess(pid)` followed by signal `0` succeeds.
 
 ### `ProcessProvider` Methods

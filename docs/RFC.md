@@ -14,7 +14,7 @@
 
 go-process provides the implementation behind `c.Process()`. Core defines the primitive (Section 17). go-process registers the Action handlers that make it work.
 
-```
+```text
 core/go defines:     c.Process().Run(ctx, "git", "log")
                      → calls c.Action("process.run").Run(ctx, opts)
 
@@ -37,7 +37,7 @@ The codebase now matches the v0.8.0 target. The bullets below are the historical
 
 ### File Layout
 
-```
+```text
 service.go        — main service (factory, lifecycle, process execution)
 registry.go       — daemon registry (PID files, health, restart)
 daemon.go         — DaemonEntry, managed daemon lifecycle
@@ -233,7 +233,7 @@ func (p *ManagedProcess) Info() ProcessInfo {
 
 Higher-level abstraction over `process.start`:
 
-```
+```text
 process.start  → low level: start a command, get a handle
 daemon.Start   → high level: PID file, health endpoint, restart policy, signals
 ```
@@ -256,7 +256,7 @@ return core.Result{Value: core.E("process.run", core.Concat("command failed: ", 
 
 AX-7: `TestFile_Function_{Good,Bad,Ugly}`
 
-```
+```text
 TestService_Register_Good           — factory returns Result
 TestService_OnStartup_Good          — registers 5 Actions
 TestService_HandleRun_Good          — runs command, returns output
