@@ -60,32 +60,28 @@ participate in the Core DI container and implements both `Startable` and
 ```go
 type Service struct {
     *core.ServiceRuntime[Options]
-    processes map[string]*Process
-    mu        sync.RWMutex
+    managed *core.Registry[*ManagedProcess]
     bufSize   int
-    idCounter atomic.Uint64
 }
 ```
 
 Key behaviours:
 
-- **OnStartup** — currently a no-op; reserved for future initialisation.
+- **OnStartup** — registers the named Core actions `process.run`, `process.start`, `process.kill`, `process.list`, and `process.get`.
 - **OnShutdown** — iterates all running processes and calls `Kill()` on each,
   ensuring no orphaned child processes when the application exits.
-- Process IDs are generated as `proc-N` using an atomic counter, guaranteeing
-  uniqueness without locks.
+- Process IDs are generated with `core.ID()` and stored in a Core registry.
 
 #### Registration
 
 The service is registered with Core via a factory function:
 
 ```go
-process.NewService(process.Options{BufferSize: 2 * 1024 * 1024})
+core.New(core.WithService(process.Register))
 ```
 
-`NewService` returns a `func(*core.Core) (any, error)` closure — the standard
-Core service factory signature. The `Options` struct is captured by the closure
-and applied when Core instantiates the service.
+`Register` returns `core.Result{Value: *Service, OK: true}` — the standard
+Core `WithService` factory signature used by the v0.8.0 contract.
 
 ### Process
 
@@ -163,12 +159,12 @@ const (
 When `Service.StartWithOptions()` is called:
 
 ```
-1. Generate unique ID (atomic counter)
+1. Generate a unique ID with `core.ID()`
 2. Create context with cancel
 3. Build os/exec.Cmd with dir, env, pipes
 4. Create RingBuffer (unless DisableCapture is set)
 5. cmd.Start()
-6. Store process in map
+6. Store process in the Core registry
 7. Broadcast ActionProcessStarted via Core.ACTION
 8. Spawn 2 goroutines to stream stdout and stderr
    - Each line is written to the RingBuffer
@@ -176,8 +172,9 @@ When `Service.StartWithOptions()` is called:
 9. Spawn 1 goroutine to wait for process exit
    - Waits for output goroutines to finish first
    - Calls cmd.Wait()
-   - Updates process status and exit code
+   - Classifies the exit as exited, failed, or killed
    - Closes the done channel
+   - Broadcasts ActionProcessKilled when the process died from a signal
    - Broadcasts ActionProcessExited
 ```
 
@@ -296,12 +293,12 @@ File naming convention: `{code}-{daemon}.json` (slashes replaced with dashes).
 
 ## exec Sub-Package
 
-The `exec` package (`forge.lthn.ai/core/go-process/exec`) provides a fluent
+The `exec` package (`dappco.re/go/core/process/exec`) provides a fluent
 wrapper around `os/exec` for simple, one-shot commands that do not need Core
 integration:
 
 ```go
-import "forge.lthn.ai/core/go-process/exec"
+import "dappco.re/go/core/process/exec"
 
 // Fluent API
 err := exec.Command(ctx, "go", "build", "./...").

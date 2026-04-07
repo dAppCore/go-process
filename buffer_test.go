@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRingBuffer(t *testing.T) {
+func TestRingBuffer_Basics_Good(t *testing.T) {
 	t.Run("write and read", func(t *testing.T) {
 		rb := NewRingBuffer(10)
 
