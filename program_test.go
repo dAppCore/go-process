@@ -2,12 +2,11 @@ package process_test
 
 import (
 	"context"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -21,26 +20,47 @@ func testCtx(t *testing.T) context.Context {
 	return ctx
 }
 
-func TestProgram_Find_Good(t *testing.T) {
+func TestProgram_Find_KnownBinary(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	require.NoError(t, p.Find())
 	assert.NotEmpty(t, p.Path)
-	assert.True(t, filepath.IsAbs(p.Path))
 }
 
-func TestProgram_FindUnknown_Bad(t *testing.T) {
+func TestProgram_Find_UnknownBinary(t *testing.T) {
 	p := &process.Program{Name: "no-such-binary-xyzzy-42"}
 	err := p.Find()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, process.ErrProgramNotFound)
 }
 
-func TestProgram_FindEmpty_Bad(t *testing.T) {
+func TestProgram_Find_UsesExistingPath(t *testing.T) {
+	path, err := exec.LookPath("echo")
+	require.NoError(t, err)
+
+	p := &process.Program{Path: path}
+	require.NoError(t, p.Find())
+	assert.Equal(t, path, p.Path)
+}
+
+func TestProgram_Find_PrefersExistingPathOverName(t *testing.T) {
+	path, err := exec.LookPath("echo")
+	require.NoError(t, err)
+
+	p := &process.Program{
+		Name: "no-such-binary-xyzzy-42",
+		Path: path,
+	}
+
+	require.NoError(t, p.Find())
+	assert.Equal(t, path, p.Path)
+}
+
+func TestProgram_Find_EmptyName(t *testing.T) {
 	p := &process.Program{}
 	require.Error(t, p.Find())
 }
 
-func TestProgram_Run_Good(t *testing.T) {
+func TestProgram_Run_ReturnsOutput(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	require.NoError(t, p.Find())
 
@@ -49,7 +69,16 @@ func TestProgram_Run_Good(t *testing.T) {
 	assert.Equal(t, "hello", out)
 }
 
-func TestProgram_RunFallback_Good(t *testing.T) {
+func TestProgram_Run_PreservesLeadingWhitespace(t *testing.T) {
+	p := &process.Program{Name: "sh"}
+	require.NoError(t, p.Find())
+
+	out, err := p.Run(testCtx(t), "-c", "printf '  hello  \n'")
+	require.NoError(t, err)
+	assert.Equal(t, "  hello", out)
+}
+
+func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	// Path is empty; RunDir should fall back to Name for OS PATH resolution.
 	p := &process.Program{Name: "echo"}
 
@@ -58,15 +87,7 @@ func TestProgram_RunFallback_Good(t *testing.T) {
 	assert.Equal(t, "fallback", out)
 }
 
-func TestProgram_RunNilContext_Good(t *testing.T) {
-	p := &process.Program{Name: "echo"}
-
-	out, err := p.Run(nil, "nil-context")
-	require.NoError(t, err)
-	assert.Equal(t, "nil-context", out)
-}
-
-func TestProgram_RunDir_Good(t *testing.T) {
+func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
 	require.NoError(t, p.Find())
 
@@ -74,17 +95,34 @@ func TestProgram_RunDir_Good(t *testing.T) {
 
 	out, err := p.RunDir(testCtx(t), dir)
 	require.NoError(t, err)
-	dirInfo, err := os.Stat(dir)
+	// Resolve symlinks on both sides for portability (macOS uses /private/ prefix).
+	canonicalDir, err := filepath.EvalSymlinks(dir)
 	require.NoError(t, err)
-	outInfo, err := os.Stat(core.Trim(out))
+	canonicalOut, err := filepath.EvalSymlinks(out)
 	require.NoError(t, err)
-	assert.True(t, os.SameFile(dirInfo, outInfo))
+	assert.Equal(t, canonicalDir, canonicalOut)
 }
 
-func TestProgram_RunFailure_Bad(t *testing.T) {
+func TestProgram_Run_FailingCommand(t *testing.T) {
 	p := &process.Program{Name: "false"}
 	require.NoError(t, p.Find())
 
 	_, err := p.Run(testCtx(t))
 	require.Error(t, err)
+}
+
+func TestProgram_Run_NilContextRejected(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+
+	_, err := p.Run(nil, "test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, process.ErrProgramContextRequired)
+}
+
+func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
+	p := &process.Program{}
+
+	_, err := p.RunDir(testCtx(t), "", "test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, process.ErrProgramNameRequired)
 }

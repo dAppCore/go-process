@@ -2,15 +2,15 @@ package process
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"dappco.re/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRegistry_Register_Good(t *testing.T) {
+func TestRegistry_RegisterAndGet(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)
 
@@ -39,7 +39,7 @@ func TestRegistry_Register_Good(t *testing.T) {
 	assert.Equal(t, started, got.Started)
 }
 
-func TestRegistry_Unregister_Good(t *testing.T) {
+func TestRegistry_Unregister(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)
 
@@ -53,7 +53,7 @@ func TestRegistry_Unregister_Good(t *testing.T) {
 	require.NoError(t, err)
 
 	// File should exist
-	path := core.JoinPath(dir, "myapp-server.json")
+	path := filepath.Join(dir, "myapp-server.json")
 	_, err = os.Stat(path)
 	require.NoError(t, err)
 
@@ -65,7 +65,15 @@ func TestRegistry_Unregister_Good(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func TestRegistry_List_Good(t *testing.T) {
+func TestRegistry_UnregisterMissingIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	reg := NewRegistry(dir)
+
+	err := reg.Unregister("missing", "entry")
+	require.NoError(t, err)
+}
+
+func TestRegistry_List(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)
 
@@ -76,10 +84,12 @@ func TestRegistry_List_Good(t *testing.T) {
 
 	entries, err := reg.List()
 	require.NoError(t, err)
-	assert.Len(t, entries, 2)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "app1", entries[0].Code)
+	assert.Equal(t, "app2", entries[1].Code)
 }
 
-func TestRegistry_PruneStale_Good(t *testing.T) {
+func TestRegistry_List_PrunesStale(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)
 
@@ -87,7 +97,7 @@ func TestRegistry_PruneStale_Good(t *testing.T) {
 	require.NoError(t, err)
 
 	// File should exist before listing
-	path := core.JoinPath(dir, "dead-proc.json")
+	path := filepath.Join(dir, "dead-proc.json")
 	_, err = os.Stat(path)
 	require.NoError(t, err)
 
@@ -100,7 +110,7 @@ func TestRegistry_PruneStale_Good(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func TestRegistry_GetMissing_Bad(t *testing.T) {
+func TestRegistry_Get_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(dir)
 
@@ -109,8 +119,8 @@ func TestRegistry_GetMissing_Bad(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestRegistry_CreateDirectory_Good(t *testing.T) {
-	dir := core.JoinPath(t.TempDir(), "nested", "deep", "daemons")
+func TestRegistry_CreatesDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "deep", "daemons")
 	reg := NewRegistry(dir)
 
 	err := reg.Register(DaemonEntry{Code: "app", Daemon: "srv", PID: os.Getpid()})
@@ -121,7 +131,7 @@ func TestRegistry_CreateDirectory_Good(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-func TestRegistry_Default_Good(t *testing.T) {
+func TestDefaultRegistry(t *testing.T) {
 	reg := DefaultRegistry()
 	assert.NotNil(t, reg)
 }

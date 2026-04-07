@@ -1,16 +1,195 @@
 package process
 
 import (
-	"context"
 	"syscall"
 	"time"
-
-	"dappco.re/go/core"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
 
+// TaskProcessStart requests asynchronous process execution through Core.PERFORM.
+// The handler returns a snapshot of the started process immediately.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessStart{Command: "sleep", Args: []string{"10"}})
+type TaskProcessStart struct {
+	Command string
+	Args    []string
+	Dir     string
+	Env     []string
+	// DisableCapture skips buffering process output before returning it.
+	DisableCapture bool
+	// Detach runs the command in its own process group.
+	Detach bool
+	// Timeout bounds the execution duration.
+	Timeout time.Duration
+	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
+	GracePeriod time.Duration
+	// KillGroup terminates the entire process group instead of only the leader.
+	KillGroup bool
+}
+
+// TaskProcessRun requests synchronous command execution through Core.PERFORM.
+// The handler returns the combined command output on success.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessRun{Command: "echo", Args: []string{"hello"}})
+type TaskProcessRun struct {
+	Command string
+	Args    []string
+	Dir     string
+	Env     []string
+	// DisableCapture skips buffering process output before returning it.
+	DisableCapture bool
+	// Detach runs the command in its own process group.
+	Detach bool
+	// Timeout bounds the execution duration.
+	Timeout time.Duration
+	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
+	GracePeriod time.Duration
+	// KillGroup terminates the entire process group instead of only the leader.
+	KillGroup bool
+}
+
+// TaskProcessKill requests termination of a managed process by ID or PID.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessKill{ID: "proc-1"})
+type TaskProcessKill struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// PID targets a process directly when ID is not available.
+	PID int
+}
+
+// TaskProcessSignal requests signalling a managed process by ID or PID through Core.PERFORM.
+// Signal 0 is allowed for liveness checks.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessSignal{ID: "proc-1", Signal: syscall.SIGTERM})
+type TaskProcessSignal struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// PID targets a process directly when ID is not available.
+	PID int
+	// Signal is delivered to the process or process group.
+	Signal syscall.Signal
+}
+
+// TaskProcessGet requests a snapshot of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessGet{ID: "proc-1"})
+type TaskProcessGet struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessWait waits for a managed process to finish through Core.PERFORM.
+// Successful exits return an Info snapshot. Unsuccessful exits return a
+// TaskProcessWaitError value that preserves the final snapshot.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessWait{ID: "proc-1"})
+type TaskProcessWait struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessWaitError is returned as the task value when TaskProcessWait
+// completes with a non-successful process outcome. It preserves the final
+// process snapshot while still behaving like the underlying wait error.
+type TaskProcessWaitError struct {
+	Info Info
+	Err  error
+}
+
+// Error implements error.
+func (e *TaskProcessWaitError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+// Unwrap returns the underlying wait error.
+func (e *TaskProcessWaitError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// TaskProcessOutput requests the captured output of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessOutput{ID: "proc-1"})
+type TaskProcessOutput struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessInput writes data to the stdin of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessInput{ID: "proc-1", Input: "hello\n"})
+type TaskProcessInput struct {
+	// ID identifies a managed process started by this service.
+	ID string
+	// Input is written verbatim to the process stdin pipe.
+	Input string
+}
+
+// TaskProcessCloseStdin closes the stdin pipe of a managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessCloseStdin{ID: "proc-1"})
+type TaskProcessCloseStdin struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessList requests a snapshot of managed processes through Core.PERFORM.
+// If RunningOnly is true, only active processes are returned.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessList{RunningOnly: true})
+type TaskProcessList struct {
+	RunningOnly bool
+}
+
+// TaskProcessRemove removes a completed managed process through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessRemove{ID: "proc-1"})
+type TaskProcessRemove struct {
+	// ID identifies a managed process started by this service.
+	ID string
+}
+
+// TaskProcessClear removes all completed managed processes through Core.PERFORM.
+//
+// Example:
+//
+//	c.PERFORM(process.TaskProcessClear{})
+type TaskProcessClear struct{}
+
 // ActionProcessStarted is broadcast when a process begins execution.
+//
+// Example:
+//
+//	case process.ActionProcessStarted: fmt.Println("started", msg.ID)
 type ActionProcessStarted struct {
 	ID      string
 	Command string
@@ -21,6 +200,10 @@ type ActionProcessStarted struct {
 
 // ActionProcessOutput is broadcast for each line of output.
 // Subscribe to this for real-time streaming.
+//
+// Example:
+//
+//	case process.ActionProcessOutput: fmt.Println(msg.Line)
 type ActionProcessOutput struct {
 	ID     string
 	Line   string
@@ -29,126 +212,23 @@ type ActionProcessOutput struct {
 
 // ActionProcessExited is broadcast when a process completes.
 // Check ExitCode for success (0) or failure.
+//
+// Example:
+//
+//	case process.ActionProcessExited: fmt.Println(msg.ExitCode)
 type ActionProcessExited struct {
 	ID       string
 	ExitCode int
 	Duration time.Duration
-	Error    error // Non-nil if failed to start or was killed
+	Error    error // Set for failed starts, non-zero exits, or killed processes.
 }
 
 // ActionProcessKilled is broadcast when a process is terminated.
+//
+// Example:
+//
+//	case process.ActionProcessKilled: fmt.Println(msg.Signal)
 type ActionProcessKilled struct {
 	ID     string
 	Signal string
-}
-
-// --- Core Action Handlers ---------------------------------------------------
-
-func (s *Service) handleRun(ctx context.Context, opts core.Options) core.Result {
-	command := opts.String("command")
-	if command == "" {
-		return core.Result{Value: core.E("process.run", "command is required", nil), OK: false}
-	}
-
-	runOpts := RunOptions{
-		Command: command,
-		Dir:     opts.String("dir"),
-	}
-	if r := opts.Get("args"); r.OK {
-		runOpts.Args = optionStrings(r.Value)
-	}
-	if r := opts.Get("env"); r.OK {
-		runOpts.Env = optionStrings(r.Value)
-	}
-
-	return s.runCommand(ctx, runOpts)
-}
-
-func (s *Service) handleStart(ctx context.Context, opts core.Options) core.Result {
-	command := opts.String("command")
-	if command == "" {
-		return core.Result{Value: core.E("process.start", "command is required", nil), OK: false}
-	}
-
-	runOpts := RunOptions{
-		Command: command,
-		Dir:     opts.String("dir"),
-		Detach:  opts.Bool("detach"),
-	}
-	if r := opts.Get("args"); r.OK {
-		runOpts.Args = optionStrings(r.Value)
-	}
-	if r := opts.Get("env"); r.OK {
-		runOpts.Env = optionStrings(r.Value)
-	}
-
-	r := s.StartWithOptions(ctx, runOpts)
-	if !r.OK {
-		return r
-	}
-	return core.Result{Value: r.Value.(*ManagedProcess).ID, OK: true}
-}
-
-func (s *Service) handleKill(_ context.Context, opts core.Options) core.Result {
-	id := opts.String("id")
-	if id != "" {
-		if err := s.Kill(id); err != nil {
-			if core.Is(err, ErrProcessNotFound) {
-				return core.Result{Value: core.E("process.kill", core.Concat("not found: ", id), nil), OK: false}
-			}
-			return core.Result{Value: core.E("process.kill", core.Concat("kill failed: ", id), err), OK: false}
-		}
-		return core.Result{OK: true}
-	}
-
-	pid := opts.Int("pid")
-	if pid > 0 {
-		proc, err := processHandle(pid)
-		if err != nil {
-			return core.Result{Value: core.E("process.kill", core.Concat("find pid failed: ", core.Sprintf("%d", pid)), err), OK: false}
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
-			return core.Result{Value: core.E("process.kill", core.Concat("signal failed: ", core.Sprintf("%d", pid)), err), OK: false}
-		}
-		return core.Result{OK: true}
-	}
-
-	return core.Result{Value: core.E("process.kill", "need id or pid", nil), OK: false}
-}
-
-func (s *Service) handleList(_ context.Context, _ core.Options) core.Result {
-	return core.Result{Value: s.managed.Names(), OK: true}
-}
-
-func (s *Service) handleGet(_ context.Context, opts core.Options) core.Result {
-	id := opts.String("id")
-	if id == "" {
-		return core.Result{Value: core.E("process.get", "id is required", nil), OK: false}
-	}
-	proc, err := s.Get(id)
-	if err != nil {
-		return core.Result{Value: core.E("process.get", core.Concat("not found: ", id), err), OK: false}
-	}
-	return core.Result{Value: proc.Info(), OK: true}
-}
-
-func optionStrings(value any) []string {
-	switch typed := value.(type) {
-	case nil:
-		return nil
-	case []string:
-		return append([]string(nil), typed...)
-	case []any:
-		result := make([]string, 0, len(typed))
-		for _, item := range typed {
-			text, ok := item.(string)
-			if !ok {
-				return nil
-			}
-			result = append(result, text)
-		}
-		return result
-	default:
-		return nil
-	}
 }

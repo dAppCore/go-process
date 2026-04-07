@@ -1,34 +1,49 @@
 // Package process provides process management with Core IPC integration.
 //
+// Example:
+//
+//	svc := process.NewService(process.Options{})
+//	proc, err := svc.Start(ctx, "echo", "hello")
+//
 // The process package enables spawning, monitoring, and controlling external
 // processes with output streaming via the Core ACTION system.
 //
 // # Getting Started
 //
-//	c := core.New(core.WithService(process.Register))
-//	_ = c.ServiceStartup(ctx, nil)
+//	// Register with Core
+//	core, _ := framework.New(
+//	    framework.WithName("process", process.NewService(process.Options{})),
+//	)
 //
-//	r := c.Process().Run(ctx, "go", "test", "./...")
-//	output := r.Value.(string)
+//	// Get service and run a process
+//	svc, err := framework.ServiceFor[*process.Service](core, "process")
+//	if err != nil {
+//	    return err
+//	}
+//	proc, err := svc.Start(ctx, "go", "test", "./...")
 //
 // # Listening for Events
 //
 // Process events are broadcast via Core.ACTION:
 //
-//	c.RegisterAction(func(c *core.Core, msg core.Message) core.Result {
+//	core.RegisterAction(func(c *framework.Core, msg framework.Message) error {
 //	    switch m := msg.(type) {
 //	    case process.ActionProcessOutput:
 //	        fmt.Print(m.Line)
 //	    case process.ActionProcessExited:
 //	        fmt.Printf("Exit code: %d\n", m.ExitCode)
 //	    }
-//	    return core.Result{OK: true}
+//	    return nil
 //	})
 package process
 
 import "time"
 
 // Status represents the process lifecycle state.
+//
+// Example:
+//
+//	if proc.Status == process.StatusKilled { return }
 type Status string
 
 const (
@@ -45,6 +60,10 @@ const (
 )
 
 // Stream identifies the output source.
+//
+// Example:
+//
+//	if event.Stream == process.StreamStdout { ... }
 type Stream string
 
 const (
@@ -55,6 +74,13 @@ const (
 )
 
 // RunOptions configures process execution.
+//
+// Example:
+//
+//	opts := process.RunOptions{
+//	    Command: "go",
+//	    Args: []string{"test", "./..."},
+//	}
 type RunOptions struct {
 	// Command is the executable to run.
 	Command string
@@ -85,8 +111,13 @@ type RunOptions struct {
 	KillGroup bool
 }
 
-// ProcessInfo provides a snapshot of process state without internal fields.
-type ProcessInfo struct {
+// Info provides a snapshot of process state without internal fields.
+//
+// Example:
+//
+//	info := proc.Info()
+//	fmt.Println(info.PID)
+type Info struct {
 	ID        string        `json:"id"`
 	Command   string        `json:"command"`
 	Args      []string      `json:"args"`
@@ -98,6 +129,3 @@ type ProcessInfo struct {
 	Duration  time.Duration `json:"duration"`
 	PID       int           `json:"pid"`
 }
-
-// Info is kept as a compatibility alias for ProcessInfo.
-type Info = ProcessInfo

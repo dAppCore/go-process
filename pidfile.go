@@ -12,18 +12,30 @@ import (
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
+//
+// Example:
+//
+//	pidFile := process.NewPIDFile("/var/run/myapp.pid")
 type PIDFile struct {
 	path string
 	mu   sync.Mutex
 }
 
 // NewPIDFile creates a PID file manager.
+//
+// Example:
+//
+//	pidFile := process.NewPIDFile("/var/run/myapp.pid")
 func NewPIDFile(path string) *PIDFile {
 	return &PIDFile{path: path}
 }
 
 // Acquire writes the current PID to the file.
 // Returns error if another instance is running.
+//
+// Example:
+//
+//	if err := pidFile.Acquire(); err != nil { return err }
 func (p *PIDFile) Acquire() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -55,6 +67,10 @@ func (p *PIDFile) Acquire() error {
 }
 
 // Release removes the PID file.
+//
+// Example:
+//
+//	_ = pidFile.Release()
 func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -65,6 +81,10 @@ func (p *PIDFile) Release() error {
 }
 
 // Path returns the PID file path.
+//
+// Example:
+//
+//	path := pidFile.Path()
 func (p *PIDFile) Path() string {
 	return p.path
 }
@@ -72,6 +92,10 @@ func (p *PIDFile) Path() string {
 // ReadPID reads a PID file and checks if the process is still running.
 // Returns (pid, true) if the process is alive, (pid, false) if dead/stale,
 // or (0, false) if the file doesn't exist or is invalid.
+//
+// Example:
+//
+//	pid, running := process.ReadPID("/var/run/myapp.pid")
 func ReadPID(path string) (int, bool) {
 	data, err := coreio.Local.Read(path)
 	if err != nil {

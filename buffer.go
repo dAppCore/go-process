@@ -4,8 +4,6 @@ import "sync"
 
 // RingBuffer is a fixed-size circular buffer that overwrites old data.
 // Thread-safe for concurrent reads and writes.
-//
-//	rb := process.NewRingBuffer(1024)
 type RingBuffer struct {
 	data  []byte
 	size  int
@@ -16,13 +14,10 @@ type RingBuffer struct {
 }
 
 // NewRingBuffer creates a ring buffer with the given capacity.
-//
-//	rb := process.NewRingBuffer(256)
 func NewRingBuffer(size int) *RingBuffer {
-	if size <= 0 {
-		size = 1
+	if size < 0 {
+		size = 0
 	}
-
 	return &RingBuffer{
 		data: make([]byte, size),
 		size: size,
@@ -33,6 +28,10 @@ func NewRingBuffer(size int) *RingBuffer {
 func (rb *RingBuffer) Write(p []byte) (n int, err error) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
+
+	if rb.size == 0 {
+		return len(p), nil
+	}
 
 	for _, b := range p {
 		rb.data[rb.end] = b

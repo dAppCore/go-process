@@ -13,12 +13,14 @@ func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
 
 	c := framework.New()
-	r := Register(c)
-	require.True(t, r.OK)
-	return NewRunner(r.Value.(*Service))
+	factory := NewService(Options{})
+	raw, err := factory(c)
+	require.NoError(t, err)
+
+	return NewRunner(raw.(*Service))
 }
 
-func TestRunner_RunSequential_Good(t *testing.T) {
+func TestRunner_RunSequential(t *testing.T) {
 	t.Run("all pass", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -49,6 +51,12 @@ func TestRunner_RunSequential_Good(t *testing.T) {
 		assert.Equal(t, 1, result.Passed)
 		assert.Equal(t, 1, result.Failed)
 		assert.Equal(t, 1, result.Skipped)
+		require.Len(t, result.Results, 3)
+		assert.Equal(t, 0, result.Results[0].ExitCode)
+		assert.NoError(t, result.Results[0].Error)
+		assert.Equal(t, 1, result.Results[1].ExitCode)
+		assert.NoError(t, result.Results[1].Error)
+		assert.True(t, result.Results[2].Skipped)
 	})
 
 	t.Run("allow failure continues", func(t *testing.T) {
@@ -68,7 +76,7 @@ func TestRunner_RunSequential_Good(t *testing.T) {
 	})
 }
 
-func TestRunner_RunParallel_Good(t *testing.T) {
+func TestRunner_RunParallel(t *testing.T) {
 	t.Run("all run concurrently", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -100,7 +108,7 @@ func TestRunner_RunParallel_Good(t *testing.T) {
 	})
 }
 
-func TestRunner_RunAll_Good(t *testing.T) {
+func TestRunner_RunAll(t *testing.T) {
 	t.Run("respects dependencies", func(t *testing.T) {
 		runner := newTestRunner(t)
 
@@ -166,8 +174,8 @@ func TestRunner_RunAll_Good(t *testing.T) {
 	})
 }
 
-func TestRunner_CircularDeps_Bad(t *testing.T) {
-	t.Run("circular dependency counts as failed", func(t *testing.T) {
+func TestRunner_RunAll_CircularDeps(t *testing.T) {
+	t.Run("circular dependency is skipped with error", func(t *testing.T) {
 		runner := newTestRunner(t)
 
 		result, err := runner.RunAll(context.Background(), []RunSpec{
@@ -176,13 +184,85 @@ func TestRunner_CircularDeps_Bad(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		assert.False(t, result.Success())
-		assert.Equal(t, 2, result.Failed)
-		assert.Equal(t, 0, result.Skipped)
+		assert.True(t, result.Success())
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Equal(t, 0, res.ExitCode)
+			assert.Error(t, res.Error)
+		}
+	})
+
+	t.Run("missing dependency is skipped with error", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		result, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "a", Command: "echo", Args: []string{"a"}, After: []string{"missing"}},
+		})
+		require.NoError(t, err)
+
+		assert.True(t, result.Success())
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 1, result.Skipped)
+		require.Len(t, result.Results, 1)
+		assert.True(t, result.Results[0].Skipped)
+		assert.Equal(t, 0, result.Results[0].ExitCode)
+		assert.Error(t, result.Results[0].Error)
 	})
 }
 
-func TestRunResult_Passed_Good(t *testing.T) {
+func TestRunner_ContextCancellation(t *testing.T) {
+	t.Run("run sequential skips pending specs", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := runner.RunSequential(ctx, []RunSpec{
+			{Name: "first", Command: "echo", Args: []string{"1"}},
+			{Name: "second", Command: "echo", Args: []string{"2"}},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, result.Passed)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		require.Len(t, result.Results, 2)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Equal(t, 1, res.ExitCode)
+			assert.Error(t, res.Error)
+			assert.Contains(t, res.Error.Error(), "context canceled")
+		}
+	})
+
+	t.Run("run all skips pending specs", func(t *testing.T) {
+		runner := newTestRunner(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := runner.RunAll(ctx, []RunSpec{
+			{Name: "first", Command: "echo", Args: []string{"1"}},
+			{Name: "second", Command: "echo", Args: []string{"2"}, After: []string{"first"}},
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, result.Passed)
+		assert.Equal(t, 0, result.Failed)
+		assert.Equal(t, 2, result.Skipped)
+		require.Len(t, result.Results, 2)
+		for _, res := range result.Results {
+			assert.True(t, res.Skipped)
+			assert.Equal(t, 1, res.ExitCode)
+			assert.Error(t, res.Error)
+			assert.Contains(t, res.Error.Error(), "context canceled")
+		}
+	})
+}
+
+func TestRunResult_Passed(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		r := RunResult{ExitCode: 0}
 		assert.True(t, r.Passed())
@@ -204,7 +284,7 @@ func TestRunResult_Passed_Good(t *testing.T) {
 	})
 }
 
-func TestRunner_NilService_Bad(t *testing.T) {
+func TestRunner_NilService(t *testing.T) {
 	runner := NewRunner(nil)
 
 	_, err := runner.RunAll(context.Background(), nil)
@@ -218,4 +298,74 @@ func TestRunner_NilService_Bad(t *testing.T) {
 	_, err = runner.RunParallel(context.Background(), nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrRunnerNoService)
+}
+
+func TestRunner_NilContext(t *testing.T) {
+	runner := newTestRunner(t)
+
+	_, err := runner.RunAll(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+
+	_, err = runner.RunSequential(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+
+	_, err = runner.RunParallel(nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrRunnerContextRequired)
+}
+
+func TestRunner_InvalidSpecNames(t *testing.T) {
+	runner := newTestRunner(t)
+
+	t.Run("rejects empty names", func(t *testing.T) {
+		_, err := runner.RunSequential(context.Background(), []RunSpec{
+			{Name: "", Command: "echo", Args: []string{"a"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
+
+	t.Run("rejects empty dependency names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{""}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
+	t.Run("rejects duplicated dependency names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{"two", "two"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
+	t.Run("rejects self dependency", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}, After: []string{"one"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidDependencyName)
+	})
+
+	t.Run("rejects duplicate names", func(t *testing.T) {
+		_, err := runner.RunAll(context.Background(), []RunSpec{
+			{Name: "same", Command: "echo", Args: []string{"a"}},
+			{Name: "same", Command: "echo", Args: []string{"b"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
+
+	t.Run("rejects duplicate names in parallel mode", func(t *testing.T) {
+		_, err := runner.RunParallel(context.Background(), []RunSpec{
+			{Name: "one", Command: "echo", Args: []string{"a"}},
+			{Name: "one", Command: "echo", Args: []string{"b"}},
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRunnerInvalidSpecName)
+	})
 }

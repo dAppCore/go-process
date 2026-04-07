@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"dappco.re/go/core"
+	coreerr "dappco.re/go/core/log"
 )
 
 // Runner orchestrates multiple processes with dependencies.
@@ -14,14 +14,31 @@ type Runner struct {
 }
 
 // ErrRunnerNoService is returned when a runner was created without a service.
-var ErrRunnerNoService = core.E("", "runner service is nil", nil)
+var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
+
+// ErrRunnerInvalidSpecName is returned when a RunSpec name is empty or duplicated.
+var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
+
+// ErrRunnerInvalidDependencyName is returned when a RunSpec dependency name is empty, duplicated, or self-referential.
+var ErrRunnerInvalidDependencyName = coreerr.E("", "runner dependency names must be non-empty, unique, and not self-referential", nil)
+
+// ErrRunnerContextRequired is returned when a runner method is called without a context.
+var ErrRunnerContextRequired = coreerr.E("", "runner context is required", nil)
 
 // NewRunner creates a runner for the given service.
+//
+// Example:
+//
+//	runner := process.NewRunner(svc)
 func NewRunner(svc *Service) *Runner {
 	return &Runner{service: svc}
 }
 
 // RunSpec defines a process to run with optional dependencies.
+//
+// Example:
+//
+//	spec := process.RunSpec{Name: "test", Command: "go", Args: []string{"test", "./..."}}
 type RunSpec struct {
 	// Name is a friendly identifier (e.g., "lint", "test").
 	Name string
@@ -46,11 +63,17 @@ type RunResult struct {
 	ExitCode int
 	Duration time.Duration
 	Output   string
-	Error    error
-	Skipped  bool
+	// Error only reports start-time or orchestration failures. A started process
+	// that exits non-zero uses ExitCode to report failure and leaves Error nil.
+	Error   error
+	Skipped bool
 }
 
 // Passed returns true if the process succeeded.
+//
+// Example:
+//
+//	if result.Passed() { ... }
 func (r RunResult) Passed() bool {
 	return !r.Skipped && r.Error == nil && r.ExitCode == 0
 }
@@ -64,24 +87,38 @@ type RunAllResult struct {
 	Skipped  int
 }
 
-// Success returns true if all non-skipped specs passed.
+// Success returns true when no spec failed.
+//
+// Example:
+//
+//	if result.Success() { ... }
 func (r RunAllResult) Success() bool {
 	return r.Failed == 0
 }
 
 // RunAll executes specs respecting dependencies, parallelising where possible.
+//
+// Example:
+//
+//	result, err := runner.RunAll(ctx, specs)
 func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
+	if err := ensureRunnerContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
 	start := time.Now()
 
 	// Build dependency graph
 	specMap := make(map[string]RunSpec)
-	indexMap := make(map[string]int)
-	for i, spec := range specs {
+	indexMap := make(map[string]int, len(specs))
+	for _, spec := range specs {
 		specMap[spec.Name] = spec
-		indexMap[spec.Name] = i
+		indexMap[spec.Name] = len(indexMap)
 	}
 
 	// Track completion
@@ -97,6 +134,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 	}
 
 	for len(remaining) > 0 {
+		if err := ctx.Err(); err != nil {
+			for name := range remaining {
+				results[indexMap[name]] = cancelledRunResult("Runner.RunAll", remaining[name], err)
+			}
+			break
+		}
+
 		// Find specs ready to run (all dependencies satisfied)
 		ready := make([]RunSpec, 0)
 		for _, spec := range remaining {
@@ -106,13 +150,14 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 		}
 
 		if len(ready) == 0 && len(remaining) > 0 {
-			// Deadlock — circular dependency or missing specs. Mark as failed, not skipped.
-			for name, spec := range remaining {
+			// Deadlock - circular dependency or missing specs.
+			// Keep the output aligned with the input order.
+			for name := range remaining {
 				results[indexMap[name]] = RunResult{
-					Name:     name,
-					Spec:     spec,
-					ExitCode: 1,
-					Error:    core.E("runner.run_all", "circular dependency or missing dependency", nil),
+					Name:    name,
+					Spec:    remaining[name],
+					Skipped: true,
+					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				}
 			}
 			break
@@ -144,7 +189,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 						Name:    spec.Name,
 						Spec:    spec,
 						Skipped: true,
-						Error:   core.E("runner.run_all", "skipped due to dependency failure", nil),
+						Error:   coreerr.E("Runner.RunAll", "skipped due to dependency failure", nil),
 					}
 				} else {
 					result = r.runSpec(ctx, spec)
@@ -184,6 +229,13 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 	return aggResult, nil
 }
 
+func (r *Runner) ensureService() error {
+	if r == nil || r.service == nil {
+		return ErrRunnerNoService
+	}
+	return nil
+}
+
 // canRun checks if all dependencies are completed.
 func (r *Runner) canRun(spec RunSpec, completed map[string]*RunResult) bool {
 	for _, dep := range spec.After {
@@ -198,17 +250,13 @@ func (r *Runner) canRun(spec RunSpec, completed map[string]*RunResult) bool {
 func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	start := time.Now()
 
-	sr := r.service.StartWithOptions(ctx, RunOptions{
+	proc, err := r.service.StartWithOptions(ctx, RunOptions{
 		Command: spec.Command,
 		Args:    spec.Args,
 		Dir:     spec.Dir,
 		Env:     spec.Env,
 	})
-	if !sr.OK {
-		err, _ := sr.Value.(error)
-		if err == nil {
-			err = core.E("runner.run_spec", core.Concat("failed to start: ", spec.Name), nil)
-		}
+	if err != nil {
 		return RunResult{
 			Name:     spec.Name,
 			Spec:     spec,
@@ -217,8 +265,18 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 		}
 	}
 
-	proc := sr.Value.(*Process)
 	<-proc.Done()
+
+	var runErr error
+	switch proc.Status {
+	case StatusKilled:
+		runErr = coreerr.E("Runner.runSpec", "process was killed", nil)
+	case StatusExited:
+		// Non-zero exits are surfaced through ExitCode; Error remains nil so
+		// callers can distinguish execution failure from orchestration failure.
+	case StatusFailed:
+		runErr = coreerr.E("Runner.runSpec", "process failed to start", nil)
+	}
 
 	return RunResult{
 		Name:     spec.Name,
@@ -226,30 +284,41 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 		ExitCode: proc.ExitCode,
 		Duration: proc.Duration,
 		Output:   proc.Output(),
-		Error:    nil,
+		Error:    runErr,
 	}
 }
 
 // RunSequential executes specs one after another, stopping on first failure.
+//
+// Example:
+//
+//	result, err := runner.RunSequential(ctx, specs)
 func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
+	if err := ensureRunnerContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
 
 	for _, spec := range specs {
+		if err := ctx.Err(); err != nil {
+			results = append(results, cancelledRunResult("Runner.RunSequential", spec, err))
+			continue
+		}
+
 		result := r.runSpec(ctx, spec)
 		results = append(results, result)
 
 		if !result.Passed() && !spec.AllowFailure {
 			// Mark remaining as skipped
 			for i := len(results); i < len(specs); i++ {
-				results = append(results, RunResult{
-					Name:    specs[i].Name,
-					Spec:    specs[i],
-					Skipped: true,
-				})
+				results = append(results, skippedRunResult("Runner.RunSequential", specs[i], nil))
 			}
 			break
 		}
@@ -274,8 +343,18 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 }
 
 // RunParallel executes all specs concurrently, regardless of dependencies.
+//
+// Example:
+//
+//	result, err := runner.RunParallel(ctx, specs)
 func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
 	if err := r.ensureService(); err != nil {
+		return nil, err
+	}
+	if err := ensureRunnerContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := validateSpecs(specs); err != nil {
 		return nil, err
 	}
 	start := time.Now()
@@ -286,6 +365,10 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 		wg.Add(1)
 		go func(i int, spec RunSpec) {
 			defer wg.Done()
+			if err := ctx.Err(); err != nil {
+				results[i] = cancelledRunResult("Runner.RunParallel", spec, err)
+				return
+			}
 			results[i] = r.runSpec(ctx, spec)
 		}(i, spec)
 	}
@@ -309,9 +392,59 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	return aggResult, nil
 }
 
-func (r *Runner) ensureService() error {
-	if r == nil || r.service == nil {
-		return ErrRunnerNoService
+func validateSpecs(specs []RunSpec) error {
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		if spec.Name == "" {
+			return coreerr.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName)
+		}
+		if _, ok := seen[spec.Name]; ok {
+			return coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName)
+		}
+		seen[spec.Name] = struct{}{}
+
+		deps := make(map[string]struct{}, len(spec.After))
+		for _, dep := range spec.After {
+			if dep == "" {
+				return coreerr.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName)
+			}
+			if dep == spec.Name {
+				return coreerr.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName)
+			}
+			if _, ok := deps[dep]; ok {
+				return coreerr.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName)
+			}
+			deps[dep] = struct{}{}
+		}
 	}
 	return nil
+}
+
+func ensureRunnerContext(ctx context.Context) error {
+	if ctx == nil {
+		return coreerr.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired)
+	}
+	return nil
+}
+
+func skippedRunResult(op string, spec RunSpec, err error) RunResult {
+	result := RunResult{
+		Name:    spec.Name,
+		Spec:    spec,
+		Skipped: true,
+	}
+	if err != nil {
+		result.ExitCode = 1
+		result.Error = coreerr.E(op, "skipped", err)
+	}
+	return result
+}
+
+func cancelledRunResult(op string, spec RunSpec, err error) RunResult {
+	result := skippedRunResult(op, spec, err)
+	if result.Error == nil {
+		result.ExitCode = 1
+		result.Error = coreerr.E(op, "context cancelled", err)
+	}
+	return result
 }

@@ -1,15 +1,13 @@
 dappco.re/go/core v0.8.0-alpha.1 h1:gj7+Scv+L63Z7wMxbJYHhaRFkHJo2u4MMPuUSv/Dhtk=
 dappco.re/go/core v0.8.0-alpha.1/go.mod h1:f2/tBZ3+3IqDrg2F5F598llv0nmb/4gJVCFzM5geE4A=
+dappco.re/go/core/api v0.2.0 h1:5OcN9nawpp18Jp6dB1OwI2CBfs0Tacb0y0zqxFB6TJ0=
+dappco.re/go/core/api v0.2.0/go.mod h1:AtgNAx8lDY+qhVObFdNQOjSUQrHX1BeiDdMuA6RIfzo=
 dappco.re/go/core/io v0.2.0 h1:zuudgIiTsQQ5ipVt97saWdGLROovbEB/zdVyy9/l+I4=
 dappco.re/go/core/io v0.2.0/go.mod h1:1QnQV6X9LNgFKfm8SkOtR9LLaj3bDcsOIeJOOyjbL5E=
 dappco.re/go/core/log v0.1.0 h1:pa71Vq2TD2aoEUQWFKwNcaJ3GBY8HbaNGqtE688Unyc=
 dappco.re/go/core/log v0.1.0/go.mod h1:Nkqb8gsXhZAO8VLpx7B8i1iAmohhzqA20b9Zr8VUcJs=
 dappco.re/go/core/ws v0.3.0 h1:ZxR8y5pfrWvnCHVN7qExXz7fdP5a063uNqyqE0Ab8pQ=
 dappco.re/go/core/ws v0.3.0/go.mod h1:aLyXrJnbCOGL0SW9rC1EHAAIS83w3djO374gHIz4Nic=
-forge.lthn.ai/core/api v0.1.5 h1:NwZrcOyBjaiz5/cn0n0tnlMUodi8Or6FHMx59C7Kv2o=
-forge.lthn.ai/core/api v0.1.5/go.mod h1:PBnaWyOVXSOGy+0x2XAPUFMYJxQ2CNhppia/D06ZPII=
-forge.lthn.ai/core/go-io v0.1.5 h1:+XJ1YhaGGFLGtcNbPtVlndTjk+pO0Ydi2hRDj5/cHOM=
-forge.lthn.ai/core/go-io v0.1.5/go.mod h1:FRtXSsi8W+U9vewCU+LBAqqbIj3wjXA4dBdSv3SAtWI=
 forge.lthn.ai/core/go-log v0.0.4 h1:KTuCEPgFmuM8KJfnyQ8vPOU1Jg654W74h8IJvfQMfv0=
 forge.lthn.ai/core/go-log v0.0.4/go.mod h1:r14MXKOD3LF/sI8XUJQhRk/SZHBE7jAFVuCfgkXoZPw=
 github.com/99designs/gqlgen v0.17.88 h1:neMQDgehMwT1vYIOx/w5ZYPUU/iMNAJzRO44I5Intoc=

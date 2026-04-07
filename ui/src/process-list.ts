@@ -3,7 +3,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { connectProcessEvents, type ProcessEvent } from './shared/events.js';
-import type { ProcessInfo } from './shared/api.js';
+import { ProcessApi, type ProcessInfo } from './shared/api.js';
 
 /**
  * <core-process-list> — Running processes with status and actions.
@@ -14,9 +14,8 @@ import type { ProcessInfo } from './shared/api.js';
  * Emits `process-selected` event when a process row is clicked, carrying
  * the process ID for the output viewer.
  *
- * Note: Requires process-level REST endpoints (GET /processes, POST /processes/:id/kill)
- * that are not yet in the provider. The element renders from WS events and local state
- * until those endpoints are available.
+ * The list is seeded from the REST API and then kept in sync with the live
+ * process event stream when a WebSocket URL is configured.
  */
 @customElement('core-process-list')
 export class ProcessList extends LitElement {
@@ -193,11 +192,14 @@ export class ProcessList extends LitElement {
   @state() private loading = false;
   @state() private error = '';
   @state() private connected = false;
+  @state() private killing = new Set<string>();
 
+  private api!: ProcessApi;
   private ws: WebSocket | null = null;
 
   connectedCallback() {
     super.connectedCallback();
+    this.api = new ProcessApi(this.apiUrl);
     this.loadProcesses();
   }
 
@@ -207,24 +209,30 @@ export class ProcessList extends LitElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has('wsUrl')) {
+    if (changed.has('apiUrl')) {
+      this.api = new ProcessApi(this.apiUrl);
+    }
+
+    if (changed.has('wsUrl') || changed.has('apiUrl')) {
       this.disconnect();
-      this.processes = [];
-      this.loadProcesses();
+      void this.loadProcesses();
     }
   }
 
   async loadProcesses() {
-    // The process list is built from the shared process event stream.
+    this.loading = true;
     this.error = '';
-    this.loading = false;
-
-    if (!this.wsUrl) {
+    try {
+      this.processes = await this.api.listProcesses();
+      if (this.wsUrl) {
+        this.connect();
+      }
+    } catch (e: any) {
+      this.error = e.message ?? 'Failed to load processes';
       this.processes = [];
-      return;
+    } finally {
+      this.loading = false;
     }
-
-    this.connect();
   }
 
   private handleSelect(proc: ProcessInfo) {
@@ -237,21 +245,25 @@ export class ProcessList extends LitElement {
     );
   }
 
-  private formatUptime(started: string): string {
+  private async handleKill(proc: ProcessInfo) {
+    this.killing = new Set([...this.killing, proc.id]);
     try {
-      const ms = Date.now() - new Date(started).getTime();
-      const seconds = Math.floor(ms / 1000);
-      if (seconds < 60) return `${seconds}s`;
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-      const hours = Math.floor(minutes / 60);
-      return `${hours}h ${minutes % 60}m`;
-    } catch {
-      return 'unknown';
+      await this.api.killProcess(proc.id);
+      await this.loadProcesses();
+    } catch (e: any) {
+      this.error = e.message ?? 'Failed to kill process';
+    } finally {
+      const next = new Set(this.killing);
+      next.delete(proc.id);
+      this.killing = next;
     }
   }
 
   private connect() {
+    if (!this.wsUrl || this.ws) {
+      return;
+    }
+
     this.ws = connectProcessEvents(this.wsUrl, (event: ProcessEvent) => {
       this.applyEvent(event);
     });
@@ -274,10 +286,7 @@ export class ProcessList extends LitElement {
 
   private applyEvent(event: ProcessEvent) {
     const channel = event.channel ?? event.type ?? '';
-    const data = (event.data ?? {}) as Partial<ProcessInfo> & {
-      id?: string;
-      signal?: string;
-    };
+    const data = (event.data ?? {}) as Partial<ProcessInfo> & { id?: string };
 
     if (!data.id) {
       return;
@@ -286,36 +295,36 @@ export class ProcessList extends LitElement {
     const next = new Map(this.processes.map((proc) => [proc.id, proc] as const));
     const current = next.get(data.id);
 
-    if (channel === 'process.started') {
-      next.set(data.id, this.normalizeProcess(data, current, 'running'));
-      this.processes = this.sortProcesses(next);
-      return;
+    switch (channel) {
+      case 'process.started':
+        next.set(data.id, this.normalizeProcess(data, current, 'running'));
+        break;
+      case 'process.exited':
+        next.set(data.id, this.normalizeProcess(data, current, data.exitCode === -1 && data.error ? 'failed' : 'exited'));
+        break;
+      case 'process.killed':
+        next.set(data.id, this.normalizeProcess(data, current, 'killed'));
+        break;
+      default:
+        return;
     }
 
-    if (channel === 'process.exited') {
-      next.set(data.id, this.normalizeProcess(data, current, 'exited'));
-      this.processes = this.sortProcesses(next);
-      return;
-    }
-
-    if (channel === 'process.killed') {
-      next.set(data.id, this.normalizeProcess(data, current, 'killed'));
-      this.processes = this.sortProcesses(next);
-      return;
-    }
+    this.processes = this.sortProcesses(next);
   }
 
   private normalizeProcess(
-    data: Partial<ProcessInfo> & { id: string; signal?: string },
+    data: Partial<ProcessInfo> & { id: string; error?: unknown },
     current: ProcessInfo | undefined,
     status: ProcessInfo['status'],
   ): ProcessInfo {
+    const startedAt = data.startedAt ?? current?.startedAt ?? new Date().toISOString();
     return {
       id: data.id,
       command: data.command ?? current?.command ?? '',
       args: data.args ?? current?.args ?? [],
       dir: data.dir ?? current?.dir ?? '',
-      startedAt: data.startedAt ?? current?.startedAt ?? new Date().toISOString(),
+      startedAt,
+      running: status === 'running',
       status,
       exitCode: data.exitCode ?? current?.exitCode ?? (status === 'killed' ? -1 : 0),
       duration: data.duration ?? current?.duration ?? 0,
@@ -324,9 +333,28 @@ export class ProcessList extends LitElement {
   }
 
   private sortProcesses(processes: Map<string, ProcessInfo>): ProcessInfo[] {
-    return [...processes.values()].sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-    );
+    return [...processes.values()].sort((a, b) => {
+      const aStarted = new Date(a.startedAt).getTime();
+      const bStarted = new Date(b.startedAt).getTime();
+      if (aStarted === bStarted) {
+        return a.id.localeCompare(b.id);
+      }
+      return aStarted - bStarted;
+    });
+  }
+
+  private formatUptime(started: string): string {
+    try {
+      const ms = Date.now() - new Date(started).getTime();
+      const seconds = Math.floor(ms / 1000);
+      if (seconds < 60) return `${seconds}s`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+      const hours = Math.floor(minutes / 60);
+      return `${hours}h ${minutes % 60}m`;
+    } catch {
+      return 'unknown';
+    }
   }
 
   render() {
@@ -341,9 +369,9 @@ export class ProcessList extends LitElement {
             <div class="info-notice">
               ${this.wsUrl
                 ? this.connected
-                  ? 'Waiting for process events from the WebSocket feed.'
+                  ? 'Receiving live process updates.'
                   : 'Connecting to the process event stream...'
-                : 'Set a WebSocket URL to receive live process events.'}
+                : 'Managed processes are loaded from the process REST API.'}
             </div>
             <div class="empty">No managed processes.</div>
           `
@@ -379,12 +407,13 @@ export class ProcessList extends LitElement {
                           <div class="item-actions">
                             <button
                               class="kill-btn"
-                              disabled
+                              ?disabled=${this.killing.has(proc.id)}
                               @click=${(e: Event) => {
                                 e.stopPropagation();
+                                void this.handleKill(proc);
                               }}
                             >
-                              Live only
+                              ${this.killing.has(proc.id) ? 'Killing\u2026' : 'Kill'}
                             </button>
                           </div>
                         `

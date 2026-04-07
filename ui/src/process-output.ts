@@ -3,6 +3,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { connectProcessEvents, type ProcessEvent } from './shared/events.js';
+import { ProcessApi } from './shared/api.js';
 
 interface OutputLine {
   text: string;
@@ -131,14 +132,15 @@ export class ProcessOutput extends LitElement {
   @state() private lines: OutputLine[] = [];
   @state() private autoScroll = true;
   @state() private connected = false;
+  @state() private loadingSnapshot = false;
 
   private ws: WebSocket | null = null;
+  private api = new ProcessApi(this.apiUrl);
+  private syncToken = 0;
 
   connectedCallback() {
     super.connectedCallback();
-    if (this.wsUrl && this.processId) {
-      this.connect();
-    }
+    this.syncSources();
   }
 
   disconnectedCallback() {
@@ -147,17 +149,77 @@ export class ProcessOutput extends LitElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has('processId') || changed.has('wsUrl')) {
-      this.disconnect();
-      this.lines = [];
-      if (this.wsUrl && this.processId) {
-        this.connect();
-      }
+    if (changed.has('apiUrl')) {
+      this.api = new ProcessApi(this.apiUrl);
+    }
+
+    if (changed.has('processId') || changed.has('wsUrl') || changed.has('apiUrl')) {
+      this.syncSources();
     }
 
     if (this.autoScroll) {
       this.scrollToBottom();
     }
+  }
+
+  private syncSources() {
+    this.disconnect();
+    this.lines = [];
+    if (!this.processId) {
+      return;
+    }
+
+    void this.loadSnapshotAndConnect();
+  }
+
+  private async loadSnapshotAndConnect() {
+    const token = ++this.syncToken;
+
+    if (!this.processId) {
+      return;
+    }
+
+    if (this.apiUrl) {
+      this.loadingSnapshot = true;
+      try {
+        const output = await this.api.getProcessOutput(this.processId);
+        if (token !== this.syncToken) {
+          return;
+        }
+        const snapshot = this.linesFromOutput(output);
+        if (snapshot.length > 0) {
+          this.lines = snapshot;
+        }
+      } catch {
+        // Ignore missing snapshot data and continue with live streaming.
+      } finally {
+        if (token === this.syncToken) {
+          this.loadingSnapshot = false;
+        }
+      }
+    }
+
+    if (token === this.syncToken && this.wsUrl) {
+      this.connect();
+    }
+  }
+
+  private linesFromOutput(output: string): OutputLine[] {
+    if (!output) {
+      return [];
+    }
+
+    const normalized = output.replace(/\r\n/g, '\n');
+    const parts = normalized.split('\n');
+    if (parts.length > 0 && parts[parts.length - 1] === '') {
+      parts.pop();
+    }
+
+    return parts.map((text) => ({
+      text,
+      stream: 'stdout' as const,
+      timestamp: Date.now(),
+    }));
   }
 
   private connect() {
@@ -231,7 +293,9 @@ export class ProcessOutput extends LitElement {
         </div>
       </div>
       <div class="output-body">
-        ${this.lines.length === 0
+        ${this.loadingSnapshot && this.lines.length === 0
+          ? html`<div class="waiting">Loading snapshot\u2026</div>`
+          : this.lines.length === 0
           ? html`<div class="waiting">Waiting for output\u2026</div>`
           : this.lines.map(
               (line) => html`

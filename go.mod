@@ -4,17 +4,17 @@ go 1.26.0
 
 require (
 	dappco.re/go/core v0.8.0-alpha.1
+	dappco.re/go/core/api v0.2.0
 	dappco.re/go/core/io v0.2.0
+	dappco.re/go/core/log v0.1.0
 	dappco.re/go/core/ws v0.3.0
-	dappco.re/go/core/api v0.1.5
 	github.com/gin-gonic/gin v1.12.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	dappco.re/go/core/log v0.1.0 // indirect
-	dappco.re/go/core/io v0.1.5 // indirect
-	dappco.re/go/core/log v0.0.4 // indirect
+	forge.lthn.ai/core/go-log v0.0.4 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
@@ -67,7 +67,6 @@ require (
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/sessions v1.4.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

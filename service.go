@@ -3,86 +3,128 @@ package process
 import (
 	"bufio"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"dappco.re/go/core"
+	coreerr "dappco.re/go/core/log"
+	goio "io"
 )
-
-type execCmd = exec.Cmd
-
-type streamReader interface {
-	Read(p []byte) (n int, err error)
-}
 
 // Default buffer size for process output (1MB).
 const DefaultBufferSize = 1024 * 1024
 
 // Errors
 var (
-	ErrProcessNotFound   = core.E("", "process not found", nil)
-	ErrProcessNotRunning = core.E("", "process is not running", nil)
-	ErrStdinNotAvailable = core.E("", "stdin not available", nil)
+	ErrProcessNotFound   = coreerr.E("", "process not found", nil)
+	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
+	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
+	ErrContextRequired   = coreerr.E("", "context is required", nil)
 )
 
 // Service manages process execution with Core IPC integration.
 type Service struct {
 	*core.ServiceRuntime[Options]
 
-	managed *core.Registry[*ManagedProcess]
-	bufSize int
+	processes     map[string]*Process
+	mu            sync.RWMutex
+	bufSize       int
+	idCounter     atomic.Uint64
+	registrations sync.Once
+}
+
+// coreApp returns the attached Core runtime, if one exists.
+func (s *Service) coreApp() *core.Core {
+	if s == nil || s.ServiceRuntime == nil {
+		return nil
+	}
+	return s.ServiceRuntime.Core()
 }
 
 // Options configures the process service.
+//
+// Example:
+//
+//	svc := process.NewService(process.Options{BufferSize: 2 * 1024 * 1024})
 type Options struct {
 	// BufferSize is the ring buffer size for output capture.
 	// Default: 1MB (1024 * 1024 bytes).
 	BufferSize int
 }
 
-// Register constructs a Service bound to the provided Core instance.
+// NewService creates a process service factory for Core registration.
 //
-//	c := core.New()
-//	svc := process.Register(c).Value.(*process.Service)
-func Register(c *core.Core) core.Result {
-	opts := Options{BufferSize: DefaultBufferSize}
-	svc := &Service{
-		ServiceRuntime: core.NewServiceRuntime(c, opts),
-		managed:        core.NewRegistry[*ManagedProcess](),
-		bufSize:        opts.BufferSize,
+//	core, _ := core.New(
+//	    core.WithName("process", process.NewService(process.Options{})),
+//	)
+//
+// Example:
+//
+//	factory := process.NewService(process.Options{})
+func NewService(opts Options) func(*core.Core) (any, error) {
+	return func(c *core.Core) (any, error) {
+		if opts.BufferSize == 0 {
+			opts.BufferSize = DefaultBufferSize
+		}
+		svc := &Service{
+			ServiceRuntime: core.NewServiceRuntime(c, opts),
+			processes:      make(map[string]*Process),
+			bufSize:        opts.BufferSize,
+		}
+		return svc, nil
 	}
-	return core.Result{Value: svc, OK: true}
 }
 
 // OnStartup implements core.Startable.
-func (s *Service) OnStartup(ctx context.Context) core.Result {
-	c := s.Core()
-	c.Action("process.run", s.handleRun)
-	c.Action("process.start", s.handleStart)
-	c.Action("process.kill", s.handleKill)
-	c.Action("process.list", s.handleList)
-	c.Action("process.get", s.handleGet)
-	return core.Result{OK: true}
+//
+// Example:
+//
+//	_ = svc.OnStartup(ctx)
+func (s *Service) OnStartup(ctx context.Context) error {
+	s.registrations.Do(func() {
+		if c := s.coreApp(); c != nil {
+			c.RegisterTask(s.handleTask)
+		}
+	})
+	return nil
 }
 
-// OnShutdown implements core.Stoppable — kills all managed processes.
+// OnShutdown implements core.Stoppable.
+// Immediately kills all running processes to avoid shutdown stalls.
 //
-//	c.ServiceShutdown(ctx) // calls OnShutdown on all Stoppable services
-func (s *Service) OnShutdown(ctx context.Context) core.Result {
-	s.managed.Each(func(_ string, proc *ManagedProcess) {
-		_ = proc.Kill()
-	})
-	return core.Result{OK: true}
+// Example:
+//
+//	_ = svc.OnShutdown(ctx)
+func (s *Service) OnShutdown(ctx context.Context) error {
+	s.mu.RLock()
+	procs := make([]*Process, 0, len(s.processes))
+	for _, p := range s.processes {
+		if p.IsRunning() {
+			procs = append(procs, p)
+		}
+	}
+	s.mu.RUnlock()
+
+	for _, p := range procs {
+		_, _ = p.killTree()
+	}
+
+	return nil
 }
 
 // Start spawns a new process with the given command and args.
 //
-//	r := svc.Start(ctx, "echo", "hello")
-//	if r.OK { proc := r.Value.(*Process) }
-func (s *Service) Start(ctx context.Context, command string, args ...string) core.Result {
+// Example:
+//
+//	proc, err := svc.Start(ctx, "echo", "hello")
+func (s *Service) Start(ctx context.Context, command string, args ...string) (*Process, error) {
 	return s.StartWithOptions(ctx, RunOptions{
 		Command: command,
 		Args:    args,
@@ -91,17 +133,23 @@ func (s *Service) Start(ctx context.Context, command string, args ...string) cor
 
 // StartWithOptions spawns a process with full configuration.
 //
-//	r := svc.StartWithOptions(ctx, process.RunOptions{Command: "go", Args: []string{"test", "./..."}})
-//	if r.OK { proc := r.Value.(*Process) }
-func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Result {
+// Example:
+//
+//	proc, err := svc.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
+func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 	if opts.Command == "" {
-		return core.Result{Value: core.E("process.start", "command is required", nil), OK: false}
+		return nil, ServiceError("command is required", nil)
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return nil, ServiceError("context is required", ErrContextRequired)
 	}
 
-	id := core.ID()
+	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
+	startedAt := time.Now()
+
+	if opts.KillGroup && !opts.Detach {
+		return nil, coreerr.E("Service.StartWithOptions", "KillGroup requires Detach", nil)
+	}
 
 	// Detached processes use Background context so they survive parent death
 	parentCtx := ctx
@@ -109,7 +157,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		parentCtx = context.Background()
 	}
 	procCtx, cancel := context.WithCancel(parentCtx)
-	cmd := execCommandContext(procCtx, opts.Command, opts.Args...)
+	cmd := exec.CommandContext(procCtx, opts.Command, opts.Args...)
 
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
@@ -118,28 +166,27 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		cmd.Env = append(cmd.Environ(), opts.Env...)
 	}
 
-	// Detached processes get their own process group
-	if opts.Detach {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	// Put every subprocess in its own process group so shutdown can terminate
+	// the full tree without affecting the parent process.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Set up pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return core.Result{Value: core.E("process.start", core.Concat("stdout pipe failed: ", opts.Command), err), OK: false}
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stdout pipe", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
-		return core.Result{Value: core.E("process.start", core.Concat("stderr pipe failed: ", opts.Command), err), OK: false}
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stderr pipe", err)
 	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
-		return core.Result{Value: core.E("process.start", core.Concat("stdin pipe failed: ", opts.Command), err), OK: false}
+		return nil, coreerr.E("Service.StartWithOptions", "failed to create stdin pipe", err)
 	}
 
 	// Create output buffer (enabled by default)
@@ -148,13 +195,13 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		output = NewRingBuffer(s.bufSize)
 	}
 
-	proc := &ManagedProcess{
+	proc := &Process{
 		ID:          id,
 		Command:     opts.Command,
 		Args:        append([]string(nil), opts.Args...),
 		Dir:         opts.Dir,
 		Env:         append([]string(nil), opts.Env...),
-		StartedAt:   time.Now(),
+		StartedAt:   startedAt,
 		Status:      StatusPending,
 		cmd:         cmd,
 		ctx:         procCtx,
@@ -168,29 +215,45 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
+		startErr := coreerr.E("Service.StartWithOptions", "failed to start process", err)
 		proc.mu.Lock()
 		proc.Status = StatusFailed
+		proc.ExitCode = -1
+		proc.Duration = time.Since(startedAt)
 		proc.mu.Unlock()
+
+		s.mu.Lock()
+		s.processes[id] = proc
+		s.mu.Unlock()
+
+		close(proc.done)
 		cancel()
-		return core.Result{Value: core.E("process.start", core.Concat("command failed: ", opts.Command), err), OK: false}
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(ActionProcessExited{
+				ID:       id,
+				ExitCode: -1,
+				Duration: proc.Duration,
+				Error:    startErr,
+			})
+		}
+		return proc, startErr
 	}
-	proc.PID = cmd.Process.Pid
+
 	proc.mu.Lock()
 	proc.Status = StatusRunning
 	proc.mu.Unlock()
 
 	// Store process
-	if r := s.managed.Set(id, proc); !r.OK {
-		cancel()
-		_ = cmd.Process.Kill()
-		return r
-	}
+	s.mu.Lock()
+	s.processes[id] = proc
+	s.mu.Unlock()
 
 	// Start timeout watchdog if configured
 	if opts.Timeout > 0 {
 		go func() {
 			select {
 			case <-proc.done:
+				// Process exited before timeout
 			case <-time.After(opts.Timeout):
 				proc.Shutdown()
 			}
@@ -198,13 +261,15 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 	}
 
 	// Broadcast start
-	s.Core().ACTION(ActionProcessStarted{
-		ID:      id,
-		Command: opts.Command,
-		Args:    opts.Args,
-		Dir:     opts.Dir,
-		PID:     cmd.Process.Pid,
-	})
+	if c := s.coreApp(); c != nil {
+		_ = c.ACTION(ActionProcessStarted{
+			ID:      id,
+			Command: opts.Command,
+			Args:    opts.Args,
+			Dir:     opts.Dir,
+			PID:     cmd.Process.Pid,
+		})
+	}
 
 	// Stream output in goroutines
 	var wg sync.WaitGroup
@@ -220,14 +285,16 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 
 	// Wait for process completion
 	go func() {
+		// Wait for output streaming to complete
 		wg.Wait()
-		waitErr := cmd.Wait()
+
+		// Wait for process exit
+		err := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
-		status, exitCode, _, killedSignal := classifyProcessExit(proc, waitErr)
+		status, exitCode, exitErr, signalName := classifyProcessExit(err)
 
 		proc.mu.Lock()
-		proc.PID = cmd.Process.Pid
 		proc.Duration = duration
 		proc.ExitCode = exitCode
 		proc.Status = status
@@ -236,21 +303,26 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		close(proc.done)
 
 		if status == StatusKilled {
-			s.emitKilledAction(proc, killedSignal)
+			s.emitKilledAction(proc, signalName)
 		}
-		s.Core().ACTION(ActionProcessExited{
+
+		exitAction := ActionProcessExited{
 			ID:       id,
 			ExitCode: exitCode,
 			Duration: duration,
-			Error:    nil,
-		})
+			Error:    exitErr,
+		}
+
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(exitAction)
+		}
 	}()
 
-	return core.Result{Value: proc, OK: true}
+	return proc, nil
 }
 
 // streamOutput reads from a pipe and broadcasts lines via ACTION.
-func (s *Service) streamOutput(proc *ManagedProcess, r streamReader, stream Stream) {
+func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
 	scanner := bufio.NewScanner(r)
 	// Increase buffer for long lines
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -264,87 +336,199 @@ func (s *Service) streamOutput(proc *ManagedProcess, r streamReader, stream Stre
 		}
 
 		// Broadcast output
-		_ = s.Core().ACTION(ActionProcessOutput{
-			ID:     proc.ID,
-			Line:   line,
-			Stream: stream,
-		})
+		if c := s.coreApp(); c != nil {
+			_ = c.ACTION(ActionProcessOutput{
+				ID:     proc.ID,
+				Line:   line,
+				Stream: stream,
+			})
+		}
 	}
 }
 
 // Get returns a process by ID.
-func (s *Service) Get(id string) (*ManagedProcess, error) {
-	r := s.managed.Get(id)
-	if !r.OK {
+//
+// Example:
+//
+//	proc, err := svc.Get("proc-1")
+func (s *Service) Get(id string) (*Process, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	proc, ok := s.processes[id]
+	if !ok {
 		return nil, ErrProcessNotFound
 	}
-	return r.Value.(*ManagedProcess), nil
+	return proc, nil
 }
 
 // List returns all processes.
-func (s *Service) List() []*ManagedProcess {
-	result := make([]*ManagedProcess, 0, s.managed.Len())
-	s.managed.Each(func(_ string, proc *ManagedProcess) {
-		result = append(result, proc)
-	})
+//
+// Example:
+//
+//	for _, proc := range svc.List() { _ = proc }
+func (s *Service) List() []*Process {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*Process, 0, len(s.processes))
+	for _, p := range s.processes {
+		result = append(result, p)
+	}
+	sortProcesses(result)
 	return result
 }
 
 // Running returns all currently running processes.
-func (s *Service) Running() []*ManagedProcess {
-	result := make([]*ManagedProcess, 0, s.managed.Len())
-	s.managed.Each(func(_ string, proc *ManagedProcess) {
-		if proc.IsRunning() {
-			result = append(result, proc)
+//
+// Example:
+//
+//	running := svc.Running()
+func (s *Service) Running() []*Process {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*Process
+	for _, p := range s.processes {
+		if p.IsRunning() {
+			result = append(result, p)
 		}
-	})
+	}
+	sortProcesses(result)
 	return result
 }
 
 // Kill terminates a process by ID.
+//
+// Example:
+//
+//	_ = svc.Kill("proc-1")
 func (s *Service) Kill(id string) error {
 	proc, err := s.Get(id)
 	if err != nil {
 		return err
 	}
 
-	if err := proc.Kill(); err != nil {
+	sent, err := proc.kill()
+	if err != nil {
 		return err
 	}
-	s.emitKilledAction(proc, proc.requestedSignal())
+	if sent {
+		s.emitKilledAction(proc, "SIGKILL")
+	}
 	return nil
 }
 
-// Remove removes a completed process from the list.
-func (s *Service) Remove(id string) error {
+// KillPID terminates a process by operating-system PID.
+//
+// Example:
+//
+//	_ = svc.KillPID(1234)
+func (s *Service) KillPID(pid int) error {
+	if pid <= 0 {
+		return ServiceError("pid must be positive", nil)
+	}
+
+	if proc := s.findByPID(pid); proc != nil {
+		sent, err := proc.kill()
+		if err != nil {
+			return err
+		}
+		if sent {
+			s.emitKilledAction(proc, "SIGKILL")
+		}
+		return nil
+	}
+
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
+// Signal sends a signal to a process by ID.
+//
+// Example:
+//
+//	_ = svc.Signal("proc-1", syscall.SIGTERM)
+func (s *Service) Signal(id string, sig os.Signal) error {
 	proc, err := s.Get(id)
 	if err != nil {
 		return err
 	}
-	if proc.IsRunning() {
-		return core.E("process.remove", core.Concat("cannot remove running process: ", id), nil)
+	return proc.Signal(sig)
+}
+
+// SignalPID sends a signal to a process by operating-system PID.
+//
+// Example:
+//
+//	_ = svc.SignalPID(1234, syscall.SIGTERM)
+func (s *Service) SignalPID(pid int, sig os.Signal) error {
+	if pid <= 0 {
+		return ServiceError("pid must be positive", nil)
 	}
-	r := s.managed.Delete(id)
-	if !r.OK {
+
+	if proc := s.findByPID(pid); proc != nil {
+		return proc.Signal(sig)
+	}
+
+	target, err := os.FindProcess(pid)
+	if err != nil {
+		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to find pid %d", pid), err)
+	}
+
+	if err := target.Signal(sig); err != nil {
+		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
+// Remove removes a completed process from the list.
+//
+// Example:
+//
+//	_ = svc.Remove("proc-1")
+func (s *Service) Remove(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	proc, ok := s.processes[id]
+	if !ok {
 		return ErrProcessNotFound
 	}
+
+	if proc.IsRunning() {
+		return coreerr.E("Service.Remove", "cannot remove running process", nil)
+	}
+
+	delete(s.processes, id)
 	return nil
 }
 
 // Clear removes all completed processes.
+//
+// Example:
+//
+//	svc.Clear()
 func (s *Service) Clear() {
-	ids := make([]string, 0)
-	s.managed.Each(func(id string, proc *ManagedProcess) {
-		if !proc.IsRunning() {
-			ids = append(ids, id)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, p := range s.processes {
+		if !p.IsRunning() {
+			delete(s.processes, id)
 		}
-	})
-	for _, id := range ids {
-		s.managed.Delete(id)
 	}
 }
 
 // Output returns the captured output of a process.
+//
+// Example:
+//
+//	out, err := svc.Output("proc-1")
 func (s *Service) Output(id string) (string, error) {
 	proc, err := s.Get(id)
 	if err != nil {
@@ -353,157 +537,333 @@ func (s *Service) Output(id string) (string, error) {
 	return proc.Output(), nil
 }
 
-// Run executes a command and waits for completion.
-// Value is always the output string. OK is true if exit code is 0.
+// Input writes data to the stdin of a managed process.
 //
-//	r := svc.Run(ctx, "go", "test", "./...")
-//	output := r.Value.(string)
-func (s *Service) Run(ctx context.Context, command string, args ...string) core.Result {
-	return s.RunWithOptions(ctx, RunOptions{
-		Command: command,
-		Args:    args,
-	})
+// Example:
+//
+//	_ = svc.Input("proc-1", "hello\n")
+func (s *Service) Input(id string, input string) error {
+	proc, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	return proc.SendInput(input)
+}
+
+// CloseStdin closes the stdin pipe of a managed process.
+//
+// Example:
+//
+//	_ = svc.CloseStdin("proc-1")
+func (s *Service) CloseStdin(id string) error {
+	proc, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	return proc.CloseStdin()
+}
+
+// Wait blocks until a managed process exits and returns its final snapshot.
+//
+// Example:
+//
+//	info, err := svc.Wait("proc-1")
+func (s *Service) Wait(id string) (Info, error) {
+	proc, err := s.Get(id)
+	if err != nil {
+		return Info{}, err
+	}
+
+	if err := proc.Wait(); err != nil {
+		return proc.Info(), err
+	}
+
+	return proc.Info(), nil
+}
+
+// findByPID locates a managed process by operating-system PID.
+func (s *Service) findByPID(pid int) *Process {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, proc := range s.processes {
+		proc.mu.RLock()
+		matches := proc.cmd != nil && proc.cmd.Process != nil && proc.cmd.Process.Pid == pid
+		proc.mu.RUnlock()
+		if matches {
+			return proc
+		}
+	}
+	return nil
+}
+
+// Run executes a command and waits for completion.
+// Returns the combined output and any error.
+//
+// Example:
+//
+//	out, err := svc.Run(ctx, "echo", "hello")
+func (s *Service) Run(ctx context.Context, command string, args ...string) (string, error) {
+	proc, err := s.Start(ctx, command, args...)
+	if err != nil {
+		return "", err
+	}
+
+	<-proc.Done()
+
+	output := proc.Output()
+	if proc.Status == StatusKilled {
+		return output, coreerr.E("Service.Run", "process was killed", nil)
+	}
+	if proc.ExitCode != 0 {
+		return output, coreerr.E("Service.Run", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+	}
+	return output, nil
 }
 
 // RunWithOptions executes a command with options and waits for completion.
-// Value is always the output string. OK is true if exit code is 0.
 //
-//	r := svc.RunWithOptions(ctx, process.RunOptions{Command: "go", Args: []string{"test"}})
-//	output := r.Value.(string)
-func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) core.Result {
-	return s.runCommand(ctx, opts)
-}
-
-func (s *Service) runCommand(ctx context.Context, opts RunOptions) core.Result {
-	if opts.Command == "" {
-		return core.Result{Value: core.E("process.run", "command is required", nil), OK: false}
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	cmd := execCommandContext(ctx, opts.Command, opts.Args...)
-	if opts.Dir != "" {
-		cmd.Dir = opts.Dir
-	}
-	if len(opts.Env) > 0 {
-		cmd.Env = append(cmd.Environ(), opts.Env...)
-	}
-
-	output, err := cmd.CombinedOutput()
+// Example:
+//
+//	out, err := svc.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
+func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, error) {
+	proc, err := s.StartWithOptions(ctx, opts)
 	if err != nil {
-		return core.Result{Value: core.E("process.run", core.Concat("command failed: ", opts.Command), err), OK: false}
-	}
-	return core.Result{Value: string(output), OK: true}
-}
-
-// Signal sends a signal to the process.
-func (p *ManagedProcess) Signal(sig os.Signal) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.Status != StatusRunning {
-		return ErrProcessNotRunning
+		return "", err
 	}
 
-	if p.cmd == nil || p.cmd.Process == nil {
-		return nil
+	<-proc.Done()
+
+	output := proc.Output()
+	if proc.Status == StatusKilled {
+		return output, coreerr.E("Service.RunWithOptions", "process was killed", nil)
 	}
-
-	if signal, ok := sig.(syscall.Signal); ok {
-		p.lastSignal = normalizeSignalName(signal)
+	if proc.ExitCode != 0 {
+		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
-	return p.cmd.Process.Signal(sig)
+	return output, nil
 }
 
-func execCommandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, name, args...)
+// handleTask dispatches Core.PERFORM messages for the process service.
+func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
+	switch m := task.(type) {
+	case TaskProcessStart:
+		proc, err := s.StartWithOptions(c.Context(), RunOptions{
+			Command:        m.Command,
+			Args:           m.Args,
+			Dir:            m.Dir,
+			Env:            m.Env,
+			DisableCapture: m.DisableCapture,
+			Detach:         m.Detach,
+			Timeout:        m.Timeout,
+			GracePeriod:    m.GracePeriod,
+			KillGroup:      m.KillGroup,
+		})
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+		return core.Result{Value: proc.Info(), OK: true}
+	case TaskProcessRun:
+		output, err := s.RunWithOptions(c.Context(), RunOptions{
+			Command:        m.Command,
+			Args:           m.Args,
+			Dir:            m.Dir,
+			Env:            m.Env,
+			DisableCapture: m.DisableCapture,
+			Detach:         m.Detach,
+			Timeout:        m.Timeout,
+			GracePeriod:    m.GracePeriod,
+			KillGroup:      m.KillGroup,
+		})
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+		return core.Result{Value: output, OK: true}
+	case TaskProcessKill:
+		switch {
+		case m.ID != "":
+			if err := s.Kill(m.ID); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		case m.PID > 0:
+			if err := s.KillPID(m.PID); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		default:
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil), OK: false}
+		}
+	case TaskProcessSignal:
+		switch {
+		case m.ID != "":
+			if err := s.Signal(m.ID, m.Signal); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		case m.PID > 0:
+			if err := s.SignalPID(m.PID, m.Signal); err != nil {
+				return core.Result{Value: err, OK: false}
+			}
+			return core.Result{OK: true}
+		default:
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process signal requires an id or pid", nil), OK: false}
+		}
+	case TaskProcessGet:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process get requires an id", nil), OK: false}
+		}
+
+		proc, err := s.Get(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{Value: proc.Info(), OK: true}
+	case TaskProcessWait:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process wait requires an id", nil), OK: false}
+		}
+
+		info, err := s.Wait(m.ID)
+		if err != nil {
+			return core.Result{
+				Value: &TaskProcessWaitError{
+					Info: info,
+					Err:  err,
+				},
+				OK: true,
+			}
+		}
+
+		return core.Result{Value: info, OK: true}
+	case TaskProcessOutput:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process output requires an id", nil), OK: false}
+		}
+
+		output, err := s.Output(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{Value: output, OK: true}
+	case TaskProcessInput:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process input requires an id", nil), OK: false}
+		}
+
+		proc, err := s.Get(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		if err := proc.SendInput(m.Input); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{OK: true}
+	case TaskProcessCloseStdin:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process close stdin requires an id", nil), OK: false}
+		}
+
+		proc, err := s.Get(m.ID)
+		if err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		if err := proc.CloseStdin(); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{OK: true}
+	case TaskProcessList:
+		procs := s.List()
+		if m.RunningOnly {
+			procs = s.Running()
+		}
+
+		infos := make([]Info, 0, len(procs))
+		for _, proc := range procs {
+			infos = append(infos, proc.Info())
+		}
+
+		return core.Result{Value: infos, OK: true}
+	case TaskProcessRemove:
+		if m.ID == "" {
+			return core.Result{Value: coreerr.E("Service.handleTask", "task process remove requires an id", nil), OK: false}
+		}
+
+		if err := s.Remove(m.ID); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+
+		return core.Result{OK: true}
+	case TaskProcessClear:
+		s.Clear()
+		return core.Result{OK: true}
+	default:
+		return core.Result{}
+	}
 }
 
-func execLookPath(name string) (string, error) {
-	return exec.LookPath(name)
-}
-
-func currentPID() int {
-	return os.Getpid()
-}
-
-func processHandle(pid int) (*os.Process, error) {
-	return os.FindProcess(pid)
-}
-
-func userHomeDir() (string, error) {
-	return os.UserHomeDir()
-}
-
-func tempDir() string {
-	return os.TempDir()
-}
-
-func isNotExist(err error) bool {
-	return os.IsNotExist(err)
-}
-
-func classifyProcessExit(proc *ManagedProcess, err error) (Status, int, error, string) {
+// classifyProcessExit maps a command completion error to lifecycle state.
+func classifyProcessExit(err error) (Status, int, error, string) {
 	if err == nil {
 		return StatusExited, 0, nil, ""
 	}
 
-	if sig, ok := processExitSignal(err); ok {
-		return StatusKilled, -1, err, normalizeSignalName(sig)
-	}
-
-	if ctxErr := proc.ctx.Err(); ctxErr != nil {
-		signal := proc.requestedSignal()
-		if signal == "" {
-			signal = "SIGKILL"
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			signalName := ws.Signal().String()
+			if signalName == "" {
+				signalName = "signal"
+			}
+			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
 		}
-		return StatusKilled, -1, ctxErr, signal
+		exitCode := exitErr.ExitCode()
+		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", fmt.Sprintf("process exited with code %d", exitCode), nil), ""
 	}
 
-	var exitErr *exec.ExitError
-	if core.As(err, &exitErr) {
-		return StatusExited, exitErr.ExitCode(), err, ""
-	}
-
-	return StatusFailed, -1, err, ""
+	return StatusFailed, 0, err, ""
 }
 
-func processExitSignal(err error) (syscall.Signal, bool) {
-	var exitErr *exec.ExitError
-	if !core.As(err, &exitErr) || exitErr.ProcessState == nil {
-		return 0, false
-	}
-
-	waitStatus, ok := exitErr.ProcessState.Sys().(syscall.WaitStatus)
-	if !ok || !waitStatus.Signaled() {
-		return 0, false
-	}
-	return waitStatus.Signal(), true
-}
-
-func normalizeSignalName(sig syscall.Signal) string {
-	switch sig {
-	case syscall.SIGINT:
-		return "SIGINT"
-	case syscall.SIGKILL:
-		return "SIGKILL"
-	case syscall.SIGTERM:
-		return "SIGTERM"
-	default:
-		return sig.String()
-	}
-}
-
-func (s *Service) emitKilledAction(proc *ManagedProcess, signal string) {
-	if proc == nil || !proc.markKillEmitted() {
+// emitKilledAction broadcasts a kill event once for the given process.
+func (s *Service) emitKilledAction(proc *Process, signalName string) {
+	if proc == nil {
 		return
 	}
-	if signal == "" {
-		signal = "SIGKILL"
+
+	proc.mu.Lock()
+	if proc.killNotified {
+		proc.mu.Unlock()
+		return
 	}
-	_ = s.Core().ACTION(ActionProcessKilled{
-		ID:     proc.ID,
-		Signal: signal,
+	proc.killNotified = true
+	if signalName != "" {
+		proc.killSignal = signalName
+	} else if proc.killSignal == "" {
+		proc.killSignal = "SIGKILL"
+	}
+	signal := proc.killSignal
+	proc.mu.Unlock()
+
+	if c := s.coreApp(); c != nil {
+		_ = c.ACTION(ActionProcessKilled{
+			ID:     proc.ID,
+			Signal: signal,
+		})
+	}
+}
+
+// sortProcesses orders processes by start time, then ID for stable output.
+func sortProcesses(procs []*Process) {
+	sort.Slice(procs, func(i, j int) bool {
+		if procs[i].StartedAt.Equal(procs[j].StartedAt) {
+			return procs[i].ID < procs[j].ID
+		}
+		return procs[i].StartedAt.Before(procs[j].StartedAt)
 	})
 }

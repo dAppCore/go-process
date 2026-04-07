@@ -69,4 +69,18 @@ func TestRingBuffer_Basics_Good(t *testing.T) {
 		bytes[0] = 'x'
 		assert.Equal(t, "hello", rb.String())
 	})
+
+	t.Run("zero or negative capacity is a no-op", func(t *testing.T) {
+		for _, size := range []int{0, -1} {
+			rb := NewRingBuffer(size)
+
+			n, err := rb.Write([]byte("discarded"))
+			assert.NoError(t, err)
+			assert.Equal(t, len("discarded"), n)
+			assert.Equal(t, 0, rb.Cap())
+			assert.Equal(t, 0, rb.Len())
+			assert.Equal(t, "", rb.String())
+			assert.Nil(t, rb.Bytes())
+		}
+	})
 }

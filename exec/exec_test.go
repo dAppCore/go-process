@@ -2,10 +2,17 @@ package exec_test
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
-	"dappco.re/go/core"
 	"dappco.re/go/core/process/exec"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockLogger captures log calls for testing
@@ -27,7 +34,7 @@ func (m *mockLogger) Error(msg string, keyvals ...any) {
 	m.errorCalls = append(m.errorCalls, logCall{msg, keyvals})
 }
 
-func TestCommand_Run_Good(t *testing.T) {
+func TestCommand_Run_Good_LogsDebug(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
@@ -49,7 +56,7 @@ func TestCommand_Run_Good(t *testing.T) {
 	}
 }
 
-func TestCommand_Run_Bad(t *testing.T) {
+func TestCommand_Run_Bad_LogsError(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
@@ -71,14 +78,6 @@ func TestCommand_Run_Bad(t *testing.T) {
 	}
 }
 
-func TestCommand_Run_WithNilContext_Good(t *testing.T) {
-	var ctx context.Context
-
-	if err := exec.Command(ctx, "echo", "hello").Run(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestCommand_Output_Good(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
@@ -89,7 +88,7 @@ func TestCommand_Output_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if core.Trim(string(out)) != "test" {
+	if strings.TrimSpace(string(out)) != "test" {
 		t.Errorf("expected 'test', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -107,7 +106,7 @@ func TestCommand_CombinedOutput_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if core.Trim(string(out)) != "combined" {
+	if strings.TrimSpace(string(out)) != "combined" {
 		t.Errorf("expected 'combined', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -115,14 +114,14 @@ func TestCommand_CombinedOutput_Good(t *testing.T) {
 	}
 }
 
-func TestNopLogger_Methods_Good(t *testing.T) {
+func TestNopLogger(t *testing.T) {
 	// Verify NopLogger doesn't panic
 	var nop exec.NopLogger
 	nop.Debug("msg", "key", "val")
 	nop.Error("msg", "key", "val")
 }
 
-func TestLogger_SetDefault_Good(t *testing.T) {
+func TestSetDefaultLogger(t *testing.T) {
 	original := exec.DefaultLogger()
 	defer exec.SetDefaultLogger(original)
 
@@ -140,7 +139,30 @@ func TestLogger_SetDefault_Good(t *testing.T) {
 	}
 }
 
-func TestCommand_UsesDefaultLogger_Good(t *testing.T) {
+func TestDefaultLogger_IsConcurrentSafe(t *testing.T) {
+	original := exec.DefaultLogger()
+	defer exec.SetDefaultLogger(original)
+
+	logger := &mockLogger{}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			exec.SetDefaultLogger(logger)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = exec.DefaultLogger()
+		}()
+	}
+	wg.Wait()
+
+	assert.NotNil(t, exec.DefaultLogger())
+}
+
+func TestCommand_UsesDefaultLogger(t *testing.T) {
 	original := exec.DefaultLogger()
 	defer exec.SetDefaultLogger(original)
 
@@ -155,7 +177,7 @@ func TestCommand_UsesDefaultLogger_Good(t *testing.T) {
 	}
 }
 
-func TestCommand_WithDir_Good(t *testing.T) {
+func TestCommand_WithDir(t *testing.T) {
 	ctx := context.Background()
 	out, err := exec.Command(ctx, "pwd").
 		WithDir("/tmp").
@@ -164,13 +186,13 @@ func TestCommand_WithDir_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	trimmed := core.Trim(string(out))
+	trimmed := strings.TrimSpace(string(out))
 	if trimmed != "/tmp" && trimmed != "/private/tmp" {
 		t.Errorf("expected /tmp or /private/tmp, got %q", trimmed)
 	}
 }
 
-func TestCommand_WithEnv_Good(t *testing.T) {
+func TestCommand_WithEnv(t *testing.T) {
 	ctx := context.Background()
 	out, err := exec.Command(ctx, "sh", "-c", "echo $TEST_EXEC_VAR").
 		WithEnv([]string{"TEST_EXEC_VAR=exec_val"}).
@@ -179,32 +201,100 @@ func TestCommand_WithEnv_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if core.Trim(string(out)) != "exec_val" {
+	if strings.TrimSpace(string(out)) != "exec_val" {
 		t.Errorf("expected 'exec_val', got %q", string(out))
 	}
 }
 
-func TestCommand_WithStdinStdoutStderr_Good(t *testing.T) {
+func TestCommand_WithStdinStdoutStderr(t *testing.T) {
 	ctx := context.Background()
-	input := core.NewReader("piped input\n")
-	stdout := core.NewBuilder()
-	stderr := core.NewBuilder()
+	input := strings.NewReader("piped input\n")
+	var stdout, stderr strings.Builder
 
 	err := exec.Command(ctx, "cat").
 		WithStdin(input).
-		WithStdout(stdout).
-		WithStderr(stderr).
+		WithStdout(&stdout).
+		WithStderr(&stderr).
 		WithLogger(&mockLogger{}).
 		Run()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if core.Trim(stdout.String()) != "piped input" {
+	if strings.TrimSpace(stdout.String()) != "piped input" {
 		t.Errorf("expected 'piped input', got %q", stdout.String())
 	}
 }
 
-func TestRunQuiet_Command_Good(t *testing.T) {
+func TestCommand_Run_Background(t *testing.T) {
+	logger := &mockLogger{}
+	ctx := context.Background()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker.txt")
+
+	start := time.Now()
+	err := exec.Command(ctx, "sh", "-c", fmt.Sprintf("sleep 0.2; printf done > %q", marker)).
+		WithBackground(true).
+		WithLogger(logger).
+		Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("background run took too long: %s", elapsed)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, readErr := os.ReadFile(marker)
+		if readErr == nil && strings.TrimSpace(string(data)) == "done" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background command did not create marker file")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestCommand_NilContextRejected(t *testing.T) {
+	t.Run("start", func(t *testing.T) {
+		err := exec.Command(nil, "echo", "test").Start()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("run", func(t *testing.T) {
+		err := exec.Command(nil, "echo", "test").Run()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("output", func(t *testing.T) {
+		_, err := exec.Command(nil, "echo", "test").Output()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+
+	t.Run("combined output", func(t *testing.T) {
+		_, err := exec.Command(nil, "echo", "test").CombinedOutput()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+	})
+}
+
+func TestCommand_Output_BackgroundRejected(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := exec.Command(ctx, "echo", "test").
+		WithBackground(true).
+		Output()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestRunQuiet_Good(t *testing.T) {
 	ctx := context.Background()
 	err := exec.RunQuiet(ctx, "echo", "quiet")
 	if err != nil {
@@ -212,7 +302,7 @@ func TestRunQuiet_Command_Good(t *testing.T) {
 	}
 }
 
-func TestRunQuiet_Command_Bad(t *testing.T) {
+func TestRunQuiet_Bad(t *testing.T) {
 	ctx := context.Background()
 	err := exec.RunQuiet(ctx, "sh", "-c", "echo fail >&2; exit 1")
 	if err == nil {
