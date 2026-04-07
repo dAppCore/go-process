@@ -25,5 +25,5 @@ Exported fields:
 - `func (p *ProcessProvider) BasePath() string`: Returns `"/api/process"`.
 - `func (p *ProcessProvider) Element() provider.ElementSpec`: Returns an element spec with tag `core-process-panel` and source `/assets/core-process.js`.
 - `func (p *ProcessProvider) Channels() []string`: Returns `process.daemon.started`, `process.daemon.stopped`, `process.daemon.health`, `process.started`, `process.output`, `process.exited`, and `process.killed`.
-- `func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup)`: Registers the daemon list, daemon lookup, daemon stop, and daemon health routes.
+- `func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup)`: Registers daemon management routes (`GET /daemons`, `GET /daemons/:code/:daemon`, `POST /daemons/:code/:daemon/stop`, `GET /daemons/:code/:daemon/health`), process management routes (`GET /processes`, `POST /processes`, `POST /processes/run`, `GET /processes/:id`, `GET /processes/:id/output`, `POST /processes/:id/wait`, `POST /processes/:id/input`, `POST /processes/:id/close-stdin`, `POST /processes/:id/kill`, `POST /processes/:id/signal`), and pipeline routes (`POST /pipelines/run`).
 - `func (p *ProcessProvider) Describe() []api.RouteDescription`: Returns static route descriptions for the registered daemon routes.
