@@ -90,7 +90,7 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 func (s *Service) OnStartup(ctx context.Context) error {
 	s.registrations.Do(func() {
 		if c := s.coreApp(); c != nil {
-			c.RegisterTask(s.handleTask)
+			c.RegisterAction(s.handleTask)
 		}
 	})
 	return nil
@@ -645,7 +645,7 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 }
 
 // handleTask dispatches Core.PERFORM messages for the process service.
-func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
+func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 	switch m := task.(type) {
 	case TaskProcessStart:
 		proc, err := s.StartWithOptions(c.Context(), RunOptions{
