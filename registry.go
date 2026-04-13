@@ -1,14 +1,12 @@
 package process
 
 import (
-	"encoding/json"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+	"slices"
 	"syscall"
 	"time"
 
+	"dappco.re/go/core"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
 )
@@ -52,7 +50,7 @@ func DefaultRegistry() *Registry {
 	if err != nil {
 		home = os.TempDir()
 	}
-	return NewRegistry(filepath.Join(home, ".core", "daemons"))
+	return NewRegistry(core.Path(home, ".core", "daemons"))
 }
 
 // Register writes a daemon entry to the registry directory.
@@ -71,12 +69,12 @@ func (r *Registry) Register(entry DaemonEntry) error {
 		return coreerr.E("Registry.Register", "failed to create registry directory", err)
 	}
 
-	data, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		return coreerr.E("Registry.Register", "failed to marshal entry", err)
+	r1 := core.JSONMarshal(entry)
+	if !r1.OK {
+		return coreerr.E("Registry.Register", "failed to marshal entry", r1.Value.(error))
 	}
 
-	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data)); err != nil {
+	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(r1.Value.([]byte))); err != nil {
 		return coreerr.E("Registry.Register", "failed to write entry file", err)
 	}
 	return nil
@@ -112,7 +110,7 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	}
 
 	var entry DaemonEntry
-	if err := json.Unmarshal([]byte(data), &entry); err != nil {
+	if r1 := core.JSONUnmarshalString(data, &entry); !r1.OK {
 		_ = coreio.Local.Delete(path)
 		return nil, false
 	}
@@ -131,10 +129,7 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 //
 //	entries, err := reg.List()
 func (r *Registry) List() ([]DaemonEntry, error) {
-	matches, err := filepath.Glob(filepath.Join(r.dir, "*.json"))
-	if err != nil {
-		return nil, err
-	}
+	matches := core.PathGlob(core.Path(r.dir, "*.json"))
 
 	var alive []DaemonEntry
 	for _, path := range matches {
@@ -144,7 +139,7 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 		}
 
 		var entry DaemonEntry
-		if err := json.Unmarshal([]byte(data), &entry); err != nil {
+		if r1 := core.JSONUnmarshalString(data, &entry); !r1.OK {
 			_ = coreio.Local.Delete(path)
 			continue
 		}
@@ -157,14 +152,26 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 		alive = append(alive, entry)
 	}
 
-	sort.Slice(alive, func(i, j int) bool {
-		if alive[i].Started.Equal(alive[j].Started) {
-			if alive[i].Code == alive[j].Code {
-				return alive[i].Daemon < alive[j].Daemon
+	slices.SortFunc(alive, func(a, b DaemonEntry) int {
+		if a.Started.Equal(b.Started) {
+			if a.Code == b.Code {
+				if a.Daemon < b.Daemon {
+					return -1
+				}
+				if a.Daemon > b.Daemon {
+					return 1
+				}
+				return 0
 			}
-			return alive[i].Code < alive[j].Code
+			if a.Code < b.Code {
+				return -1
+			}
+			return 1
 		}
-		return alive[i].Started.Before(alive[j].Started)
+		if a.Started.Before(b.Started) {
+			return -1
+		}
+		return 1
 	})
 
 	return alive, nil
@@ -172,8 +179,8 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 
 // entryPath returns the filesystem path for a daemon entry.
 func (r *Registry) entryPath(code, daemon string) string {
-	name := strings.ReplaceAll(code, "/", "-") + "-" + strings.ReplaceAll(daemon, "/", "-") + ".json"
-	return filepath.Join(r.dir, name)
+	name := core.Concat(core.Replace(code, "/", "-"), "-", core.Replace(daemon, "/", "-"), ".json")
+	return core.Path(r.dir, name)
 }
 
 // isAlive checks whether a process with the given PID is running.

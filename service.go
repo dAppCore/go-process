@@ -3,11 +3,9 @@ package process
 import (
 	"bufio"
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -144,7 +142,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		return nil, ServiceError("context is required", ErrContextRequired)
 	}
 
-	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
+	id := core.Sprintf("proc-%d", s.idCounter.Add(1))
 	startedAt := time.Now()
 
 	if opts.KillGroup && !opts.Detach {
@@ -441,7 +439,7 @@ func (s *Service) KillPID(pid int) error {
 	}
 
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+		return coreerr.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err)
 	}
 
 	return nil
@@ -476,11 +474,11 @@ func (s *Service) SignalPID(pid int, sig os.Signal) error {
 
 	target, err := os.FindProcess(pid)
 	if err != nil {
-		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to find pid %d", pid), err)
+		return coreerr.E("Service.SignalPID", core.Sprintf("failed to find pid %d", pid), err)
 	}
 
 	if err := target.Signal(sig); err != nil {
-		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+		return coreerr.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err)
 	}
 
 	return nil
@@ -616,7 +614,7 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) (stri
 		return output, coreerr.E("Service.Run", "process was killed", nil)
 	}
 	if proc.ExitCode != 0 {
-		return output, coreerr.E("Service.Run", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+		return output, coreerr.E("Service.Run", core.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }
@@ -639,7 +637,7 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 		return output, coreerr.E("Service.RunWithOptions", "process was killed", nil)
 	}
 	if proc.ExitCode != 0 {
-		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+		return output, coreerr.E("Service.RunWithOptions", core.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }
@@ -815,7 +813,7 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 	}
 
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if core.As(err, &exitErr) {
 		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 			signalName := ws.Signal().String()
 			if signalName == "" {
@@ -824,7 +822,7 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
 		}
 		exitCode := exitErr.ExitCode()
-		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", fmt.Sprintf("process exited with code %d", exitCode), nil), ""
+		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil), ""
 	}
 
 	return StatusFailed, 0, err, ""
@@ -860,10 +858,19 @@ func (s *Service) emitKilledAction(proc *Process, signalName string) {
 
 // sortProcesses orders processes by start time, then ID for stable output.
 func sortProcesses(procs []*Process) {
-	sort.Slice(procs, func(i, j int) bool {
-		if procs[i].StartedAt.Equal(procs[j].StartedAt) {
-			return procs[i].ID < procs[j].ID
+	slices.SortFunc(procs, func(a, b *Process) int {
+		if a.StartedAt.Equal(b.StartedAt) {
+			if a.ID < b.ID {
+				return -1
+			}
+			if a.ID > b.ID {
+				return 1
+			}
+			return 0
 		}
-		return procs[i].StartedAt.Before(procs[j].StartedAt)
+		if a.StartedAt.Before(b.StartedAt) {
+			return -1
+		}
+		return 1
 	})
 }

@@ -189,7 +189,7 @@ type TaskProcessClear struct{}
 //
 // Example:
 //
-//	case process.ActionProcessStarted: fmt.Println("started", msg.ID)
+//	case process.ActionProcessStarted: core.Println("started", msg.ID)
 type ActionProcessStarted struct {
 	ID      string
 	Command string
@@ -203,7 +203,7 @@ type ActionProcessStarted struct {
 //
 // Example:
 //
-//	case process.ActionProcessOutput: fmt.Println(msg.Line)
+//	case process.ActionProcessOutput: core.Println(msg.Line)
 type ActionProcessOutput struct {
 	ID     string
 	Line   string
@@ -215,7 +215,7 @@ type ActionProcessOutput struct {
 //
 // Example:
 //
-//	case process.ActionProcessExited: fmt.Println(msg.ExitCode)
+//	case process.ActionProcessExited: core.Println(msg.ExitCode)
 type ActionProcessExited struct {
 	ID       string
 	ExitCode int
@@ -227,7 +227,7 @@ type ActionProcessExited struct {
 //
 // Example:
 //
-//	case process.ActionProcessKilled: fmt.Println(msg.Signal)
+//	case process.ActionProcessKilled: core.Println(msg.Signal)
 type ActionProcessKilled struct {
 	ID     string
 	Signal string

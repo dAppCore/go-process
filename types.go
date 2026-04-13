@@ -26,14 +26,14 @@
 //
 // Process events are broadcast via Core.ACTION:
 //
-//	core.RegisterAction(func(c *framework.Core, msg framework.Message) error {
+//	core.RegisterAction(func(c *framework.Core, msg framework.Message) framework.Result {
 //	    switch m := msg.(type) {
 //	    case process.ActionProcessOutput:
-//	        fmt.Print(m.Line)
+//	        core.Println(m.Line)
 //	    case process.ActionProcessExited:
-//	        fmt.Printf("Exit code: %d\n", m.ExitCode)
+//	        core.Println("Exit code:", m.ExitCode)
 //	    }
-//	    return nil
+//	    return framework.Result{OK: true}
 //	})
 package process
 
@@ -116,7 +116,7 @@ type RunOptions struct {
 // Example:
 //
 //	info := proc.Info()
-//	fmt.Println(info.PID)
+//	core.Println(info.PID)
 type Info struct {
 	ID        string        `json:"id"`
 	Command   string        `json:"command"`

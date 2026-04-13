@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -545,7 +544,7 @@ func (p *ProcessProvider) startProcess(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
 		return
 	}
-	if strings.TrimSpace(req.Command) == "" {
+	if core.Trim(req.Command) == "" {
 		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
 		return
 	}
@@ -580,7 +579,7 @@ func (p *ProcessProvider) runProcess(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
 		return
 	}
-	if strings.TrimSpace(req.Command) == "" {
+	if core.Trim(req.Command) == "" {
 		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
 		return
 	}
@@ -795,7 +794,7 @@ func (p *ProcessProvider) runPipeline(c *gin.Context) {
 		return
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	mode := core.Lower(core.Trim(req.Mode))
 	if mode == "" {
 		mode = "all"
 	}
@@ -878,7 +877,7 @@ func intParam(c *gin.Context, name string) int {
 }
 
 func pidFromString(value string) (int, bool) {
-	pid, err := strconv.Atoi(strings.TrimSpace(value))
+	pid, err := strconv.Atoi(core.Trim(value))
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
@@ -886,7 +885,7 @@ func pidFromString(value string) (int, bool) {
 }
 
 func parseSignal(value string) (syscall.Signal, error) {
-	trimmed := strings.TrimSpace(strings.ToUpper(value))
+	trimmed := core.Trim(core.Upper(value))
 	if trimmed == "" {
 		return 0, coreerr.E("ProcessProvider.parseSignal", "signal is required", nil)
 	}

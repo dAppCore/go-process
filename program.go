@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
-	"strings"
-	"unicode"
 
-	core "dappco.re/go/core"
+	"dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.
-// Callers may use errors.Is to detect this condition.
+// Callers may use core.Is to detect this condition.
 var ErrProgramNotFound = coreerr.E("", "program: binary not found in PATH", nil)
 
 // ErrProgramContextRequired is returned when Run or RunDir is called without a context.
@@ -99,7 +97,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if err := cmd.Run(); err != nil {
-		return strings.TrimRightFunc(out.String(), unicode.IsSpace), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
+		return core.Trim(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
 	}
-	return strings.TrimRightFunc(out.String(), unicode.IsSpace), nil
+	return core.Trim(out.String()), nil
 }

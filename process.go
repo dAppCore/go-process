@@ -2,13 +2,13 @@ package process
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 
+	"dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
 	goio "io"
 )
@@ -82,7 +82,7 @@ func (p *ManagedProcess) Info() Info {
 //
 // Example:
 //
-//	fmt.Println(proc.Output())
+//	core.Println(proc.Output())
 func (p *ManagedProcess) Output() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -123,13 +123,13 @@ func (p *ManagedProcess) Wait() error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process failed to start: %s", p.ID), nil)
+		return coreerr.E("Process.Wait", core.Concat("process failed to start: ", p.ID), nil)
 	}
 	if p.Status == StatusKilled {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process was killed: %s", p.ID), nil)
+		return coreerr.E("Process.Wait", core.Concat("process was killed: ", p.ID), nil)
 	}
 	if p.ExitCode != 0 {
-		return coreerr.E("Process.Wait", fmt.Sprintf("process exited with code %d", p.ExitCode), nil)
+		return coreerr.E("Process.Wait", core.Sprintf("process exited with code %d", p.ExitCode), nil)
 	}
 	return nil
 }

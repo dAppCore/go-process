@@ -2,11 +2,11 @@ package process
 
 import (
 	"context"
-	"errors"
 	"os"
 	"sync"
 	"time"
 
+	"dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
 )
 
@@ -206,7 +206,7 @@ func (d *Daemon) Stop() error {
 	d.running = false
 
 	if len(errs) > 0 {
-		return errors.Join(errs...)
+		return core.ErrorJoin(errs...)
 	}
 	return nil
 }
