@@ -68,6 +68,14 @@ func (p *ProcessProvider) Name() string { return "process" }
 // BasePath implements api.RouteGroup.
 func (p *ProcessProvider) BasePath() string { return "/api/process" }
 
+// Register mounts the provider on a Gin router using the provider base path.
+func (p *ProcessProvider) Register(r gin.IRouter) {
+	if p == nil || r == nil {
+		return
+	}
+	p.RegisterRoutes(r.Group(p.BasePath()))
+}
+
 // Element implements provider.Renderable.
 func (p *ProcessProvider) Element() provider.ElementSpec {
 	return provider.ElementSpec{
@@ -107,8 +115,8 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/processes/:id/signal", p.signalProcess)
 
 	// RFC-compatible singular aliases.
-	rg.GET("/process/list", p.listProcesses)
-	rg.POST("/process/start", p.startProcess)
+	rg.GET("/process/list", p.listProcessIDs)
+	rg.POST("/process/start", p.startProcessRFC)
 	rg.POST("/process/run", p.runProcess)
 	rg.GET("/process/:id", p.getProcess)
 	rg.GET("/process/:id/output", p.getProcessOutput)
@@ -421,12 +429,12 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "GET",
 			Path:        "/process/list",
 			Summary:     "List managed processes",
-			Description: "RFC-compatible alias for listing managed processes.",
+			Description: "RFC-compatible alias for listing managed process IDs.",
 			Tags:        []string{"process"},
 			Response: map[string]any{
 				"type": "array",
 				"items": map[string]any{
-					"type": "object",
+					"type": "string",
 				},
 			},
 		},
@@ -434,10 +442,10 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 			Method:      "POST",
 			Path:        "/process/start",
 			Summary:     "Start a managed process",
-			Description: "RFC-compatible alias for starting a process in detached mode.",
+			Description: "RFC-compatible alias for starting a process in detached mode and returning its managed ID.",
 			Tags:        []string{"process"},
 			Response: map[string]any{
-				"type": "object",
+				"type": "string",
 			},
 		},
 		{
@@ -635,23 +643,38 @@ func (p *ProcessProvider) startProcess(c *gin.Context) {
 		return
 	}
 
-	proc, err := p.service.StartWithOptions(c.Request.Context(), process.RunOptions{
-		Command:        req.Command,
-		Args:           req.Args,
-		Dir:            req.Dir,
-		Env:            req.Env,
-		DisableCapture: req.DisableCapture,
-		Detach:         req.Detach,
-		Timeout:        req.Timeout,
-		GracePeriod:    req.GracePeriod,
-		KillGroup:      req.KillGroup,
-	})
+	proc, err := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", err.Error()))
 		return
 	}
 
 	c.JSON(http.StatusOK, api.OK(proc.Info()))
+}
+
+func (p *ProcessProvider) startProcessRFC(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req process.TaskProcessStart
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+	if core.Trim(req.Command) == "" {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		return
+	}
+
+	proc, err := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(proc.ID))
 }
 
 func (p *ProcessProvider) runProcess(c *gin.Context) {
@@ -704,6 +727,25 @@ func (p *ProcessProvider) getProcess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(proc.Info()))
+}
+
+func (p *ProcessProvider) listProcessIDs(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	procs := p.service.List()
+	if runningOnly, _ := strconv.ParseBool(c.Query("runningOnly")); runningOnly {
+		procs = p.service.Running()
+	}
+
+	ids := make([]string, 0, len(procs))
+	for _, proc := range procs {
+		ids = append(ids, proc.ID)
+	}
+
+	c.JSON(http.StatusOK, api.OK(ids))
 }
 
 func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
@@ -982,14 +1024,14 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 
 func daemonEventPayload(entry process.DaemonEntry) map[string]any {
 	return map[string]any{
-		"code":    entry.Code,
-		"daemon":  entry.Daemon,
-		"pid":     entry.PID,
-		"health":  entry.Health,
-		"project": entry.Project,
-		"binary":  entry.Binary,
-		"config":  entry.Config,
-		"started": entry.Started,
+		"code":      entry.Code,
+		"daemon":    entry.Daemon,
+		"pid":       entry.PID,
+		"health":    entry.Health,
+		"project":   entry.Project,
+		"binary":    entry.Binary,
+		"config":    entry.Config,
+		"started":   entry.Started,
 		"startedAt": entry.StartedAt,
 	}
 }
@@ -1019,6 +1061,21 @@ func pidFromString(value string) (int, bool) {
 		return 0, false
 	}
 	return pid, true
+}
+
+func startRunOptions(req process.TaskProcessStart) process.RunOptions {
+	return process.RunOptions{
+		Command:        req.Command,
+		Args:           req.Args,
+		Dir:            req.Dir,
+		Env:            req.Env,
+		DisableCapture: req.DisableCapture,
+		// RFC semantics for process.start are detached/background execution.
+		Detach:      true,
+		Timeout:     req.Timeout,
+		GracePeriod: req.GracePeriod,
+		KillGroup:   req.KillGroup,
+	}
 }
 
 func parseSignal(value string) (syscall.Signal, error) {

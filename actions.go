@@ -19,20 +19,20 @@ import (
 //
 //	c.PERFORM(process.TaskProcessStart{Command: "sleep", Args: []string{"10"}})
 type TaskProcessStart struct {
-	Command string
-	Args    []string
-	Dir     string
-	Env     []string
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	Dir     string   `json:"dir"`
+	Env     []string `json:"env"`
 	// DisableCapture skips buffering process output before returning it.
-	DisableCapture bool
+	DisableCapture bool `json:"disableCapture"`
 	// Detach runs the command in its own process group.
-	Detach bool
+	Detach bool `json:"detach"`
 	// Timeout bounds the execution duration.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
-	GracePeriod time.Duration
+	GracePeriod time.Duration `json:"gracePeriod"`
 	// KillGroup terminates the entire process group instead of only the leader.
-	KillGroup bool
+	KillGroup bool `json:"killGroup"`
 }
 
 // TaskProcessRun requests synchronous command execution through Core.PERFORM.
@@ -42,20 +42,20 @@ type TaskProcessStart struct {
 //
 //	c.PERFORM(process.TaskProcessRun{Command: "echo", Args: []string{"hello"}})
 type TaskProcessRun struct {
-	Command string
-	Args    []string
-	Dir     string
-	Env     []string
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	Dir     string   `json:"dir"`
+	Env     []string `json:"env"`
 	// DisableCapture skips buffering process output before returning it.
-	DisableCapture bool
+	DisableCapture bool `json:"disableCapture"`
 	// Detach runs the command in its own process group.
-	Detach bool
+	Detach bool `json:"detach"`
 	// Timeout bounds the execution duration.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 	// GracePeriod controls SIGTERM-to-SIGKILL escalation.
-	GracePeriod time.Duration
+	GracePeriod time.Duration `json:"gracePeriod"`
 	// KillGroup terminates the entire process group instead of only the leader.
-	KillGroup bool
+	KillGroup bool `json:"killGroup"`
 }
 
 // TaskProcessKill requests termination of a managed process by ID or PID.
@@ -65,9 +65,9 @@ type TaskProcessRun struct {
 //	c.PERFORM(process.TaskProcessKill{ID: "proc-1"})
 type TaskProcessKill struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 	// PID targets a process directly when ID is not available.
-	PID int
+	PID int `json:"pid"`
 }
 
 // TaskProcessSignal requests signalling a managed process by ID or PID through Core.PERFORM.
@@ -78,11 +78,11 @@ type TaskProcessKill struct {
 //	c.PERFORM(process.TaskProcessSignal{ID: "proc-1", Signal: syscall.SIGTERM})
 type TaskProcessSignal struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 	// PID targets a process directly when ID is not available.
-	PID int
+	PID int `json:"pid"`
 	// Signal is delivered to the process or process group.
-	Signal syscall.Signal
+	Signal syscall.Signal `json:"signal"`
 }
 
 // TaskProcessGet requests a snapshot of a managed process through Core.PERFORM.
@@ -92,7 +92,7 @@ type TaskProcessSignal struct {
 //	c.PERFORM(process.TaskProcessGet{ID: "proc-1"})
 type TaskProcessGet struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 }
 
 // TaskProcessWait waits for a managed process to finish through Core.PERFORM.
@@ -104,7 +104,7 @@ type TaskProcessGet struct {
 //	c.PERFORM(process.TaskProcessWait{ID: "proc-1"})
 type TaskProcessWait struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 }
 
 // TaskProcessWaitError is returned as the task value when TaskProcessWait
@@ -138,7 +138,7 @@ func (e *TaskProcessWaitError) Unwrap() error {
 //	c.PERFORM(process.TaskProcessOutput{ID: "proc-1"})
 type TaskProcessOutput struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 }
 
 // TaskProcessInput writes data to the stdin of a managed process through Core.PERFORM.
@@ -148,9 +148,9 @@ type TaskProcessOutput struct {
 //	c.PERFORM(process.TaskProcessInput{ID: "proc-1", Input: "hello\n"})
 type TaskProcessInput struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 	// Input is written verbatim to the process stdin pipe.
-	Input string
+	Input string `json:"input"`
 }
 
 // TaskProcessCloseStdin closes the stdin pipe of a managed process through Core.PERFORM.
@@ -160,7 +160,7 @@ type TaskProcessInput struct {
 //	c.PERFORM(process.TaskProcessCloseStdin{ID: "proc-1"})
 type TaskProcessCloseStdin struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 }
 
 // processActionInput models the options passed via core.Actions.
@@ -348,7 +348,7 @@ func parseStringSliceOption(opts core.Options, key string) ([]string, error) {
 //
 //	c.PERFORM(process.TaskProcessList{RunningOnly: true})
 type TaskProcessList struct {
-	RunningOnly bool
+	RunningOnly bool `json:"runningOnly"`
 }
 
 // TaskProcessRemove removes a completed managed process through Core.PERFORM.
@@ -358,7 +358,7 @@ type TaskProcessList struct {
 //	c.PERFORM(process.TaskProcessRemove{ID: "proc-1"})
 type TaskProcessRemove struct {
 	// ID identifies a managed process started by this service.
-	ID string
+	ID string `json:"id"`
 }
 
 // TaskProcessClear removes all completed managed processes through Core.PERFORM.

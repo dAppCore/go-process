@@ -41,32 +41,32 @@ func NewRunner(svc *Service) *Runner {
 //	spec := process.RunSpec{Name: "test", Command: "go", Args: []string{"test", "./..."}}
 type RunSpec struct {
 	// Name is a friendly identifier (e.g., "lint", "test").
-	Name string
+	Name string `json:"name"`
 	// Command is the executable to run.
-	Command string
+	Command string `json:"command"`
 	// Args are the command arguments.
-	Args []string
+	Args []string `json:"args"`
 	// Dir is the working directory.
-	Dir string
+	Dir string `json:"dir"`
 	// Env are additional environment variables.
-	Env []string
+	Env []string `json:"env"`
 	// After lists spec names that must complete successfully first.
-	After []string
+	After []string `json:"after"`
 	// AllowFailure if true, continues pipeline even if this spec fails.
-	AllowFailure bool
+	AllowFailure bool `json:"allowFailure"`
 }
 
 // RunResult captures the outcome of a single process.
 type RunResult struct {
-	Name     string
-	Spec     RunSpec
-	ExitCode int
-	Duration time.Duration
-	Output   string
+	Name     string        `json:"name"`
+	Spec     RunSpec       `json:"spec"`
+	ExitCode int           `json:"exitCode"`
+	Duration time.Duration `json:"duration"`
+	Output   string        `json:"output"`
 	// Error only reports start-time or orchestration failures. A started process
 	// that exits non-zero uses ExitCode to report failure and leaves Error nil.
-	Error   error
-	Skipped bool
+	Error   error `json:"error,omitempty"`
+	Skipped bool  `json:"skipped"`
 }
 
 // Passed returns true if the process succeeded.
@@ -80,11 +80,11 @@ func (r RunResult) Passed() bool {
 
 // RunAllResult is the aggregate result of running multiple specs.
 type RunAllResult struct {
-	Results  []RunResult
-	Duration time.Duration
-	Passed   int
-	Failed   int
-	Skipped  int
+	Results  []RunResult   `json:"results"`
+	Duration time.Duration `json:"duration"`
+	Passed   int           `json:"passed"`
+	Failed   int           `json:"failed"`
+	Skipped  int           `json:"skipped"`
 }
 
 // Success returns true when no spec failed.

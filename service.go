@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,7 +33,6 @@ type Service struct {
 	processes     map[string]*Process
 	mu            sync.RWMutex
 	bufSize       int
-	idCounter     atomic.Uint64
 	registrations sync.Once
 }
 
@@ -147,7 +145,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		return nil, ServiceError("context is required", ErrContextRequired)
 	}
 
-	id := core.Sprintf("proc-%d", s.idCounter.Add(1))
+	id := core.ID()
 	startedAt := time.Now()
 
 	if opts.KillGroup && !opts.Detach {
@@ -666,7 +664,7 @@ func (s *Service) handleStart(ctx context.Context, opts core.Options) core.Resul
 		return core.Result{Value: err, OK: false}
 	}
 
-	proc, startErr := s.StartWithOptions(ctx, runOptionsFromAction(parsed))
+	proc, startErr := s.StartWithOptions(ctx, startRunOptionsFromAction(parsed))
 	if startErr != nil {
 		return core.Result{Value: startErr, OK: false}
 	}
@@ -739,11 +737,19 @@ func runOptionsFromAction(input processActionInput) RunOptions {
 	}
 }
 
+func startRunOptionsFromAction(input processActionInput) RunOptions {
+	opts := runOptionsFromAction(input)
+	// RFC semantics: process.start is background execution and must not be
+	// coupled to the caller context unless the caller bypasses the action layer.
+	opts.Detach = true
+	return opts
+}
+
 // handleTask dispatches Core.PERFORM messages for the process service.
 func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 	switch m := task.(type) {
 	case TaskProcessStart:
-		proc, err := s.StartWithOptions(c.Context(), RunOptions{
+		proc, err := s.StartWithOptions(c.Context(), startRunOptionsFromAction(processActionInput{
 			Command:        m.Command,
 			Args:           m.Args,
 			Dir:            m.Dir,
@@ -753,7 +759,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 			Timeout:        m.Timeout,
 			GracePeriod:    m.GracePeriod,
 			KillGroup:      m.KillGroup,
-		})
+		}))
 		if err != nil {
 			return core.Result{Value: err, OK: false}
 		}
