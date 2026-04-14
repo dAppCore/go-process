@@ -67,6 +67,7 @@ func (p *PIDFile) Acquire() error {
 }
 
 // Release removes the PID file.
+// Returns nil if the PID file does not exist.
 //
 // Example:
 //
@@ -74,6 +75,9 @@ func (p *PIDFile) Acquire() error {
 func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !coreio.Local.Exists(p.path) {
+		return nil
+	}
 	if err := coreio.Local.Delete(p.path); err != nil {
 		return core.E("pidfile.release", "failed to remove PID file", err)
 	}

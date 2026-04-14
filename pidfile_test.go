@@ -47,6 +47,12 @@ func TestPIDFile_Path_Good(t *testing.T) {
 	assert.Equal(t, "/tmp/test.pid", pid.Path())
 }
 
+func TestPIDFile_Release_MissingIsNoop(t *testing.T) {
+	pidPath := core.JoinPath(t.TempDir(), "absent.pid")
+	pid := NewPIDFile(pidPath)
+	require.NoError(t, pid.Release())
+}
+
 func TestReadPID_Missing_Bad(t *testing.T) {
 	pid, running := ReadPID("/nonexistent/path.pid")
 	assert.Equal(t, 0, pid)
