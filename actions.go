@@ -1,8 +1,13 @@
 package process
 
 import (
+	"fmt"
+	"strconv"
 	"syscall"
 	"time"
+
+	"dappco.re/go/core"
+	coreerr "dappco.re/go/core/log"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
@@ -156,6 +161,184 @@ type TaskProcessInput struct {
 type TaskProcessCloseStdin struct {
 	// ID identifies a managed process started by this service.
 	ID string
+}
+
+// processActionInput models the options passed via core.Actions.
+// Keys:
+// command, args, dir, env, disableCapture, detach, timeout,
+// gracePeriod, killGroup, id, pid.
+type processActionInput struct {
+	Command        string
+	Args           []string
+	Dir            string
+	Env            []string
+	DisableCapture bool
+	Detach         bool
+	Timeout        time.Duration
+	GracePeriod    time.Duration
+	KillGroup      bool
+	ID             string
+	PID            int
+}
+
+func parseProcessActionInput(opts core.Options, requireCommand bool) (processActionInput, error) {
+	parsed := processActionInput{
+		Command:        core.Trim(opts.String("command")),
+		Dir:            opts.String("dir"),
+		DisableCapture: opts.Bool("disableCapture"),
+		Detach:         opts.Bool("detach"),
+		KillGroup:      opts.Bool("killGroup"),
+		Timeout:        parseDurationOption(opts, "timeout"),
+		GracePeriod:    parseDurationOption(opts, "gracePeriod"),
+	}
+
+	var err error
+
+	parsed.Args, err = parseStringSliceOption(opts, "args")
+	if err != nil {
+		return processActionInput{}, err
+	}
+
+	parsed.Env, err = parseStringSliceOption(opts, "env")
+	if err != nil {
+		return processActionInput{}, err
+	}
+
+	parsed.ID = core.Trim(opts.String("id"))
+	parsed.PID = parseIntOption(opts, "pid")
+
+	if requireCommand && parsed.Command == "" {
+		return processActionInput{}, coreerr.E("process action", "command is required", nil)
+	}
+
+	return parsed, nil
+}
+
+func parseProcessActionTarget(opts core.Options) (string, int, error) {
+	id := core.Trim(opts.String("id"))
+	pid := parseIntOption(opts, "pid")
+	if id == "" && pid <= 0 {
+		return "", 0, coreerr.E("process action", "id or pid is required", nil)
+	}
+	return id, pid, nil
+}
+
+func parseDurationOption(opts core.Options, key string) time.Duration {
+	r := opts.Get(key)
+	if !r.OK {
+		return 0
+	}
+
+	switch value := r.Value.(type) {
+	case time.Duration:
+		return value
+	case int:
+		return time.Duration(value)
+	case int8:
+		return time.Duration(value)
+	case int16:
+		return time.Duration(value)
+	case int32:
+		return time.Duration(value)
+	case int64:
+		return time.Duration(value)
+	case uint:
+		return time.Duration(value)
+	case uint8:
+		return time.Duration(value)
+	case uint16:
+		return time.Duration(value)
+	case uint32:
+		return time.Duration(value)
+	case uint64:
+		return time.Duration(value)
+	case float32:
+		return time.Duration(value)
+	case float64:
+		return time.Duration(value)
+	case string:
+		d, err := time.ParseDuration(value)
+		if err == nil {
+			return d
+		}
+		if n, parseErr := strconv.ParseInt(value, 10, 64); parseErr == nil {
+			return time.Duration(n)
+		}
+	}
+
+	return 0
+}
+
+func parseIntOption(opts core.Options, key string) int {
+	r := opts.Get(key)
+	if !r.OK {
+		return 0
+	}
+
+	switch value := r.Value.(type) {
+	case int:
+		return value
+	case int8:
+		return int(value)
+	case int16:
+		return int(value)
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case uint:
+		return int(value)
+	case uint8:
+		return int(value)
+	case uint16:
+		return int(value)
+	case uint32:
+		return int(value)
+	case uint64:
+		return int(value)
+	case float32:
+		return int(value)
+	case float64:
+		return int(value)
+	case string:
+		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
+	}
+
+	return 0
+}
+
+func parseStringSliceOption(opts core.Options, key string) ([]string, error) {
+	r := opts.Get(key)
+	if !r.OK {
+		return nil, nil
+	}
+
+	raw, ok := r.Value.([]string)
+	if ok {
+		return raw, nil
+	}
+
+	anyList, ok := r.Value.([]any)
+	if !ok {
+		if alt, ok := r.Value.([]interface{}); ok {
+			anyList = alt
+		} else {
+			return nil, coreerr.E("process action", fmt.Sprintf("%s must be an array", key), nil)
+		}
+	}
+
+	items := make([]string, 0, len(anyList))
+	for _, item := range anyList {
+		value, ok := item.(string)
+		if !ok {
+			return nil, coreerr.E("process action", fmt.Sprintf("%s entries must be strings", key), nil)
+		}
+		items = append(items, value)
+	}
+
+	return items, nil
 }
 
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.

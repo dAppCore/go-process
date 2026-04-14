@@ -105,6 +105,19 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/processes/:id/close-stdin", p.closeProcessStdin)
 	rg.POST("/processes/:id/kill", p.killProcess)
 	rg.POST("/processes/:id/signal", p.signalProcess)
+
+	// RFC-compatible singular aliases.
+	rg.GET("/process/list", p.listProcesses)
+	rg.POST("/process/start", p.startProcess)
+	rg.POST("/process/run", p.runProcess)
+	rg.GET("/process/:id", p.getProcess)
+	rg.GET("/process/:id/output", p.getProcessOutput)
+	rg.POST("/process/kill", p.killProcessJSON)
+	rg.POST("/process/:id/wait", p.waitProcess)
+	rg.POST("/process/:id/input", p.inputProcess)
+	rg.POST("/process/:id/close-stdin", p.closeProcessStdin)
+	rg.POST("/process/:id/signal", p.signalProcess)
+
 	rg.POST("/pipelines/run", p.runPipeline)
 }
 
@@ -401,6 +414,79 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 					"passed":   map[string]any{"type": "integer"},
 					"failed":   map[string]any{"type": "integer"},
 					"skipped":  map[string]any{"type": "integer"},
+				},
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/process/list",
+			Summary:     "List managed processes",
+			Description: "RFC-compatible alias for listing managed processes.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+				},
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/process/start",
+			Summary:     "Start a managed process",
+			Description: "RFC-compatible alias for starting a process in detached mode.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/process/run",
+			Summary:     "Run a managed process",
+			Description: "RFC-compatible alias for running a process synchronously.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "string",
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/process/:id",
+			Summary:     "Get managed process",
+			Description: "RFC-compatible alias for process lookup.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "object",
+			},
+		},
+		{
+			Method:      "GET",
+			Path:        "/process/:id/output",
+			Summary:     "Get managed process output",
+			Description: "RFC-compatible alias for process output.",
+			Tags:        []string{"process"},
+			Response: map[string]any{
+				"type": "string",
+			},
+		},
+		{
+			Method:      "POST",
+			Path:        "/process/kill",
+			Summary:     "Kill a managed process",
+			Description: "RFC-compatible alias that accepts id or pid in JSON body.",
+			Tags:        []string{"process"},
+			RequestBody: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":  map[string]any{"type": "string"},
+					"pid": map[string]any{"type": "integer"},
+				},
+			},
+			Response: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"killed": map[string]any{"type": "boolean"},
 				},
 			},
 		},
@@ -714,15 +800,8 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	if err := p.service.Kill(id); err != nil {
-		if pid, ok := pidFromString(id); ok {
-			if pidErr := p.service.KillPID(pid); pidErr == nil {
-				c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
-				return
-			} else {
-				err = pidErr
-			}
-		}
+	pid, _ := pidFromString(id)
+	if err := p.killProcessByTarget(id, pid); err != nil {
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
@@ -732,6 +811,62 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
+}
+
+type processKillRequest struct {
+	ID  string `json:"id"`
+	PID int    `json:"pid"`
+}
+
+func (p *ProcessProvider) killProcessJSON(c *gin.Context) {
+	if p.service == nil {
+		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		return
+	}
+
+	var req processKillRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		return
+	}
+	if req.ID == "" && req.PID <= 0 {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "id or pid is required"))
+		return
+	}
+	if req.PID <= 0 {
+		if parsedPID, ok := pidFromString(req.ID); ok {
+			req.PID = parsedPID
+		}
+	}
+
+	if err := p.killProcessByTarget(req.ID, req.PID); err != nil {
+		status := http.StatusInternalServerError
+		if err == process.ErrProcessNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, api.Fail("kill_failed", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
+}
+
+func (p *ProcessProvider) killProcessByTarget(id string, pid int) error {
+	if err := p.service.Kill(id); err != nil {
+		if pid <= 0 {
+			return err
+		}
+		if pidErr := p.service.KillPID(pid); pidErr != nil {
+			return pidErr
+		}
+		return nil
+	}
+	if id == "" && pid > 0 {
+		if err := p.service.KillPID(pid); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type processSignalRequest struct {
@@ -853,7 +988,9 @@ func daemonEventPayload(entry process.DaemonEntry) map[string]any {
 		"health":  entry.Health,
 		"project": entry.Project,
 		"binary":  entry.Binary,
+		"config":  entry.Config,
 		"started": entry.Started,
+		"startedAt": entry.StartedAt,
 	}
 }
 

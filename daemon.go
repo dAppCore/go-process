@@ -109,6 +109,7 @@ func (d *Daemon) Start() error {
 	// Auto-register if registry is set
 	if d.opts.Registry != nil {
 		entry := d.opts.RegistryEntry
+		now := time.Now()
 		entry.PID = os.Getpid()
 		if d.health != nil {
 			entry.Health = d.health.Addr()
@@ -123,6 +124,17 @@ func (d *Daemon) Start() error {
 				entry.Binary = binary
 			}
 		}
+		if entry.StartedAt.IsZero() {
+			entry.StartedAt = now
+		}
+		if entry.Started.IsZero() {
+			entry.Started = entry.StartedAt
+		}
+		if entry.Config == nil {
+			entry.Config = map[string]string{}
+		}
+		entry.Config = cloneDaemonConfig(entry.Config)
+
 		if err := d.opts.Registry.Register(entry); err != nil {
 			if d.health != nil {
 				_ = d.health.Stop(context.Background())

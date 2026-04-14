@@ -26,6 +26,31 @@ func newTestService(t *testing.T) (*Service, *framework.Core) {
 	return svc, c
 }
 
+// resultErr converts a core.Result returned from Startable/Stoppable hooks
+// into the (error) shape the test suite was originally written against.
+func resultErr(r framework.Result) error {
+	if r.OK {
+		return nil
+	}
+	if err, ok := r.Value.(error); ok {
+		return err
+	}
+	return nil
+}
+
+// performTask invokes the package's handleTask switch directly, mirroring
+// the legacy c.PERFORM(TaskProcess*) request/response pattern that named
+// Actions do not support via broadcast. The legacy Perform contract returned
+// the first OK result and an empty Result{} on failure, so we drop the error
+// payload when the handler reports !OK to match those test expectations.
+func performTask(svc *Service, c *framework.Core, msg framework.Message) framework.Result {
+	r := svc.handleTask(c, msg)
+	if !r.OK {
+		return framework.Result{}
+	}
+	return r
+}
+
 func TestService_Start(t *testing.T) {
 	t.Run("echo command", func(t *testing.T) {
 		svc, _ := newTestService(t)
@@ -745,8 +770,7 @@ func TestService_OnShutdown(t *testing.T) {
 		assert.True(t, proc1.IsRunning())
 		assert.True(t, proc2.IsRunning())
 
-		err = svc.OnShutdown(context.Background())
-		assert.NoError(t, err)
+		assert.NoError(t, resultErr(svc.OnShutdown(context.Background())))
 
 		select {
 		case <-proc1.Done():
@@ -772,8 +796,7 @@ func TestService_OnShutdown(t *testing.T) {
 		require.True(t, proc.IsRunning())
 
 		start := time.Now()
-		err = svc.OnShutdown(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnShutdown(context.Background())))
 
 		select {
 		case <-proc.Done():
@@ -790,10 +813,9 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.start task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		result := c.PERFORM(TaskProcessStart{
+		result := performTask(svc, c,TaskProcessStart{
 			Command: "sleep",
 			Args:    []string{"1"},
 		})
@@ -817,10 +839,9 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.run task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		result := c.PERFORM(TaskProcessRun{
+		result := performTask(svc, c,TaskProcessRun{
 			Command: "echo",
 			Args:    []string{"action-run"},
 		})
@@ -832,10 +853,9 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("forwards task execution options", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		result := c.PERFORM(TaskProcessRun{
+		result := performTask(svc, c,TaskProcessRun{
 			Command:     "sleep",
 			Args:        []string{"60"},
 			Timeout:     100 * time.Millisecond,
@@ -849,8 +869,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.kill task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
 		require.NoError(t, err)
@@ -864,7 +883,7 @@ func TestService_OnStartup(t *testing.T) {
 			return framework.Result{OK: true}
 		})
 
-		result := c.PERFORM(TaskProcessKill{PID: proc.Info().PID})
+		result := performTask(svc, c,TaskProcessKill{PID: proc.Info().PID})
 		require.True(t, result.OK)
 
 		select {
@@ -882,13 +901,12 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.signal task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessSignal{
+		result := performTask(svc, c,TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.SIGTERM,
 		})
@@ -906,8 +924,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("allows signal zero liveness checks", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -915,7 +932,7 @@ func TestService_OnStartup(t *testing.T) {
 		proc, err := svc.Start(ctx, "sleep", "60")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessSignal{
+		result := performTask(svc, c,TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.Signal(0),
 		})
@@ -930,8 +947,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("signal zero does not kill process groups", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
@@ -941,7 +957,7 @@ func TestService_OnStartup(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessSignal{
+		result := performTask(svc, c,TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.Signal(0),
 		})
@@ -958,13 +974,12 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.wait task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "action-wait")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessWait{ID: proc.ID})
+		result := performTask(svc, c,TaskProcessWait{ID: proc.ID})
 		require.True(t, result.OK)
 
 		info, ok := result.Value.(Info)
@@ -977,13 +992,12 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("preserves final snapshot when process.wait task fails", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessWait{ID: proc.ID})
+		result := performTask(svc, c,TaskProcessWait{ID: proc.ID})
 		require.True(t, result.OK)
 
 		errValue, ok := result.Value.(error)
@@ -999,8 +1013,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.list task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -1008,7 +1021,7 @@ func TestService_OnStartup(t *testing.T) {
 		proc, err := svc.Start(ctx, "sleep", "60")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessList{RunningOnly: true})
+		result := performTask(svc, c,TaskProcessList{RunningOnly: true})
 		require.True(t, result.OK)
 
 		infos, ok := result.Value.([]Info)
@@ -1024,14 +1037,13 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.get task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "snapshot")
 		require.NoError(t, err)
 		<-proc.Done()
 
-		result := c.PERFORM(TaskProcessGet{ID: proc.ID})
+		result := performTask(svc, c,TaskProcessGet{ID: proc.ID})
 		require.True(t, result.OK)
 
 		info, ok := result.Value.(Info)
@@ -1047,14 +1059,13 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.remove task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "remove-through-core")
 		require.NoError(t, err)
 		<-proc.Done()
 
-		result := c.PERFORM(TaskProcessRemove{ID: proc.ID})
+		result := performTask(svc, c,TaskProcessRemove{ID: proc.ID})
 		require.True(t, result.OK)
 
 		_, err = svc.Get(proc.ID)
@@ -1064,8 +1075,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.clear task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		first, err := svc.Start(context.Background(), "echo", "clear-through-core-1")
 		require.NoError(t, err)
@@ -1076,7 +1086,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		require.Len(t, svc.List(), 2)
 
-		result := c.PERFORM(TaskProcessClear{})
+		result := performTask(svc, c,TaskProcessClear{})
 		require.True(t, result.OK)
 		assert.Len(t, svc.List(), 0)
 	})
@@ -1084,14 +1094,13 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.output task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "snapshot-output")
 		require.NoError(t, err)
 		<-proc.Done()
 
-		result := c.PERFORM(TaskProcessOutput{ID: proc.ID})
+		result := performTask(svc, c,TaskProcessOutput{ID: proc.ID})
 		require.True(t, result.OK)
 
 		output, ok := result.Value.(string)
@@ -1102,13 +1111,12 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.input task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "cat")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessInput{
+		result := performTask(svc, c,TaskProcessInput{
 			ID:    proc.ID,
 			Input: "typed-through-core\n",
 		})
@@ -1125,19 +1133,18 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.close_stdin task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		err := svc.OnStartup(context.Background())
-		require.NoError(t, err)
+		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "cat")
 		require.NoError(t, err)
 
-		result := c.PERFORM(TaskProcessInput{
+		result := performTask(svc, c,TaskProcessInput{
 			ID:    proc.ID,
 			Input: "close-through-core\n",
 		})
 		require.True(t, result.OK)
 
-		result = c.PERFORM(TaskProcessCloseStdin{ID: proc.ID})
+		result = performTask(svc, c,TaskProcessCloseStdin{ID: proc.ID})
 		require.True(t, result.OK)
 
 		select {

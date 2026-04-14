@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
+	"unicode"
 
 	"dappco.re/go/core"
 	coreerr "dappco.re/go/core/log"
@@ -97,7 +99,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if err := cmd.Run(); err != nil {
-		return core.Trim(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
+		return strings.TrimRightFunc(out.String(), unicode.IsSpace), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
 	}
-	return core.Trim(out.String()), nil
+	return strings.TrimRightFunc(out.String(), unicode.IsSpace), nil
 }

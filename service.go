@@ -85,13 +85,18 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 // Example:
 //
 //	_ = svc.OnStartup(ctx)
-func (s *Service) OnStartup(ctx context.Context) error {
+func (s *Service) OnStartup(context.Context) core.Result {
 	s.registrations.Do(func() {
 		if c := s.coreApp(); c != nil {
+			c.Action("process.run", s.handleRun)
+			c.Action("process.start", s.handleStart)
+			c.Action("process.kill", s.handleKill)
+			c.Action("process.list", s.handleList)
+			c.Action("process.get", s.handleGet)
 			c.RegisterAction(s.handleTask)
 		}
 	})
-	return nil
+	return core.Result{OK: true}
 }
 
 // OnShutdown implements core.Stoppable.
@@ -100,7 +105,7 @@ func (s *Service) OnStartup(ctx context.Context) error {
 // Example:
 //
 //	_ = svc.OnShutdown(ctx)
-func (s *Service) OnShutdown(ctx context.Context) error {
+func (s *Service) OnShutdown(context.Context) core.Result {
 	s.mu.RLock()
 	procs := make([]*Process, 0, len(s.processes))
 	for _, p := range s.processes {
@@ -114,7 +119,7 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 		_, _ = p.killTree()
 	}
 
-	return nil
+	return core.Result{OK: true}
 }
 
 // Start spawns a new process with the given command and args.
@@ -640,6 +645,98 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 		return output, coreerr.E("Service.RunWithOptions", core.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
+}
+
+func (s *Service) handleRun(ctx context.Context, opts core.Options) core.Result {
+	parsed, err := parseProcessActionInput(opts, true)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	output, runErr := s.RunWithOptions(ctx, runOptionsFromAction(parsed))
+	if runErr != nil {
+		return core.Result{Value: runErr, OK: false}
+	}
+	return core.Result{Value: output, OK: true}
+}
+
+func (s *Service) handleStart(ctx context.Context, opts core.Options) core.Result {
+	parsed, err := parseProcessActionInput(opts, true)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	proc, startErr := s.StartWithOptions(ctx, runOptionsFromAction(parsed))
+	if startErr != nil {
+		return core.Result{Value: startErr, OK: false}
+	}
+	return core.Result{Value: proc.ID, OK: true}
+}
+
+func (s *Service) handleKill(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	id, pid, err := parseProcessActionTarget(opts)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	switch {
+	case id != "":
+		if err := s.Kill(id); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+	case pid > 0:
+		if err := s.KillPID(pid); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+	}
+	return core.Result{OK: true}
+}
+
+func (s *Service) handleList(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	runningOnly := opts.Bool("runningOnly")
+
+	procs := s.List()
+	if runningOnly {
+		procs = s.Running()
+	}
+
+	ids := make([]string, 0, len(procs))
+	for _, proc := range procs {
+		ids = append(ids, proc.ID)
+	}
+
+	return core.Result{Value: ids, OK: true}
+}
+
+func (s *Service) handleGet(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	id := core.Trim(opts.String("id"))
+	if id == "" {
+		return core.Result{Value: coreerr.E("Service.handleGet", "id is required", nil), OK: false}
+	}
+
+	proc, err := s.Get(id)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	return core.Result{Value: proc.Info(), OK: true}
+}
+
+func runOptionsFromAction(input processActionInput) RunOptions {
+	return RunOptions{
+		Command:        input.Command,
+		Args:           append([]string(nil), input.Args...),
+		Dir:            input.Dir,
+		Env:            append([]string(nil), input.Env...),
+		DisableCapture: input.DisableCapture,
+		Detach:         input.Detach,
+		Timeout:        input.Timeout,
+		GracePeriod:    input.GracePeriod,
+		KillGroup:      input.KillGroup,
+	}
 }
 
 // handleTask dispatches Core.PERFORM messages for the process service.
