@@ -1024,15 +1024,13 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 
 func daemonEventPayload(entry process.DaemonEntry) map[string]any {
 	return map[string]any{
-		"code":      entry.Code,
-		"daemon":    entry.Daemon,
-		"pid":       entry.PID,
-		"health":    entry.Health,
-		"project":   entry.Project,
-		"binary":    entry.Binary,
-		"config":    entry.Config,
-		"started":   entry.Started,
-		"startedAt": entry.StartedAt,
+		"code":    entry.Code,
+		"daemon":  entry.Daemon,
+		"pid":     entry.PID,
+		"health":  entry.Health,
+		"project": entry.Project,
+		"binary":  entry.Binary,
+		"started": entry.Started,
 	}
 }
 
