@@ -26,14 +26,14 @@
 //
 // Process events are broadcast via Core.ACTION:
 //
-//	core.RegisterAction(func(c *framework.Core, msg framework.Message) error {
+//	core.RegisterAction(func(c *framework.Core, msg framework.Message) framework.Result {
 //	    switch m := msg.(type) {
 //	    case process.ActionProcessOutput:
-//	        fmt.Print(m.Line)
+//	        core.Println(m.Line)
 //	    case process.ActionProcessExited:
-//	        fmt.Printf("Exit code: %d\n", m.ExitCode)
+//	        core.Println("Exit code:", m.ExitCode)
 //	    }
-//	    return nil
+//	    return framework.Result{OK: true}
 //	})
 package process
 
@@ -83,32 +83,32 @@ const (
 //	}
 type RunOptions struct {
 	// Command is the executable to run.
-	Command string
+	Command string `json:"command"`
 	// Args are the command arguments.
-	Args []string
+	Args []string `json:"args"`
 	// Dir is the working directory (empty = current).
-	Dir string
+	Dir string `json:"dir"`
 	// Env are additional environment variables (KEY=VALUE format).
-	Env []string
+	Env []string `json:"env"`
 	// DisableCapture disables output buffering.
 	// By default, output is captured to a ring buffer.
-	DisableCapture bool
+	DisableCapture bool `json:"disableCapture"`
 	// Detach creates the process in its own process group (Setpgid).
 	// Detached processes survive parent death and context cancellation.
 	// The context is replaced with context.Background() when Detach is true.
-	Detach bool
+	Detach bool `json:"detach"`
 	// Timeout is the maximum duration the process may run.
 	// After this duration, the process receives SIGTERM (or SIGKILL if
 	// GracePeriod is zero). Zero means no timeout.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 	// GracePeriod is the time between SIGTERM and SIGKILL when stopping
 	// a process (via timeout or Shutdown). Zero means immediate SIGKILL.
 	// Default: 0 (immediate kill for backwards compatibility).
-	GracePeriod time.Duration
+	GracePeriod time.Duration `json:"gracePeriod"`
 	// KillGroup kills the entire process group instead of just the leader.
 	// Requires Detach to be true (process must be its own group leader).
 	// This ensures child processes spawned by the command are also killed.
-	KillGroup bool
+	KillGroup bool `json:"killGroup"`
 }
 
 // Info provides a snapshot of process state without internal fields.
@@ -116,7 +116,7 @@ type RunOptions struct {
 // Example:
 //
 //	info := proc.Info()
-//	fmt.Println(info.PID)
+//	core.Println(info.PID)
 type Info struct {
 	ID        string        `json:"id"`
 	Command   string        `json:"command"`

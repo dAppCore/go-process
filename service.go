@@ -3,13 +3,10 @@ package process
 import (
 	"bufio"
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,7 +33,6 @@ type Service struct {
 	processes     map[string]*Process
 	mu            sync.RWMutex
 	bufSize       int
-	idCounter     atomic.Uint64
 	registrations sync.Once
 }
 
@@ -87,13 +83,18 @@ func NewService(opts Options) func(*core.Core) (any, error) {
 // Example:
 //
 //	_ = svc.OnStartup(ctx)
-func (s *Service) OnStartup(ctx context.Context) error {
+func (s *Service) OnStartup(context.Context) core.Result {
 	s.registrations.Do(func() {
 		if c := s.coreApp(); c != nil {
-			c.RegisterTask(s.handleTask)
+			c.Action("process.run", s.handleRun)
+			c.Action("process.start", s.handleStart)
+			c.Action("process.kill", s.handleKill)
+			c.Action("process.list", s.handleList)
+			c.Action("process.get", s.handleGet)
+			c.RegisterAction(s.handleTask)
 		}
 	})
-	return nil
+	return core.Result{OK: true}
 }
 
 // OnShutdown implements core.Stoppable.
@@ -102,7 +103,7 @@ func (s *Service) OnStartup(ctx context.Context) error {
 // Example:
 //
 //	_ = svc.OnShutdown(ctx)
-func (s *Service) OnShutdown(ctx context.Context) error {
+func (s *Service) OnShutdown(context.Context) core.Result {
 	s.mu.RLock()
 	procs := make([]*Process, 0, len(s.processes))
 	for _, p := range s.processes {
@@ -116,7 +117,7 @@ func (s *Service) OnShutdown(ctx context.Context) error {
 		_, _ = p.killTree()
 	}
 
-	return nil
+	return core.Result{OK: true}
 }
 
 // Start spawns a new process with the given command and args.
@@ -144,7 +145,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		return nil, ServiceError("context is required", ErrContextRequired)
 	}
 
-	id := fmt.Sprintf("proc-%d", s.idCounter.Add(1))
+	id := core.ID()
 	startedAt := time.Now()
 
 	if opts.KillGroup && !opts.Detach {
@@ -441,7 +442,7 @@ func (s *Service) KillPID(pid int) error {
 	}
 
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		return coreerr.E("Service.KillPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+		return coreerr.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err)
 	}
 
 	return nil
@@ -476,11 +477,11 @@ func (s *Service) SignalPID(pid int, sig os.Signal) error {
 
 	target, err := os.FindProcess(pid)
 	if err != nil {
-		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to find pid %d", pid), err)
+		return coreerr.E("Service.SignalPID", core.Sprintf("failed to find pid %d", pid), err)
 	}
 
 	if err := target.Signal(sig); err != nil {
-		return coreerr.E("Service.SignalPID", fmt.Sprintf("failed to signal pid %d", pid), err)
+		return coreerr.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err)
 	}
 
 	return nil
@@ -616,7 +617,7 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) (stri
 		return output, coreerr.E("Service.Run", "process was killed", nil)
 	}
 	if proc.ExitCode != 0 {
-		return output, coreerr.E("Service.Run", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+		return output, coreerr.E("Service.Run", core.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }
@@ -639,16 +640,116 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) (string, 
 		return output, coreerr.E("Service.RunWithOptions", "process was killed", nil)
 	}
 	if proc.ExitCode != 0 {
-		return output, coreerr.E("Service.RunWithOptions", fmt.Sprintf("process exited with code %d", proc.ExitCode), nil)
+		return output, coreerr.E("Service.RunWithOptions", core.Sprintf("process exited with code %d", proc.ExitCode), nil)
 	}
 	return output, nil
 }
 
+func (s *Service) handleRun(ctx context.Context, opts core.Options) core.Result {
+	parsed, err := parseProcessActionInput(opts, true)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	output, runErr := s.RunWithOptions(ctx, runOptionsFromAction(parsed))
+	if runErr != nil {
+		return core.Result{Value: runErr, OK: false}
+	}
+	return core.Result{Value: output, OK: true}
+}
+
+func (s *Service) handleStart(ctx context.Context, opts core.Options) core.Result {
+	parsed, err := parseProcessActionInput(opts, true)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	proc, startErr := s.StartWithOptions(ctx, startRunOptionsFromAction(parsed))
+	if startErr != nil {
+		return core.Result{Value: startErr, OK: false}
+	}
+	return core.Result{Value: proc.ID, OK: true}
+}
+
+func (s *Service) handleKill(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	id, pid, err := parseProcessActionTarget(opts)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	switch {
+	case id != "":
+		if err := s.Kill(id); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+	case pid > 0:
+		if err := s.KillPID(pid); err != nil {
+			return core.Result{Value: err, OK: false}
+		}
+	}
+	return core.Result{OK: true}
+}
+
+func (s *Service) handleList(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	runningOnly := opts.Bool("runningOnly")
+
+	procs := s.List()
+	if runningOnly {
+		procs = s.Running()
+	}
+
+	ids := make([]string, 0, len(procs))
+	for _, proc := range procs {
+		ids = append(ids, proc.ID)
+	}
+
+	return core.Result{Value: ids, OK: true}
+}
+
+func (s *Service) handleGet(ctx context.Context, opts core.Options) core.Result {
+	_ = ctx
+	id := core.Trim(opts.String("id"))
+	if id == "" {
+		return core.Result{Value: coreerr.E("Service.handleGet", "id is required", nil), OK: false}
+	}
+
+	proc, err := s.Get(id)
+	if err != nil {
+		return core.Result{Value: err, OK: false}
+	}
+
+	return core.Result{Value: proc.Info(), OK: true}
+}
+
+func runOptionsFromAction(input processActionInput) RunOptions {
+	return RunOptions{
+		Command:        input.Command,
+		Args:           append([]string(nil), input.Args...),
+		Dir:            input.Dir,
+		Env:            append([]string(nil), input.Env...),
+		DisableCapture: input.DisableCapture,
+		Detach:         input.Detach,
+		Timeout:        input.Timeout,
+		GracePeriod:    input.GracePeriod,
+		KillGroup:      input.KillGroup,
+	}
+}
+
+func startRunOptionsFromAction(input processActionInput) RunOptions {
+	opts := runOptionsFromAction(input)
+	// RFC semantics: process.start is background execution and must not be
+	// coupled to the caller context unless the caller bypasses the action layer.
+	opts.Detach = true
+	return opts
+}
+
 // handleTask dispatches Core.PERFORM messages for the process service.
-func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
+func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 	switch m := task.(type) {
 	case TaskProcessStart:
-		proc, err := s.StartWithOptions(c.Context(), RunOptions{
+		proc, err := s.StartWithOptions(c.Context(), startRunOptionsFromAction(processActionInput{
 			Command:        m.Command,
 			Args:           m.Args,
 			Dir:            m.Dir,
@@ -658,7 +759,7 @@ func (s *Service) handleTask(c *core.Core, task core.Task) core.Result {
 			Timeout:        m.Timeout,
 			GracePeriod:    m.GracePeriod,
 			KillGroup:      m.KillGroup,
-		})
+		}))
 		if err != nil {
 			return core.Result{Value: err, OK: false}
 		}
@@ -815,7 +916,7 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 	}
 
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if core.As(err, &exitErr) {
 		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 			signalName := ws.Signal().String()
 			if signalName == "" {
@@ -824,7 +925,7 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
 		}
 		exitCode := exitErr.ExitCode()
-		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", fmt.Sprintf("process exited with code %d", exitCode), nil), ""
+		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil), ""
 	}
 
 	return StatusFailed, 0, err, ""
@@ -860,10 +961,19 @@ func (s *Service) emitKilledAction(proc *Process, signalName string) {
 
 // sortProcesses orders processes by start time, then ID for stable output.
 func sortProcesses(procs []*Process) {
-	sort.Slice(procs, func(i, j int) bool {
-		if procs[i].StartedAt.Equal(procs[j].StartedAt) {
-			return procs[i].ID < procs[j].ID
+	slices.SortFunc(procs, func(a, b *Process) int {
+		if a.StartedAt.Equal(b.StartedAt) {
+			if a.ID < b.ID {
+				return -1
+			}
+			if a.ID > b.ID {
+				return 1
+			}
+			return 0
 		}
-		return procs[i].StartedAt.Before(procs[j].StartedAt)
+		if a.StartedAt.Before(b.StartedAt) {
+			return -1
+		}
+		return 1
 	})
 }

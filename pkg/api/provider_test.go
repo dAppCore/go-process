@@ -803,12 +803,69 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 	}
 }
 
+func TestProcessProvider_RFCListAlias_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	proc, err := svc.Start(context.Background(), "sleep", "0.1")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = svc.Kill(proc.ID)
+	})
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/api/process/process/list?runningOnly=true", nil)
+	require.NoError(t, err)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[[]string]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.Contains(t, resp.Data, proc.ID)
+}
+
+func TestProcessProvider_RFCStartAlias_Good(t *testing.T) {
+	svc := newTestProcessService(t)
+	p := processapi.NewProvider(nil, svc, nil)
+	r := setupRouter(p)
+
+	body := strings.NewReader(`{"command":"sleep","args":["0.1"]}`)
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/api/process/process/start", body)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp goapi.Response[string]
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.NotEmpty(t, resp.Data)
+
+	proc, err := svc.Get(resp.Data)
+	require.NoError(t, err)
+
+	select {
+	case <-proc.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("RFC alias start should detach from the HTTP request context")
+	}
+
+	assert.Equal(t, process.StatusExited, proc.Status)
+	assert.Equal(t, 0, proc.ExitCode)
+}
+
 // -- Test helpers -------------------------------------------------------------
 
 func setupRouter(p *processapi.ProcessProvider) *gin.Engine {
 	r := gin.New()
-	rg := r.Group(p.BasePath())
-	p.RegisterRoutes(rg)
+	p.Register(r)
 	return r
 }
 
