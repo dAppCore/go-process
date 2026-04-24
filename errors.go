@@ -1,6 +1,6 @@
 package process
 
-import coreerr "dappco.re/go/core/log"
+import coreerr "dappco.re/go/log"
 
 // ServiceError wraps a service-level failure with a message string.
 //

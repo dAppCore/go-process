@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // Runner orchestrates multiple processes with dependencies.

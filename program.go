@@ -8,7 +8,7 @@ import (
 	"unicode"
 
 	core "dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.

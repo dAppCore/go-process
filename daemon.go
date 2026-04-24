@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // DaemonOptions configures daemon mode execution.

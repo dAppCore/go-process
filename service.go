@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 	// Note: banned-imports exception: stdlib io is intrinsic for process pipes; go-process is THE core.Process implementation and cannot self-depend.
 	goio "io"
 )

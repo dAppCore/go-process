@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---

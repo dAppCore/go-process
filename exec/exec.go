@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 	goio "io"
 )
 

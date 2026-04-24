@@ -16,7 +16,7 @@ import (
 	"dappco.re/go/core"
 	"dappco.re/go/core/api"
 	"dappco.re/go/core/api/pkg/provider"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 	process "dappco.re/go/core/process"
 	"dappco.re/go/core/ws"
 	"github.com/gin-gonic/gin"

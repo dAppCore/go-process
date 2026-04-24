@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // HealthCheck is a function that returns nil when the service is healthy.

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // Global default service used by package-level helpers.

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	coreio "dappco.re/go/core/io"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // DaemonEntry records a running daemon in the registry.
