@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	process "dappco.re/go/core/process"
+	process "dappco.re/go/process"
 )
 
 func testCtx(t *testing.T) context.Context {

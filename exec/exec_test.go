@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"dappco.re/go/core/process/exec"
+	"dappco.re/go/process/exec"
 )
 
 // mockLogger captures log calls for testing

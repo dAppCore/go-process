@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"dappco.re/go/core"
-	"dappco.re/go/core/api"
-	"dappco.re/go/core/api/pkg/provider"
+	"dappco.re/go/api"
+	"dappco.re/go/api/pkg/provider"
 	coreerr "dappco.re/go/log"
-	process "dappco.re/go/core/process"
-	"dappco.re/go/core/ws"
+	process "dappco.re/go/process"
+	"dappco.re/go/ws"
 	"github.com/gin-gonic/gin"
 )
 

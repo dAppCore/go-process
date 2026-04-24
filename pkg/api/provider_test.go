@@ -15,10 +15,10 @@ import (
 	"time"
 
 	core "dappco.re/go/core"
-	goapi "dappco.re/go/core/api"
-	process "dappco.re/go/core/process"
-	processapi "dappco.re/go/core/process/pkg/api"
-	corews "dappco.re/go/core/ws"
+	goapi "dappco.re/go/api"
+	process "dappco.re/go/process"
+	processapi "dappco.re/go/process/pkg/api"
+	corews "dappco.re/go/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )

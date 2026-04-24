@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	coreio "dappco.re/go/core/io"
+	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
 

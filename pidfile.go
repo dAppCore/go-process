@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"dappco.re/go/core"
-	coreio "dappco.re/go/core/io"
+	coreio "dappco.re/go/io"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
