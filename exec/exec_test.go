@@ -2,6 +2,7 @@ package exec_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,8 +12,6 @@ import (
 	"time"
 
 	"dappco.re/go/core/process/exec"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // mockLogger captures log calls for testing
@@ -159,7 +158,9 @@ func TestDefaultLogger_IsConcurrentSafe(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.NotNil(t, exec.DefaultLogger())
+	if exec.DefaultLogger() == nil {
+		t.Fatal("expected non-nil default logger")
+	}
 }
 
 func TestCommand_UsesDefaultLogger(t *testing.T) {
@@ -260,26 +261,42 @@ func TestCommand_Run_Background(t *testing.T) {
 func TestCommand_NilContextRejected(t *testing.T) {
 	t.Run("start", func(t *testing.T) {
 		err := exec.Command(nil, "echo", "test").Start()
-		require.Error(t, err)
-		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, exec.ErrCommandContextRequired) {
+			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
+		}
 	})
 
 	t.Run("run", func(t *testing.T) {
 		err := exec.Command(nil, "echo", "test").Run()
-		require.Error(t, err)
-		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, exec.ErrCommandContextRequired) {
+			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
+		}
 	})
 
 	t.Run("output", func(t *testing.T) {
 		_, err := exec.Command(nil, "echo", "test").Output()
-		require.Error(t, err)
-		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, exec.ErrCommandContextRequired) {
+			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
+		}
 	})
 
 	t.Run("combined output", func(t *testing.T) {
 		_, err := exec.Command(nil, "echo", "test").CombinedOutput()
-		require.Error(t, err)
-		assert.ErrorIs(t, err, exec.ErrCommandContextRequired)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, exec.ErrCommandContextRequired) {
+			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
+		}
 	})
 }
 

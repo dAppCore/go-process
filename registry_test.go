@@ -5,9 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_RegisterAndGet(t *testing.T) {
@@ -26,17 +23,17 @@ func TestRegistry_RegisterAndGet(t *testing.T) {
 	}
 
 	err := reg.Register(entry)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	got, ok := reg.Get("myapp", "worker")
-	require.True(t, ok)
-	assert.Equal(t, "myapp", got.Code)
-	assert.Equal(t, "worker", got.Daemon)
-	assert.Equal(t, os.Getpid(), got.PID)
-	assert.Equal(t, "healthy", got.Health)
-	assert.Equal(t, "test-project", got.Project)
-	assert.Equal(t, "/usr/bin/worker", got.Binary)
-	assert.Equal(t, started, got.Started)
+	requireTrue(t, ok)
+	assertEqual(t, "myapp", got.Code)
+	assertEqual(t, "worker", got.Daemon)
+	assertEqual(t, os.Getpid(), got.PID)
+	assertEqual(t, "healthy", got.Health)
+	assertEqual(t, "test-project", got.Project)
+	assertEqual(t, "/usr/bin/worker", got.Binary)
+	assertEqual(t, started, got.Started)
 }
 
 func TestRegistry_Unregister(t *testing.T) {
@@ -50,19 +47,19 @@ func TestRegistry_Unregister(t *testing.T) {
 	}
 
 	err := reg.Register(entry)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// File should exist
 	path := filepath.Join(dir, "myapp-server.json")
 	_, err = os.Stat(path)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = reg.Unregister("myapp", "server")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// File should be gone
 	_, err = os.Stat(path)
-	assert.True(t, os.IsNotExist(err))
+	assertTrue(t, os.IsNotExist(err))
 }
 
 func TestRegistry_UnregisterMissingIsNoop(t *testing.T) {
@@ -70,7 +67,7 @@ func TestRegistry_UnregisterMissingIsNoop(t *testing.T) {
 	reg := NewRegistry(dir)
 
 	err := reg.Unregister("missing", "entry")
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestRegistry_List(t *testing.T) {
@@ -78,15 +75,15 @@ func TestRegistry_List(t *testing.T) {
 	reg := NewRegistry(dir)
 
 	err := reg.Register(DaemonEntry{Code: "app1", Daemon: "web", PID: os.Getpid()})
-	require.NoError(t, err)
+	requireNoError(t, err)
 	err = reg.Register(DaemonEntry{Code: "app2", Daemon: "api", PID: os.Getpid()})
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	entries, err := reg.List()
-	require.NoError(t, err)
-	require.Len(t, entries, 2)
-	assert.Equal(t, "app1", entries[0].Code)
-	assert.Equal(t, "app2", entries[1].Code)
+	requireNoError(t, err)
+	requireLen(t, entries, 2)
+	assertEqual(t, "app1", entries[0].Code)
+	assertEqual(t, "app2", entries[1].Code)
 }
 
 func TestRegistry_List_PrunesStale(t *testing.T) {
@@ -94,20 +91,20 @@ func TestRegistry_List_PrunesStale(t *testing.T) {
 	reg := NewRegistry(dir)
 
 	err := reg.Register(DaemonEntry{Code: "dead", Daemon: "proc", PID: 999999999})
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// File should exist before listing
 	path := filepath.Join(dir, "dead-proc.json")
 	_, err = os.Stat(path)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	entries, err := reg.List()
-	require.NoError(t, err)
-	assert.Empty(t, entries)
+	requireNoError(t, err)
+	assertEmpty(t, entries)
 
 	// Stale file should be removed
 	_, err = os.Stat(path)
-	assert.True(t, os.IsNotExist(err))
+	assertTrue(t, os.IsNotExist(err))
 }
 
 func TestRegistry_Get_NotFound(t *testing.T) {
@@ -115,8 +112,8 @@ func TestRegistry_Get_NotFound(t *testing.T) {
 	reg := NewRegistry(dir)
 
 	got, ok := reg.Get("nope", "missing")
-	assert.Nil(t, got)
-	assert.False(t, ok)
+	assertNil(t, got)
+	assertFalse(t, ok)
 }
 
 func TestRegistry_CreatesDirectory(t *testing.T) {
@@ -124,14 +121,14 @@ func TestRegistry_CreatesDirectory(t *testing.T) {
 	reg := NewRegistry(dir)
 
 	err := reg.Register(DaemonEntry{Code: "app", Daemon: "srv", PID: os.Getpid()})
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	info, err := os.Stat(dir)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
+	requireNoError(t, err)
+	assertTrue(t, info.IsDir())
 }
 
 func TestDefaultRegistry(t *testing.T) {
 	reg := DefaultRegistry()
-	assert.NotNil(t, reg)
+	assertNotNil(t, reg)
 }
