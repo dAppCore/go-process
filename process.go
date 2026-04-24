@@ -1,15 +1,23 @@
 package process
 
 import (
+	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; core.* helpers are downstream and unavailable at this layer.
 	"context"
+	// Note: banned-imports exception: core.* string/format helpers are downstream from this core.Process primitive and unavailable here.
 	"fmt"
+	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; OS handles and signals are intrinsic to process management.
 	"os"
+	// Note: banned-imports exception: os/exec is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"os/exec"
+	// Note: banned-imports exception: synchronization is intrinsic to this core.Process primitive; go-process cannot depend on downstream core.* helpers.
 	"sync"
+	// Note: banned-imports exception: syscall is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"syscall"
+	// Note: banned-imports exception: process lifecycle timing is intrinsic here; core.* helpers are downstream and unavailable at this layer.
 	"time"
 
 	coreerr "dappco.re/go/core/log"
+	// Note: banned-imports exception: stdlib io is intrinsic for process pipes; go-process is THE core.Process implementation and cannot self-depend.
 	goio "io"
 )
 
