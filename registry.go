@@ -1,14 +1,13 @@
 package process
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
 
+	"dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -71,11 +70,13 @@ func (r *Registry) Register(entry DaemonEntry) error {
 		return coreerr.E("Registry.Register", "failed to create registry directory", err)
 	}
 
-	data, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
+	jsonResult := core.JSONMarshal(entry)
+	if !jsonResult.OK {
+		err, _ := jsonResult.Value.(error)
 		return coreerr.E("Registry.Register", "failed to marshal entry", err)
 	}
 
+	data := jsonResult.Value.([]byte)
 	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data)); err != nil {
 		return coreerr.E("Registry.Register", "failed to write entry file", err)
 	}
@@ -113,7 +114,7 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	}
 
 	var entry DaemonEntry
-	if err := json.Unmarshal([]byte(data), &entry); err != nil {
+	if result := core.JSONUnmarshalString(data, &entry); !result.OK {
 		_ = coreio.Local.Delete(path)
 		return nil, false
 	}
@@ -145,7 +146,7 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 		}
 
 		var entry DaemonEntry
-		if err := json.Unmarshal([]byte(data), &entry); err != nil {
+		if result := core.JSONUnmarshalString(data, &entry); !result.OK {
 			_ = coreio.Local.Delete(path)
 			continue
 		}
@@ -173,7 +174,7 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 
 // entryPath returns the filesystem path for a daemon entry.
 func (r *Registry) entryPath(code, daemon string) string {
-	name := strings.ReplaceAll(code, "/", "-") + "-" + strings.ReplaceAll(daemon, "/", "-") + ".json"
+	name := core.Concat(core.Replace(code, "/", "-"), "-", core.Replace(daemon, "/", "-"), ".json")
 	return filepath.Join(r.dir, name)
 }
 
