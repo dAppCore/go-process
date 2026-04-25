@@ -30,6 +30,7 @@ var (
 	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
 	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
 	ErrContextRequired   = coreerr.E("", "context is required", nil)
+	ErrUncatchableSignal = coreerr.E("", "signal cannot be caught", nil)
 )
 
 // Service manages process execution with Core IPC integration.
@@ -458,6 +459,10 @@ func (s *Service) KillPID(pid int) error {
 //
 //	_ = svc.Signal("proc-1", syscall.SIGTERM)
 func (s *Service) Signal(id string, sig os.Signal) error {
+	if err := validateCatchableSignals(sig); err != nil {
+		return err
+	}
+
 	proc, err := s.Get(id)
 	if err != nil {
 		return err
@@ -471,6 +476,10 @@ func (s *Service) Signal(id string, sig os.Signal) error {
 //
 //	_ = svc.SignalPID(1234, syscall.SIGTERM)
 func (s *Service) SignalPID(pid int, sig os.Signal) error {
+	if err := validateCatchableSignals(sig); err != nil {
+		return err
+	}
+
 	if pid <= 0 {
 		return ServiceError("pid must be positive", nil)
 	}
@@ -486,6 +495,26 @@ func (s *Service) SignalPID(pid int, sig os.Signal) error {
 
 	if err := target.Signal(sig); err != nil {
 		return coreerr.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
+func validateCatchableSignals(signals ...os.Signal) error {
+	for _, sig := range signals {
+		sysSig, ok := sig.(syscall.Signal)
+		if !ok {
+			continue
+		}
+
+		switch sysSig {
+		case syscall.SIGKILL, syscall.SIGSTOP:
+			return coreerr.E(
+				"Service.validateCatchableSignals",
+				core.Sprintf("signal %d cannot be caught", int(sysSig)),
+				ErrUncatchableSignal,
+			)
+		}
 	}
 
 	return nil

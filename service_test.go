@@ -3,6 +3,7 @@ package process
 import (
 	"context"
 	"os/exec"
+	"strconv"
 	"strings"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
@@ -590,6 +591,37 @@ func TestService_KillPID(t *testing.T) {
 }
 
 func TestService_Signal(t *testing.T) {
+	t.Run("rejects uncatchable signals", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		for _, tc := range []struct {
+			name string
+			send func(syscall.Signal) error
+		}{
+			{
+				name: "by id",
+				send: func(sig syscall.Signal) error {
+					return svc.Signal("nonexistent", sig)
+				},
+			},
+			{
+				name: "by pid",
+				send: func(sig syscall.Signal) error {
+					return svc.SignalPID(999999, sig)
+				},
+			},
+		} {
+			for _, sig := range []syscall.Signal{syscall.SIGKILL, syscall.SIGSTOP} {
+				t.Run(tc.name+"/"+strconv.Itoa(int(sig)), func(t *testing.T) {
+					err := tc.send(sig)
+					requireError(t, err)
+					assertErrorIs(t, err, ErrUncatchableSignal)
+					assertContains(t, err.Error(), "signal "+strconv.Itoa(int(sig))+" cannot be caught")
+				})
+			}
+		}
+	})
+
 	t.Run("signals running process by id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
