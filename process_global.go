@@ -3,7 +3,9 @@ package process
 import (
 	"context"
 	"os"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync/atomic"
 
 	"dappco.re/go/core"

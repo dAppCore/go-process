@@ -9,7 +9,7 @@ import (
 	// Note: banned-imports exception: os/exec is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"os/exec"
 	"slices"
-	// Note: banned-imports exception: synchronization is intrinsic to this core.Process primitive; go-process cannot depend on downstream core.* helpers.
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	// Note: banned-imports exception: syscall is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"syscall"

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"testing"
 	"time"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 

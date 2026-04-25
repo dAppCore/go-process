@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"strings"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 	"testing"

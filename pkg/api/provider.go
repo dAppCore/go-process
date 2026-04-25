@@ -9,13 +9,14 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 	"time"
 
-	"dappco.re/go/core"
 	"dappco.re/go/api"
 	"dappco.re/go/api/pkg/provider"
+	"dappco.re/go/core"
 	coreerr "dappco.re/go/log"
 	process "dappco.re/go/process"
 	"dappco.re/go/ws"
