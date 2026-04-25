@@ -3,8 +3,8 @@ module dappco.re/go/process
 go 1.26.0
 
 require (
-	dappco.re/go/core v0.8.0-alpha.1
 	dappco.re/go/api v0.8.0-alpha.1
+	dappco.re/go/core v0.8.0-alpha.1
 	dappco.re/go/io v0.8.0-alpha.1
 	dappco.re/go/log v0.8.0-alpha.1
 	dappco.re/go/ws v0.8.0-alpha.1
@@ -13,7 +13,6 @@ require (
 )
 
 require (
-	dappco.re/go/log v0.8.0-alpha.1 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
