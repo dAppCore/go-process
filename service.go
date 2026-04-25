@@ -1,7 +1,6 @@
 package process
 
 import (
-	"bufio"
 	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; core.* helpers are downstream and unavailable at this layer.
 	"context"
 	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; OS handles and signals are intrinsic to process management.
@@ -11,14 +10,14 @@ import (
 	"slices"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
-	// Note: banned-imports exception: syscall is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
+	// Note: AX-6 intrinsic — syscall signal constants, process-group setup, and wait status fields are structural to process lifecycle management.
 	"syscall"
 	// Note: banned-imports exception: process lifecycle timing is intrinsic here; core.* helpers are downstream and unavailable at this layer.
 	"time"
 
 	"dappco.re/go/core"
 	coreerr "dappco.re/go/log"
-	// Note: banned-imports exception: stdlib io is intrinsic for process pipes; go-process is THE core.Process implementation and cannot self-depend.
+	// Note: AX-6 intrinsic — Reader/Writer interfaces are structural process-pipe contracts; core types do not replace stdlib stream boundaries.
 	goio "io"
 )
 
@@ -331,9 +330,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 
 // streamOutput reads from a pipe and broadcasts lines via ACTION.
 func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
-	scanner := bufio.NewScanner(r)
-	// Increase buffer for long lines
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner := core.NewLineScanner(r)
 
 	for scanner.Scan() {
 		line := scanner.Text()
