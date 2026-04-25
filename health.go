@@ -2,14 +2,17 @@ package process
 
 import (
 	"context"
-	"fmt"
+	// Note: AX-6 — stdlib io is intrinsic to the structural HTTP boundary for response body reads.
 	"io"
+	// Note: AX-6 — stdlib net is intrinsic to the structural HTTP boundary for listener management.
 	"net"
+	// Note: AX-6 — stdlib net/http is intrinsic to the structural HTTP boundary implemented here.
 	"net/http"
-	"strings"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 
+	"dappco.re/go/core"
 	coreerr "dappco.re/go/log"
 )
 
@@ -90,13 +93,13 @@ func (h *HealthServer) Start() error {
 			}
 			if err := check(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = fmt.Fprintf(w, "unhealthy: %v\n", err)
+				core.Print(w, "unhealthy: %v", err)
 				return
 			}
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "ok")
+		core.Print(w, "ok")
 	})
 
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -106,17 +109,17 @@ func (h *HealthServer) Start() error {
 
 		if !ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = fmt.Fprintln(w, "not ready")
+			core.Print(w, "not ready")
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "ready")
+		core.Print(w, "ready")
 	})
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return coreerr.E("HealthServer.Start", fmt.Sprintf("failed to listen on %s", h.addr), err)
+		return coreerr.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err)
 	}
 
 	server := &http.Server{Handler: mux}
@@ -199,7 +202,7 @@ func WaitForHealth(addr string, timeoutMs int) bool {
 //	ok, reason := process.ProbeHealth("127.0.0.1:8080", 5_000)
 func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	url := fmt.Sprintf("http://%s/health", addr)
+	url := core.Sprintf("http://%s/health", addr)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastReason string
@@ -212,7 +215,7 @@ func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}
-			lastReason = strings.TrimSpace(string(body))
+			lastReason = core.Trim(string(body))
 			if lastReason == "" {
 				lastReason = resp.Status
 			}
@@ -248,7 +251,7 @@ func WaitForReady(addr string, timeoutMs int) bool {
 //	ok, reason := process.ProbeReady("127.0.0.1:8080", 5_000)
 func ProbeReady(addr string, timeoutMs int) (bool, string) {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	url := fmt.Sprintf("http://%s/ready", addr)
+	url := core.Sprintf("http://%s/ready", addr)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastReason string
@@ -261,7 +264,7 @@ func ProbeReady(addr string, timeoutMs int) (bool, string) {
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}
-			lastReason = strings.TrimSpace(string(body))
+			lastReason = core.Trim(string(body))
 			if lastReason == "" {
 				lastReason = resp.Status
 			}
