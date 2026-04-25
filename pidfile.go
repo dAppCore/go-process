@@ -1,9 +1,7 @@
 package process
 
 import (
-	"path/filepath"
 	"strconv"
-	"strings"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
@@ -42,7 +40,7 @@ func (p *PIDFile) Acquire() error {
 	defer p.mu.Unlock()
 
 	if data, err := coreio.Local.Read(p.path); err == nil {
-		pid, err := strconv.Atoi(strings.TrimSpace(data))
+		pid, err := strconv.Atoi(core.Trim(data))
 		if err == nil && pid > 0 {
 			if proc, err := processHandle(pid); err == nil {
 				if err := proc.Signal(syscall.Signal(0)); err == nil {
@@ -53,7 +51,7 @@ func (p *PIDFile) Acquire() error {
 		_ = coreio.Local.Delete(p.path)
 	}
 
-	if dir := filepath.Dir(p.path); dir != "." {
+	if dir := core.PathDir(p.path); dir != "." {
 		if err := coreio.Local.EnsureDir(dir); err != nil {
 			return core.E("pidfile.acquire", "failed to create PID directory", err)
 		}
@@ -107,7 +105,7 @@ func ReadPID(path string) (int, bool) {
 		return 0, false
 	}
 
-	pid, err := strconv.Atoi(strings.TrimSpace(data))
+	pid, err := strconv.Atoi(core.Trim(data))
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
