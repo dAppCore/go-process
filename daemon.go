@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"errors"
 	"os"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
@@ -207,7 +206,7 @@ func (d *Daemon) Stop() error {
 	d.running = false
 
 	if len(errs) > 0 {
-		return errors.Join(errs...)
+		return coreerr.Join(errs...)
 	}
 	return nil
 }
