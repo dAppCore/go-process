@@ -148,7 +148,7 @@ func TestService_Start(t *testing.T) {
 
 		// On macOS /tmp is a symlink to /private/tmp
 		output := strings.TrimSpace(proc.Output())
-		assertTrue(t, output == "/tmp" || output == "/private/tmp", "got: %s", output)
+		assertTrue(t, output == "/tmp" || output == "/private/tmp", "got: "+output)
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {
@@ -204,8 +204,8 @@ func TestService_Start(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		proc, err := svc.StartWithOptions(ctx, RunOptions{
-			Command: "echo",
-			Args:    []string{"detached"},
+			Command: "sh",
+			Args:    []string{"-c", "sleep 0.2; echo detached"},
 			Detach:  true,
 		})
 		requireNoError(t, err)
@@ -213,11 +213,19 @@ func TestService_Start(t *testing.T) {
 		// Cancel the parent context
 		cancel()
 
+		select {
+		case <-proc.Done():
+			t.Fatal("detached process should survive parent cancellation")
+		case <-time.After(50 * time.Millisecond):
+		}
+		assertTrue(t, proc.IsRunning(), "detached process should remain running after parent cancellation")
+
 		// Detached process should still complete normally
 		select {
 		case <-proc.Done():
 			assertEqual(t, StatusExited, proc.Status)
 			assertEqual(t, 0, proc.ExitCode)
+			assertContains(t, proc.Output(), "detached")
 		case <-time.After(2 * time.Second):
 			t.Fatal("detached process should have completed")
 		}

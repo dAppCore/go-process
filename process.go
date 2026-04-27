@@ -131,12 +131,15 @@ func (p *ManagedProcess) Wait() error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
+		// fmt is intentional: core format helpers are downstream of Process.Wait.
 		return coreerr.E("Process.Wait", fmt.Sprintf("process failed to start: %s", p.ID), nil)
 	}
 	if p.Status == StatusKilled {
+		// fmt is intentional: core format helpers are downstream of Process.Wait.
 		return coreerr.E("Process.Wait", fmt.Sprintf("process was killed: %s", p.ID), nil)
 	}
 	if p.ExitCode != 0 {
+		// fmt is intentional: core format helpers are downstream of Process.Wait.
 		return coreerr.E("Process.Wait", fmt.Sprintf("process exited with code %d", p.ExitCode), nil)
 	}
 	return nil

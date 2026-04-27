@@ -28,7 +28,7 @@ tasks:
         if [ "$(go env GOOS)" = "windows" ]; then
           echo "skipping integration tests on windows"
         else
-          go test -count=1 ./... -run Integration -tags integration
+          go test -count=1 -race ./... -run Integration -tags integration
         fi
 
   default:

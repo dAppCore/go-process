@@ -1,6 +1,8 @@
 package process
 
 import (
+	// Note: AX-6 intrinsic — bufio.Scanner frames process pipe output into lines.
+	"bufio"
 	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; core.* helpers are downstream and unavailable at this layer.
 	"context"
 	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; OS handles and signals are intrinsic to process management.
@@ -21,7 +23,7 @@ import (
 	goio "io"
 )
 
-// Default buffer size for process output (1MB).
+// DefaultBufferSize is the default buffer size for process output (1MB).
 const DefaultBufferSize = 1024 * 1024
 
 // Errors
@@ -300,7 +302,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		err := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
-		status, exitCode, exitErr, signalName := classifyProcessExit(err)
+		status, exitCode, signalName, exitErr := classifyProcessExit(err)
 
 		proc.mu.Lock()
 		proc.Duration = duration
@@ -331,7 +333,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 
 // streamOutput reads from a pipe and broadcasts lines via ACTION.
 func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
-	scanner := core.NewLineScanner(r)
+	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -500,21 +502,19 @@ func (s *Service) SignalPID(pid int, sig os.Signal) error {
 	return nil
 }
 
-func validateCatchableSignals(signals ...os.Signal) error {
-	for _, sig := range signals {
-		sysSig, ok := sig.(syscall.Signal)
-		if !ok {
-			continue
-		}
+func validateCatchableSignals(sig os.Signal) error {
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		return nil
+	}
 
-		switch sysSig {
-		case syscall.SIGKILL, syscall.SIGSTOP:
-			return coreerr.E(
-				"Service.validateCatchableSignals",
-				core.Sprintf("signal %d cannot be caught", int(sysSig)),
-				ErrUncatchableSignal,
-			)
-		}
+	switch sysSig {
+	case syscall.SIGKILL, syscall.SIGSTOP:
+		return coreerr.E(
+			"Service.validateCatchableSignals",
+			core.Sprintf("signal %d cannot be caught", int(sysSig)),
+			ErrUncatchableSignal,
+		)
 	}
 
 	return nil
@@ -943,9 +943,9 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 }
 
 // classifyProcessExit maps a command completion error to lifecycle state.
-func classifyProcessExit(err error) (Status, int, error, string) {
+func classifyProcessExit(err error) (Status, int, string, error) {
 	if err == nil {
-		return StatusExited, 0, nil, ""
+		return StatusExited, 0, "", nil
 	}
 
 	var exitErr *exec.ExitError
@@ -955,13 +955,13 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 			if signalName == "" {
 				signalName = "signal"
 			}
-			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
+			return StatusKilled, -1, signalName, coreerr.E("Service.StartWithOptions", "process was killed", nil)
 		}
 		exitCode := exitErr.ExitCode()
-		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil), ""
+		return StatusExited, exitCode, "", coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil)
 	}
 
-	return StatusFailed, 0, err, ""
+	return StatusFailed, 0, "", err
 }
 
 // emitKilledAction broadcasts a kill event once for the given process.

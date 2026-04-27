@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go/core"
 	goapi "dappco.re/go/api"
+	core "dappco.re/go/core"
 	process "dappco.re/go/process"
 	processapi "dappco.re/go/process/pkg/api"
 	corews "dappco.re/go/ws"

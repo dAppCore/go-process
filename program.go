@@ -1,8 +1,11 @@
 package process
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
+	"strings"
+	"unicode"
 
 	core "dappco.re/go/core"
 	coreerr "dappco.re/go/log"
@@ -87,7 +90,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 		return "", coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired)
 	}
 
-	out := core.NewBuffer()
+	out := &bytes.Buffer{}
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -96,21 +99,11 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if err := cmd.Run(); err != nil {
-		return trimRightSpace(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
+		return trimRightSpace(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err)
 	}
 	return trimRightSpace(out.String()), nil
 }
 
 func trimRightSpace(s string) string {
-	trimFrom := len(s)
-	for i, r := range s {
-		if core.IsSpace(r) {
-			if trimFrom == len(s) {
-				trimFrom = i
-			}
-			continue
-		}
-		trimFrom = len(s)
-	}
-	return s[:trimFrom]
+	return strings.TrimRightFunc(s, unicode.IsSpace)
 }

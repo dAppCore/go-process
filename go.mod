@@ -1,6 +1,6 @@
 module dappco.re/go/process
 
-go 1.26.0
+go 1.26.2
 
 require (
 	dappco.re/go/api v0.8.0-alpha.1
@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	dappco.re/go/inference v0.8.0-alpha.1 // indirect
 	github.com/99designs/gqlgen v0.17.88 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
@@ -103,3 +104,17 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace dappco.re/go/api => github.com/dappcore/api v0.8.0-alpha.1
+
+replace dappco.re/go/cli => github.com/dappcore/cli v0.8.0-alpha.1
+
+replace dappco.re/go/i18n => github.com/dappcore/go-i18n v0.8.0-alpha.1
+
+replace dappco.re/go/inference => github.com/dappcore/go-inference v0.8.0-alpha.1
+
+replace dappco.re/go/io => github.com/dappcore/go-io v0.8.0-alpha.1
+
+replace dappco.re/go/log => github.com/dappcore/go-log v0.8.0-alpha.1
+
+replace dappco.re/go/ws => github.com/dappcore/go-ws v0.4.1-0.20260427142937-36f01754d2e9
