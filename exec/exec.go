@@ -3,11 +3,12 @@ package exec
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
-	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 	goio "io"
 )
 
@@ -72,7 +73,7 @@ func (c *Cmd) WithEnv(env []string) *Cmd {
 //
 // Example:
 //
-//	cmd.WithStdin(core.NewReader("input"))
+//	cmd.WithStdin(strings.NewReader("input"))
 func (c *Cmd) WithStdin(r goio.Reader) *Cmd {
 	c.opts.Stdin = r
 	return c
@@ -238,17 +239,17 @@ func RunQuiet(ctx context.Context, name string, args ...string) error {
 	cmd := Command(ctx, name, args...).WithStderr(&stderr)
 	if err := cmd.Run(); err != nil {
 		// Include stderr in error message
-		return coreerr.E("RunQuiet", core.Trim(stderr.String()), err)
+		return coreerr.E("RunQuiet", strings.TrimSpace(stderr.String()), err)
 	}
 	return nil
 }
 
 func wrapError(caller string, err error, name string, args []string) error {
-	cmdStr := core.Concat(name, " ", core.Join(" ", args...))
+	cmdStr := name + " " + strings.Join(args, " ")
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		return coreerr.E(caller, core.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
+		return coreerr.E(caller, fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
 	}
-	return coreerr.E(caller, core.Sprintf("failed to execute %q", cmdStr), err)
+	return coreerr.E(caller, fmt.Sprintf("failed to execute %q", cmdStr), err)
 }
 
 func (c *Cmd) getLogger() Logger {
@@ -259,9 +260,9 @@ func (c *Cmd) getLogger() Logger {
 }
 
 func (c *Cmd) logDebug(msg string) {
-	c.getLogger().Debug(msg, "cmd", c.name, "args", core.Join(" ", c.args...))
+	c.getLogger().Debug(msg, "cmd", c.name, "args", strings.Join(c.args, " "))
 }
 
 func (c *Cmd) logError(msg string, err error) {
-	c.getLogger().Error(msg, "cmd", c.name, "args", core.Join(" ", c.args...), "err", err)
+	c.getLogger().Error(msg, "cmd", c.name, "args", strings.Join(c.args, " "), "err", err)
 }

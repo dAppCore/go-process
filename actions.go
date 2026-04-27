@@ -1,13 +1,12 @@
 package process
 
 import (
-	"fmt"
 	"strconv"
 	"syscall"
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
@@ -325,7 +324,7 @@ func parseStringSliceOption(opts core.Options, key string) ([]string, error) {
 		if alt, ok := r.Value.([]interface{}); ok {
 			anyList = alt
 		} else {
-			return nil, coreerr.E("process action", fmt.Sprintf("%s must be an array", key), nil)
+			return nil, coreerr.E("process action", core.Sprintf("%s must be an array", key), nil)
 		}
 	}
 
@@ -333,7 +332,7 @@ func parseStringSliceOption(opts core.Options, key string) ([]string, error) {
 	for _, item := range anyList {
 		value, ok := item.(string)
 		if !ok {
-			return nil, coreerr.E("process action", fmt.Sprintf("%s entries must be strings", key), nil)
+			return nil, coreerr.E("process action", core.Sprintf("%s entries must be strings", key), nil)
 		}
 		items = append(items, value)
 	}

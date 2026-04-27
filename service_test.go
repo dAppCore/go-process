@@ -3,15 +3,15 @@ package process
 import (
 	"context"
 	"os/exec"
+	"strconv"
 	"strings"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	framework "dappco.re/go/core"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newTestService(t *testing.T) (*Service, *framework.Core) {
@@ -20,7 +20,7 @@ func newTestService(t *testing.T) (*Service, *framework.Core) {
 	c := framework.New()
 	factory := NewService(Options{BufferSize: 1024})
 	raw, err := factory(c)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	svc := raw.(*Service)
 	return svc, c
@@ -56,19 +56,19 @@ func TestService_Start(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "echo", "hello")
-		require.NoError(t, err)
-		require.NotNil(t, proc)
+		requireNoError(t, err)
+		requireNotNil(t, proc)
 
-		assert.NotEmpty(t, proc.ID)
-		assert.Equal(t, "echo", proc.Command)
-		assert.Equal(t, []string{"hello"}, proc.Args)
+		assertNotEmpty(t, proc.ID)
+		assertEqual(t, "echo", proc.Command)
+		assertEqual(t, []string{"hello"}, proc.Args)
 
 		// Wait for completion
 		<-proc.Done()
 
-		assert.Equal(t, StatusExited, proc.Status)
-		assert.Equal(t, 0, proc.ExitCode)
-		assert.Contains(t, proc.Output(), "hello")
+		assertEqual(t, StatusExited, proc.Status)
+		assertEqual(t, 0, proc.ExitCode)
+		assertContains(t, proc.Output(), "hello")
 	})
 
 	t.Run("works without core runtime", func(t *testing.T) {
@@ -78,51 +78,51 @@ func TestService_Start(t *testing.T) {
 		}
 
 		proc, err := svc.Start(context.Background(), "echo", "standalone")
-		require.NoError(t, err)
-		require.NotNil(t, proc)
+		requireNoError(t, err)
+		requireNotNil(t, proc)
 
 		<-proc.Done()
 
-		assert.Equal(t, StatusExited, proc.Status)
-		assert.Equal(t, 0, proc.ExitCode)
-		assert.Contains(t, proc.Output(), "standalone")
+		assertEqual(t, StatusExited, proc.Status)
+		assertEqual(t, 0, proc.ExitCode)
+		assertContains(t, proc.Output(), "standalone")
 	})
 
 	t.Run("failing command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 42")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 
-		assert.Equal(t, StatusExited, proc.Status)
-		assert.Equal(t, 42, proc.ExitCode)
+		assertEqual(t, StatusExited, proc.Status)
+		assertEqual(t, 42, proc.ExitCode)
 	})
 
 	t.Run("non-existent command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "nonexistent_command_xyz")
-		assert.Error(t, err)
-		require.NotNil(t, proc)
-		assert.Equal(t, StatusFailed, proc.Status)
-		assert.Equal(t, -1, proc.ExitCode)
-		assert.NotNil(t, proc.Done())
+		assertError(t, err)
+		requireNotNil(t, proc)
+		assertEqual(t, StatusFailed, proc.Status)
+		assertEqual(t, -1, proc.ExitCode)
+		assertNotNil(t, proc.Done())
 		<-proc.Done()
 
 		got, getErr := svc.Get(proc.ID)
-		require.NoError(t, getErr)
-		assert.Equal(t, proc.ID, got.ID)
-		assert.Equal(t, StatusFailed, got.Status)
+		requireNoError(t, getErr)
+		assertEqual(t, proc.ID, got.ID)
+		assertEqual(t, StatusFailed, got.Status)
 	})
 
 	t.Run("empty command is rejected", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		_, err := svc.StartWithOptions(context.Background(), RunOptions{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "command is required")
+		requireError(t, err)
+		assertContains(t, err.Error(), "command is required")
 	})
 
 	t.Run("nil context is rejected", func(t *testing.T) {
@@ -131,8 +131,8 @@ func TestService_Start(t *testing.T) {
 		_, err := svc.StartWithOptions(nil, RunOptions{
 			Command: "echo",
 		})
-		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrContextRequired)
+		requireError(t, err)
+		assertErrorIs(t, err, ErrContextRequired)
 	})
 
 	t.Run("with working directory", func(t *testing.T) {
@@ -142,13 +142,13 @@ func TestService_Start(t *testing.T) {
 			Command: "pwd",
 			Dir:     "/tmp",
 		})
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 
 		// On macOS /tmp is a symlink to /private/tmp
 		output := strings.TrimSpace(proc.Output())
-		assert.True(t, output == "/tmp" || output == "/private/tmp", "got: %s", output)
+		assertTrue(t, output == "/tmp" || output == "/private/tmp", "got: "+output)
 	})
 
 	t.Run("context cancellation", func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestService_Start(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		proc, err := svc.Start(ctx, "sleep", "10")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		// Cancel immediately
 		cancel()
@@ -177,11 +177,11 @@ func TestService_Start(t *testing.T) {
 			Args:           []string{"no-capture"},
 			DisableCapture: true,
 		})
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
-		assert.Equal(t, StatusExited, proc.Status)
-		assert.Equal(t, "", proc.Output(), "output should be empty when capture is disabled")
+		assertEqual(t, StatusExited, proc.Status)
+		assertEqual(t, "", proc.Output())
 	})
 
 	t.Run("with environment variables", func(t *testing.T) {
@@ -192,10 +192,10 @@ func TestService_Start(t *testing.T) {
 			Args:    []string{"-c", "echo $MY_TEST_VAR"},
 			Env:     []string{"MY_TEST_VAR=hello_env"},
 		})
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
-		assert.Contains(t, proc.Output(), "hello_env")
+		assertContains(t, proc.Output(), "hello_env")
 	})
 
 	t.Run("detach survives parent context", func(t *testing.T) {
@@ -204,20 +204,28 @@ func TestService_Start(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		proc, err := svc.StartWithOptions(ctx, RunOptions{
-			Command: "echo",
-			Args:    []string{"detached"},
+			Command: "sh",
+			Args:    []string{"-c", "sleep 0.2; echo detached"},
 			Detach:  true,
 		})
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		// Cancel the parent context
 		cancel()
 
+		select {
+		case <-proc.Done():
+			t.Fatal("detached process should survive parent cancellation")
+		case <-time.After(50 * time.Millisecond):
+		}
+		assertTrue(t, proc.IsRunning(), "detached process should remain running after parent cancellation")
+
 		// Detached process should still complete normally
 		select {
 		case <-proc.Done():
-			assert.Equal(t, StatusExited, proc.Status)
-			assert.Equal(t, 0, proc.ExitCode)
+			assertEqual(t, StatusExited, proc.Status)
+			assertEqual(t, 0, proc.ExitCode)
+			assertContains(t, proc.Output(), "detached")
 		case <-time.After(2 * time.Second):
 			t.Fatal("detached process should have completed")
 		}
@@ -231,8 +239,8 @@ func TestService_Start(t *testing.T) {
 			Args:      []string{"1"},
 			KillGroup: true,
 		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "KillGroup requires Detach")
+		requireError(t, err)
+		assertContains(t, err.Error(), "KillGroup requires Detach")
 	})
 }
 
@@ -241,16 +249,16 @@ func TestService_Run(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		output, err := svc.Run(context.Background(), "echo", "hello world")
-		require.NoError(t, err)
-		assert.Contains(t, output, "hello world")
+		requireNoError(t, err)
+		assertContains(t, output, "hello world")
 	})
 
 	t.Run("returns error on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		_, err := svc.Run(context.Background(), "sh", "-c", "exit 1")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "exited with code 1")
+		assertError(t, err)
+		assertContains(t, err.Error(), "exited with code 1")
 	})
 }
 
@@ -261,7 +269,7 @@ func TestService_Actions(t *testing.T) {
 		// Register process service on Core
 		factory := NewService(Options{})
 		raw, err := factory(c)
-		require.NoError(t, err)
+		requireNoError(t, err)
 		svc := raw.(*Service)
 
 		var started []ActionProcessStarted
@@ -283,7 +291,7 @@ func TestService_Actions(t *testing.T) {
 			return framework.Result{OK: true}
 		})
 		proc, err := svc.Start(context.Background(), "echo", "test")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 
@@ -293,11 +301,11 @@ func TestService_Actions(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		assert.Len(t, started, 1)
-		assert.Equal(t, "echo", started[0].Command)
-		assert.Equal(t, []string{"test"}, started[0].Args)
+		assertLen(t, started, 1)
+		assertEqual(t, "echo", started[0].Command)
+		assertEqual(t, []string{"test"}, started[0].Args)
 
-		assert.NotEmpty(t, outputs)
+		assertNotEmpty(t, outputs)
 		foundTest := false
 		for _, o := range outputs {
 			if strings.Contains(o.Line, "test") {
@@ -305,11 +313,11 @@ func TestService_Actions(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, foundTest, "should have output containing 'test'")
+		assertTrue(t, foundTest, "should have output containing 'test'")
 
-		assert.Len(t, exited, 1)
-		assert.Equal(t, 0, exited[0].ExitCode)
-		assert.Nil(t, exited[0].Error)
+		assertLen(t, exited, 1)
+		assertEqual(t, 0, exited[0].ExitCode)
+		assertNil(t, exited[0].Error)
 	})
 
 	t.Run("broadcasts killed events", func(t *testing.T) {
@@ -317,7 +325,7 @@ func TestService_Actions(t *testing.T) {
 
 		factory := NewService(Options{})
 		raw, err := factory(c)
-		require.NoError(t, err)
+		requireNoError(t, err)
 		svc := raw.(*Service)
 
 		var killed []ActionProcessKilled
@@ -337,17 +345,17 @@ func TestService_Actions(t *testing.T) {
 		})
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.Kill(proc.ID)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		time.Sleep(10 * time.Millisecond)
 
 		mu.Lock()
-		require.Len(t, killed, 1)
-		assert.Equal(t, proc.ID, killed[0].ID)
-		assert.NotEmpty(t, killed[0].Signal)
+		requireLen(t, killed, 1)
+		assertEqual(t, proc.ID, killed[0].ID)
+		assertNotEmpty(t, killed[0].Signal)
 		mu.Unlock()
 
 		select {
@@ -360,11 +368,11 @@ func TestService_Actions(t *testing.T) {
 
 		mu.Lock()
 		defer mu.Unlock()
-		assert.Len(t, exited, 1)
-		assert.Equal(t, proc.ID, exited[0].ID)
-		require.Error(t, exited[0].Error)
-		assert.Contains(t, exited[0].Error.Error(), "process was killed")
-		assert.Equal(t, StatusKilled, proc.Status)
+		assertLen(t, exited, 1)
+		assertEqual(t, proc.ID, exited[0].ID)
+		requireError(t, exited[0].Error)
+		assertContains(t, exited[0].Error.Error(), "process was killed")
+		assertEqual(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("broadcasts exited event on start failure", func(t *testing.T) {
@@ -372,7 +380,7 @@ func TestService_Actions(t *testing.T) {
 
 		factory := NewService(Options{})
 		raw, err := factory(c)
-		require.NoError(t, err)
+		requireNoError(t, err)
 		svc := raw.(*Service)
 
 		var exited []ActionProcessExited
@@ -388,16 +396,16 @@ func TestService_Actions(t *testing.T) {
 		})
 
 		_, err = svc.Start(context.Background(), "definitely-not-a-real-binary-xyz")
-		require.Error(t, err)
+		requireError(t, err)
 
 		time.Sleep(10 * time.Millisecond)
 
 		mu.Lock()
 		defer mu.Unlock()
-		require.Len(t, exited, 1)
-		assert.Equal(t, -1, exited[0].ExitCode)
-		require.Error(t, exited[0].Error)
-		assert.Contains(t, exited[0].Error.Error(), "failed to start process")
+		requireLen(t, exited, 1)
+		assertEqual(t, -1, exited[0].ExitCode)
+		requireError(t, exited[0].Error)
+		assertContains(t, exited[0].Error.Error(), "failed to start process")
 	})
 
 	t.Run("broadcasts exited error on non-zero exit", func(t *testing.T) {
@@ -405,7 +413,7 @@ func TestService_Actions(t *testing.T) {
 
 		factory := NewService(Options{})
 		raw, err := factory(c)
-		require.NoError(t, err)
+		requireNoError(t, err)
 		svc := raw.(*Service)
 
 		var exited []ActionProcessExited
@@ -421,17 +429,17 @@ func TestService_Actions(t *testing.T) {
 		})
 
 		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 		time.Sleep(10 * time.Millisecond)
 
 		mu.Lock()
 		defer mu.Unlock()
-		require.Len(t, exited, 1)
-		assert.Equal(t, 7, exited[0].ExitCode)
-		require.Error(t, exited[0].Error)
-		assert.Contains(t, exited[0].Error.Error(), "process exited with code 7")
+		requireLen(t, exited, 1)
+		assertEqual(t, 7, exited[0].ExitCode)
+		requireError(t, exited[0].Error)
+		assertContains(t, exited[0].Error.Error(), "process exited with code 7")
 	})
 }
 
@@ -446,9 +454,9 @@ func TestService_List(t *testing.T) {
 		<-proc2.Done()
 
 		list := svc.List()
-		assert.Len(t, list, 2)
-		assert.Equal(t, proc1.ID, list[0].ID)
-		assert.Equal(t, proc2.ID, list[1].ID)
+		assertLen(t, list, 2)
+		assertEqual(t, proc1.ID, list[0].ID)
+		assertEqual(t, proc2.ID, list[1].ID)
 	})
 
 	t.Run("get by id", func(t *testing.T) {
@@ -458,15 +466,15 @@ func TestService_List(t *testing.T) {
 		<-proc.Done()
 
 		got, err := svc.Get(proc.ID)
-		require.NoError(t, err)
-		assert.Equal(t, proc.ID, got.ID)
+		requireNoError(t, err)
+		assertEqual(t, proc.ID, got.ID)
 	})
 
 	t.Run("get not found", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		_, err := svc.Get("nonexistent")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
 
@@ -478,10 +486,10 @@ func TestService_Remove(t *testing.T) {
 		<-proc.Done()
 
 		err := svc.Remove(proc.ID)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		_, err = svc.Get(proc.ID)
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
 	t.Run("cannot remove running process", func(t *testing.T) {
@@ -493,7 +501,7 @@ func TestService_Remove(t *testing.T) {
 		proc, _ := svc.Start(ctx, "sleep", "10")
 
 		err := svc.Remove(proc.ID)
-		assert.Error(t, err)
+		assertError(t, err)
 
 		cancel()
 		<-proc.Done()
@@ -510,11 +518,11 @@ func TestService_Clear(t *testing.T) {
 		<-proc1.Done()
 		<-proc2.Done()
 
-		assert.Len(t, svc.List(), 2)
+		assertLen(t, svc.List(), 2)
 
 		svc.Clear()
 
-		assert.Len(t, svc.List(), 0)
+		assertLen(t, svc.List(), 0)
 	})
 }
 
@@ -526,10 +534,10 @@ func TestService_Kill(t *testing.T) {
 		defer cancel()
 
 		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.Kill(proc.ID)
-		assert.NoError(t, err)
+		assertNoError(t, err)
 
 		select {
 		case <-proc.Done():
@@ -538,14 +546,14 @@ func TestService_Kill(t *testing.T) {
 			t.Fatal("process should have been killed")
 		}
 
-		assert.Equal(t, StatusKilled, proc.Status)
+		assertEqual(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		err := svc.Kill("nonexistent")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
 
@@ -555,7 +563,7 @@ func TestService_KillPID(t *testing.T) {
 
 		// Ignore SIGTERM so the test proves KillPID uses a forceful signal.
 		cmd := exec.Command("sh", "-c", "trap '' TERM; while :; do :; done")
-		require.NoError(t, cmd.Start())
+		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
 		go func() {
@@ -573,17 +581,17 @@ func TestService_KillPID(t *testing.T) {
 		})
 
 		err := svc.KillPID(cmd.Process.Pid)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		select {
 		case err := <-waitCh:
-			require.Error(t, err)
+			requireError(t, err)
 			var exitErr *exec.ExitError
-			require.ErrorAs(t, err, &exitErr)
+			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
-			require.True(t, ok)
-			assert.True(t, ws.Signaled())
-			assert.Equal(t, syscall.SIGKILL, ws.Signal())
+			requireTrue(t, ok)
+			assertTrue(t, ws.Signaled())
+			assertEqual(t, syscall.SIGKILL, ws.Signal())
 		case <-time.After(2 * time.Second):
 			t.Fatal("unmanaged process should have been killed")
 		}
@@ -591,14 +599,45 @@ func TestService_KillPID(t *testing.T) {
 }
 
 func TestService_Signal(t *testing.T) {
+	t.Run("rejects uncatchable signals", func(t *testing.T) {
+		svc, _ := newTestService(t)
+
+		for _, tc := range []struct {
+			name string
+			send func(syscall.Signal) error
+		}{
+			{
+				name: "by id",
+				send: func(sig syscall.Signal) error {
+					return svc.Signal("nonexistent", sig)
+				},
+			},
+			{
+				name: "by pid",
+				send: func(sig syscall.Signal) error {
+					return svc.SignalPID(999999, sig)
+				},
+			},
+		} {
+			for _, sig := range []syscall.Signal{syscall.SIGKILL, syscall.SIGSTOP} {
+				t.Run(tc.name+"/"+strconv.Itoa(int(sig)), func(t *testing.T) {
+					err := tc.send(sig)
+					requireError(t, err)
+					assertErrorIs(t, err, ErrUncatchableSignal)
+					assertContains(t, err.Error(), "signal "+strconv.Itoa(int(sig))+" cannot be caught")
+				})
+			}
+		}
+	})
+
 	t.Run("signals running process by id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.Signal(proc.ID, syscall.SIGTERM)
-		assert.NoError(t, err)
+		assertNoError(t, err)
 
 		select {
 		case <-proc.Done():
@@ -606,14 +645,14 @@ func TestService_Signal(t *testing.T) {
 			t.Fatal("process should have been signalled")
 		}
 
-		assert.Equal(t, StatusKilled, proc.Status)
+		assertEqual(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("signals unmanaged process by pid", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		cmd := exec.Command("sleep", "60")
-		require.NoError(t, cmd.Start())
+		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
 		go func() {
@@ -631,17 +670,17 @@ func TestService_Signal(t *testing.T) {
 		})
 
 		err := svc.SignalPID(cmd.Process.Pid, syscall.SIGTERM)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		select {
 		case err := <-waitCh:
-			require.Error(t, err)
+			requireError(t, err)
 			var exitErr *exec.ExitError
-			require.ErrorAs(t, err, &exitErr)
+			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
-			require.True(t, ok)
-			assert.True(t, ws.Signaled())
-			assert.Equal(t, syscall.SIGTERM, ws.Signal())
+			requireTrue(t, ok)
+			assertTrue(t, ws.Signaled())
+			assertEqual(t, syscall.SIGTERM, ws.Signal())
 		case <-time.After(2 * time.Second):
 			t.Fatal("unmanaged process should have been signalled")
 		}
@@ -653,19 +692,19 @@ func TestService_Output(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "echo", "captured")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
 		output, err := svc.Output(proc.ID)
-		require.NoError(t, err)
-		assert.Contains(t, output, "captured")
+		requireNoError(t, err)
+		assertContains(t, output, "captured")
 	})
 
 	t.Run("error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		_, err := svc.Output("nonexistent")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
 
@@ -674,24 +713,24 @@ func TestService_Input(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.Input(proc.ID, "service-input\n")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.CloseStdin(proc.ID)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 
-		assert.Contains(t, proc.Output(), "service-input")
+		assertContains(t, proc.Output(), "service-input")
 	})
 
 	t.Run("error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		err := svc.Input("nonexistent", "test")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
 
@@ -700,10 +739,10 @@ func TestService_CloseStdin(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		err = svc.CloseStdin(proc.ID)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		select {
 		case <-proc.Done():
@@ -716,7 +755,7 @@ func TestService_CloseStdin(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		err := svc.CloseStdin("nonexistent")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
 
@@ -725,33 +764,33 @@ func TestService_Wait(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "echo", "waited")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		info, err := svc.Wait(proc.ID)
-		require.NoError(t, err)
-		assert.Equal(t, proc.ID, info.ID)
-		assert.Equal(t, StatusExited, info.Status)
-		assert.Equal(t, 0, info.ExitCode)
+		requireNoError(t, err)
+		assertEqual(t, proc.ID, info.ID)
+		assertEqual(t, StatusExited, info.Status)
+		assertEqual(t, 0, info.ExitCode)
 	})
 
 	t.Run("returns error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		_, err := svc.Wait("nonexistent")
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
 	t.Run("returns info alongside failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		info, err := svc.Wait(proc.ID)
-		require.Error(t, err)
-		assert.Equal(t, proc.ID, info.ID)
-		assert.Equal(t, StatusExited, info.Status)
-		assert.Equal(t, 7, info.ExitCode)
+		requireError(t, err)
+		assertEqual(t, proc.ID, info.ID)
+		assertEqual(t, StatusExited, info.Status)
+		assertEqual(t, 7, info.ExitCode)
 	})
 }
 
@@ -763,14 +802,14 @@ func TestService_OnShutdown(t *testing.T) {
 		defer cancel()
 
 		proc1, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		proc2, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
-		assert.True(t, proc1.IsRunning())
-		assert.True(t, proc2.IsRunning())
+		assertTrue(t, proc1.IsRunning())
+		assertTrue(t, proc2.IsRunning())
 
-		assert.NoError(t, resultErr(svc.OnShutdown(context.Background())))
+		assertNoError(t, resultErr(svc.OnShutdown(context.Background())))
 
 		select {
 		case <-proc1.Done():
@@ -792,11 +831,11 @@ func TestService_OnShutdown(t *testing.T) {
 			Args:        []string{"-c", "trap '' TERM; sleep 60"},
 			GracePeriod: 5 * time.Second,
 		})
-		require.NoError(t, err)
-		require.True(t, proc.IsRunning())
+		requireNoError(t, err)
+		requireTrue(t, proc.IsRunning())
 
 		start := time.Now()
-		require.NoError(t, resultErr(svc.OnShutdown(context.Background())))
+		requireNoError(t, resultErr(svc.OnShutdown(context.Background())))
 
 		select {
 		case <-proc.Done():
@@ -804,8 +843,8 @@ func TestService_OnShutdown(t *testing.T) {
 			t.Fatal("process should have been killed immediately on shutdown")
 		}
 
-		assert.Less(t, time.Since(start), 2*time.Second)
-		assert.Equal(t, StatusKilled, proc.Status)
+		assertLess(t, time.Since(start), 2*time.Second)
+		assertEqual(t, StatusKilled, proc.Status)
 	})
 }
 
@@ -813,19 +852,19 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers detached process.start action", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		result := c.Action("process.start").Run(ctx, framework.NewOptions(
 			framework.Option{Key: "command", Value: "sleep"},
 			framework.Option{Key: "args", Value: []string{"0.1"}},
 		))
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		id, ok := result.Value.(string)
-		require.True(t, ok)
+		requireTrue(t, ok)
 		proc, err := svc.Get(id)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		cancel()
 
@@ -835,54 +874,54 @@ func TestService_OnStartup(t *testing.T) {
 			t.Fatal("detached action-started process should complete")
 		}
 
-		assert.Equal(t, StatusExited, proc.Status)
-		assert.Equal(t, 0, proc.ExitCode)
+		assertEqual(t, StatusExited, proc.Status)
+		assertEqual(t, 0, proc.ExitCode)
 	})
 
 	t.Run("registers process.start task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		result := performTask(svc, c, TaskProcessStart{
 			Command: "sleep",
 			Args:    []string{"1"},
 		})
 
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		info, ok := result.Value.(Info)
-		require.True(t, ok)
-		assert.NotEmpty(t, info.ID)
-		assert.Equal(t, StatusRunning, info.Status)
-		assert.True(t, info.Running)
+		requireTrue(t, ok)
+		assertNotEmpty(t, info.ID)
+		assertEqual(t, StatusRunning, info.Status)
+		assertTrue(t, info.Running)
 
 		proc, err := svc.Get(info.ID)
-		require.NoError(t, err)
-		assert.True(t, proc.IsRunning())
+		requireNoError(t, err)
+		assertTrue(t, proc.IsRunning())
 
 		<-proc.Done()
-		assert.Equal(t, StatusExited, proc.Status)
+		assertEqual(t, StatusExited, proc.Status)
 	})
 
 	t.Run("registers process.run task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		result := performTask(svc, c, TaskProcessRun{
 			Command: "echo",
 			Args:    []string{"action-run"},
 		})
 
-		require.True(t, result.OK)
-		assert.Contains(t, result.Value.(string), "action-run")
+		requireTrue(t, result.OK)
+		assertContains(t, result.Value.(string), "action-run")
 	})
 
 	t.Run("forwards task execution options", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		result := performTask(svc, c, TaskProcessRun{
 			Command:     "sleep",
@@ -891,18 +930,18 @@ func TestService_OnStartup(t *testing.T) {
 			GracePeriod: 50 * time.Millisecond,
 		})
 
-		require.False(t, result.OK)
-		assert.Nil(t, result.Value)
+		requireFalse(t, result.OK)
+		assertNil(t, result.Value)
 	})
 
 	t.Run("registers process.kill task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
-		require.NoError(t, err)
-		require.True(t, proc.IsRunning())
+		requireNoError(t, err)
+		requireTrue(t, proc.IsRunning())
 
 		var killed []ActionProcessKilled
 		c.RegisterAction(func(cc *framework.Core, msg framework.Message) framework.Result {
@@ -913,7 +952,7 @@ func TestService_OnStartup(t *testing.T) {
 		})
 
 		result := performTask(svc, c, TaskProcessKill{PID: proc.Info().PID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		select {
 		case <-proc.Done():
@@ -921,25 +960,25 @@ func TestService_OnStartup(t *testing.T) {
 			t.Fatal("process should have been killed by pid")
 		}
 
-		assert.Equal(t, StatusKilled, proc.Status)
-		require.Len(t, killed, 1)
-		assert.Equal(t, proc.ID, killed[0].ID)
-		assert.NotEmpty(t, killed[0].Signal)
+		assertEqual(t, StatusKilled, proc.Status)
+		requireLen(t, killed, 1)
+		assertEqual(t, proc.ID, killed[0].ID)
+		assertNotEmpty(t, killed[0].Signal)
 	})
 
 	t.Run("registers process.signal task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.SIGTERM,
 		})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		select {
 		case <-proc.Done():
@@ -947,27 +986,27 @@ func TestService_OnStartup(t *testing.T) {
 			t.Fatal("process should have been signalled through core")
 		}
 
-		assert.Equal(t, StatusKilled, proc.Status)
+		assertEqual(t, StatusKilled, proc.Status)
 	})
 
 	t.Run("allows signal zero liveness checks", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.Signal(0),
 		})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
-		assert.True(t, proc.IsRunning())
+		assertTrue(t, proc.IsRunning())
 
 		cancel()
 		<-proc.Done()
@@ -976,7 +1015,7 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("signal zero does not kill process groups", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
@@ -984,80 +1023,80 @@ func TestService_OnStartup(t *testing.T) {
 			Detach:    true,
 			KillGroup: true,
 		})
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
 			ID:     proc.ID,
 			Signal: syscall.Signal(0),
 		})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		time.Sleep(300 * time.Millisecond)
-		assert.True(t, proc.IsRunning())
+		assertTrue(t, proc.IsRunning())
 
 		err = proc.Kill()
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 	})
 
 	t.Run("registers process.wait task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "action-wait")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessWait{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		info, ok := result.Value.(Info)
-		require.True(t, ok)
-		assert.Equal(t, proc.ID, info.ID)
-		assert.Equal(t, StatusExited, info.Status)
-		assert.Equal(t, 0, info.ExitCode)
+		requireTrue(t, ok)
+		assertEqual(t, proc.ID, info.ID)
+		assertEqual(t, StatusExited, info.Status)
+		assertEqual(t, 0, info.ExitCode)
 	})
 
 	t.Run("preserves final snapshot when process.wait task fails", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessWait{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		errValue, ok := result.Value.(error)
-		require.True(t, ok)
+		requireTrue(t, ok)
 		var waitErr *TaskProcessWaitError
-		require.ErrorAs(t, errValue, &waitErr)
-		assert.Contains(t, waitErr.Error(), "process exited with code 7")
-		assert.Equal(t, proc.ID, waitErr.Info.ID)
-		assert.Equal(t, StatusExited, waitErr.Info.Status)
-		assert.Equal(t, 7, waitErr.Info.ExitCode)
+		requireErrorAs(t, errValue, &waitErr)
+		assertContains(t, waitErr.Error(), "process exited with code 7")
+		assertEqual(t, proc.ID, waitErr.Info.ID)
+		assertEqual(t, StatusExited, waitErr.Info.Status)
+		assertEqual(t, 7, waitErr.Info.ExitCode)
 	})
 
 	t.Run("registers process.list task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		proc, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessList{RunningOnly: true})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		infos, ok := result.Value.([]Info)
-		require.True(t, ok)
-		require.Len(t, infos, 1)
-		assert.Equal(t, proc.ID, infos[0].ID)
-		assert.True(t, infos[0].Running)
+		requireTrue(t, ok)
+		requireLen(t, infos, 1)
+		assertEqual(t, proc.ID, infos[0].ID)
+		assertTrue(t, infos[0].Running)
 
 		cancel()
 		<-proc.Done()
@@ -1066,115 +1105,115 @@ func TestService_OnStartup(t *testing.T) {
 	t.Run("registers process.get task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "snapshot")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
 		result := performTask(svc, c, TaskProcessGet{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		info, ok := result.Value.(Info)
-		require.True(t, ok)
-		assert.Equal(t, proc.ID, info.ID)
-		assert.Equal(t, proc.Command, info.Command)
-		assert.Equal(t, proc.Args, info.Args)
-		assert.Equal(t, proc.Status, info.Status)
-		assert.Equal(t, proc.ExitCode, info.ExitCode)
-		assert.Equal(t, proc.Info().PID, info.PID)
+		requireTrue(t, ok)
+		assertEqual(t, proc.ID, info.ID)
+		assertEqual(t, proc.Command, info.Command)
+		assertEqual(t, proc.Args, info.Args)
+		assertEqual(t, proc.Status, info.Status)
+		assertEqual(t, proc.ExitCode, info.ExitCode)
+		assertEqual(t, proc.Info().PID, info.PID)
 	})
 
 	t.Run("registers process.remove task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "remove-through-core")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
 		result := performTask(svc, c, TaskProcessRemove{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		_, err = svc.Get(proc.ID)
-		assert.ErrorIs(t, err, ErrProcessNotFound)
+		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
 	t.Run("registers process.clear task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		first, err := svc.Start(context.Background(), "echo", "clear-through-core-1")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		second, err := svc.Start(context.Background(), "echo", "clear-through-core-2")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-first.Done()
 		<-second.Done()
 
-		require.Len(t, svc.List(), 2)
+		requireLen(t, svc.List(), 2)
 
 		result := performTask(svc, c, TaskProcessClear{})
-		require.True(t, result.OK)
-		assert.Len(t, svc.List(), 0)
+		requireTrue(t, result.OK)
+		assertLen(t, svc.List(), 0)
 	})
 
 	t.Run("registers process.output task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "echo", "snapshot-output")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-proc.Done()
 
 		result := performTask(svc, c, TaskProcessOutput{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		output, ok := result.Value.(string)
-		require.True(t, ok)
-		assert.Contains(t, output, "snapshot-output")
+		requireTrue(t, ok)
+		assertContains(t, output, "snapshot-output")
 	})
 
 	t.Run("registers process.input task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessInput{
 			ID:    proc.ID,
 			Input: "typed-through-core\n",
 		})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		err = proc.CloseStdin()
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		<-proc.Done()
 
-		assert.Contains(t, proc.Output(), "typed-through-core")
+		assertContains(t, proc.Output(), "typed-through-core")
 	})
 
 	t.Run("registers process.close_stdin task", func(t *testing.T) {
 		svc, c := newTestService(t)
 
-		require.NoError(t, resultErr(svc.OnStartup(context.Background())))
+		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
 		proc, err := svc.Start(context.Background(), "cat")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessInput{
 			ID:    proc.ID,
 			Input: "close-through-core\n",
 		})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		result = performTask(svc, c, TaskProcessCloseStdin{ID: proc.ID})
-		require.True(t, result.OK)
+		requireTrue(t, result.OK)
 
 		select {
 		case <-proc.Done():
@@ -1182,7 +1221,7 @@ func TestService_OnStartup(t *testing.T) {
 			t.Fatal("process should have exited after stdin was closed")
 		}
 
-		assert.Contains(t, proc.Output(), "close-through-core")
+		assertContains(t, proc.Output(), "close-through-core")
 	})
 }
 
@@ -1194,8 +1233,8 @@ func TestService_RunWithOptions(t *testing.T) {
 			Command: "echo",
 			Args:    []string{"opts-test"},
 		})
-		require.NoError(t, err)
-		assert.Contains(t, output, "opts-test")
+		requireNoError(t, err)
+		assertContains(t, output, "opts-test")
 	})
 
 	t.Run("returns error on failure", func(t *testing.T) {
@@ -1205,8 +1244,8 @@ func TestService_RunWithOptions(t *testing.T) {
 			Command: "sh",
 			Args:    []string{"-c", "exit 2"},
 		})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "exited with code 2")
+		assertError(t, err)
+		assertContains(t, err.Error(), "exited with code 2")
 	})
 
 	t.Run("rejects nil context", func(t *testing.T) {
@@ -1215,8 +1254,8 @@ func TestService_RunWithOptions(t *testing.T) {
 		_, err := svc.RunWithOptions(nil, RunOptions{
 			Command: "echo",
 		})
-		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrContextRequired)
+		requireError(t, err)
+		assertErrorIs(t, err, ErrContextRequired)
 	})
 }
 
@@ -1228,23 +1267,23 @@ func TestService_Running(t *testing.T) {
 		defer cancel()
 
 		proc1, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		doneProc, err := svc.Start(context.Background(), "echo", "done")
-		require.NoError(t, err)
+		requireNoError(t, err)
 		<-doneProc.Done()
 
 		running := svc.Running()
-		assert.Len(t, running, 1)
-		assert.Equal(t, proc1.ID, running[0].ID)
+		assertLen(t, running, 1)
+		assertEqual(t, proc1.ID, running[0].ID)
 
 		proc2, err := svc.Start(ctx, "sleep", "60")
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		running = svc.Running()
-		assert.Len(t, running, 2)
-		assert.Equal(t, proc1.ID, running[0].ID)
-		assert.Equal(t, proc2.ID, running[1].ID)
+		assertLen(t, running, 2)
+		assertEqual(t, proc1.ID, running[0].ID)
+		assertEqual(t, proc2.ID, running[1].ID)
 
 		cancel()
 		<-proc1.Done()

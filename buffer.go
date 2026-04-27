@@ -1,6 +1,9 @@
 package process
 
-import "sync"
+import (
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
+	"sync"
+)
 
 // RingBuffer is a fixed-size circular buffer that overwrites old data.
 // Thread-safe for concurrent reads and writes.

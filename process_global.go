@@ -3,11 +3,12 @@ package process
 import (
 	"context"
 	"os"
+	// Note: AX-6 — internal concurrency primitives; structural per RFC §2
 	"sync"
 	"sync/atomic"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // Global default service used by package-level helpers.

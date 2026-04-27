@@ -2,10 +2,11 @@ package process
 
 import (
 	"context"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // Runner orchestrates multiple processes with dependencies.

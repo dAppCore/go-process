@@ -2,15 +2,13 @@ package process_test
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	process "dappco.re/go/core/process"
+	process "dappco.re/go/process"
 )
 
 func testCtx(t *testing.T) context.Context {
@@ -22,60 +20,94 @@ func testCtx(t *testing.T) context.Context {
 
 func TestProgram_Find_KnownBinary(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	require.NoError(t, p.Find())
-	assert.NotEmpty(t, p.Path)
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Path == "" {
+		t.Fatal("expected non-empty path")
+	}
 }
 
 func TestProgram_Find_UnknownBinary(t *testing.T) {
 	p := &process.Program{Name: "no-such-binary-xyzzy-42"}
 	err := p.Find()
-	require.Error(t, err)
-	assert.ErrorIs(t, err, process.ErrProgramNotFound)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, process.ErrProgramNotFound) {
+		t.Fatalf("expected ErrProgramNotFound, got %v", err)
+	}
 }
 
 func TestProgram_Find_UsesExistingPath(t *testing.T) {
 	path, err := exec.LookPath("echo")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	p := &process.Program{Path: path}
-	require.NoError(t, p.Find())
-	assert.Equal(t, path, p.Path)
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Path != path {
+		t.Fatalf("want %v, got %v", path, p.Path)
+	}
 }
 
 func TestProgram_Find_PrefersExistingPathOverName(t *testing.T) {
 	path, err := exec.LookPath("echo")
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	p := &process.Program{
 		Name: "no-such-binary-xyzzy-42",
 		Path: path,
 	}
 
-	require.NoError(t, p.Find())
-	assert.Equal(t, path, p.Path)
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Path != path {
+		t.Fatalf("want %v, got %v", path, p.Path)
+	}
 }
 
 func TestProgram_Find_EmptyName(t *testing.T) {
 	p := &process.Program{}
-	require.Error(t, p.Find())
+	if err := p.Find(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
 }
 
 func TestProgram_Run_ReturnsOutput(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	require.NoError(t, p.Find())
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	out, err := p.Run(testCtx(t), "hello")
-	require.NoError(t, err)
-	assert.Equal(t, "hello", out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("want %q, got %q", "hello", out)
+	}
 }
 
 func TestProgram_Run_PreservesLeadingWhitespace(t *testing.T) {
 	p := &process.Program{Name: "sh"}
-	require.NoError(t, p.Find())
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	out, err := p.Run(testCtx(t), "-c", "printf '  hello  \n'")
-	require.NoError(t, err)
-	assert.Equal(t, "  hello", out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "  hello" {
+		t.Fatalf("want %q, got %q", "  hello", out)
+	}
 }
 
 func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
@@ -83,46 +115,72 @@ func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 
 	out, err := p.Run(testCtx(t), "fallback")
-	require.NoError(t, err)
-	assert.Equal(t, "fallback", out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "fallback" {
+		t.Fatalf("want %q, got %q", "fallback", out)
+	}
 }
 
 func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
-	require.NoError(t, p.Find())
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	dir := t.TempDir()
 
 	out, err := p.RunDir(testCtx(t), dir)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	// Resolve symlinks on both sides for portability (macOS uses /private/ prefix).
 	canonicalDir, err := filepath.EvalSymlinks(dir)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	canonicalOut, err := filepath.EvalSymlinks(out)
-	require.NoError(t, err)
-	assert.Equal(t, canonicalDir, canonicalOut)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if canonicalDir != canonicalOut {
+		t.Fatalf("want %q, got %q", canonicalDir, canonicalOut)
+	}
 }
 
 func TestProgram_Run_FailingCommand(t *testing.T) {
 	p := &process.Program{Name: "false"}
-	require.NoError(t, p.Find())
+	if err := p.Find(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	_, err := p.Run(testCtx(t))
-	require.Error(t, err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
 }
 
 func TestProgram_Run_NilContextRejected(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 
 	_, err := p.Run(nil, "test")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, process.ErrProgramContextRequired)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, process.ErrProgramContextRequired) {
+		t.Fatalf("expected ErrProgramContextRequired, got %v", err)
+	}
 }
 
 func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
 	p := &process.Program{}
 
 	_, err := p.RunDir(testCtx(t), "", "test")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, process.ErrProgramNameRequired)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, process.ErrProgramNameRequired) {
+		t.Fatalf("expected ErrProgramNameRequired, got %v", err)
+	}
 }

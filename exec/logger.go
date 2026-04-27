@@ -1,6 +1,9 @@
 package exec
 
-import "sync"
+import (
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
+	"sync"
+)
 
 // Logger interface for command execution logging.
 // Compatible with pkg/log.Logger and other structured loggers.

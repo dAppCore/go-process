@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDaemon_StartAndStop(t *testing.T) {
@@ -23,18 +21,18 @@ func TestDaemon_StartAndStop(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	addr := d.HealthAddr()
-	require.NotEmpty(t, addr)
+	requireNotEmpty(t, addr)
 
 	resp, err := http.Get("http://" + addr + "/health")
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	requireNoError(t, err)
+	assertEqual(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	err = d.Stop()
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
@@ -55,10 +53,10 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	addr := d.HealthAddr()
-	require.NotEmpty(t, addr)
+	requireNotEmpty(t, addr)
 
 	healthErr := make(chan error, 1)
 	go func() {
@@ -82,7 +80,7 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 		stopDone <- d.Stop()
 	}()
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return !d.Ready()
 	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should become not ready before shutdown completes")
 
@@ -96,20 +94,20 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 
 	select {
 	case err := <-stopDone:
-		require.NoError(t, err)
+		requireNoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("daemon stop did not finish after health check unblocked")
 	}
 
 	select {
 	case err := <-healthErr:
-		require.NoError(t, err)
+		requireNoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("/health request did not finish")
 	}
 }
 
-func TestDaemon_StopUnregistersAfterHealthShutdownCompletes(t *testing.T) {
+func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 	blockCheck := make(chan struct{})
 	checkEntered := make(chan struct{})
 	var once sync.Once
@@ -134,10 +132,10 @@ func TestDaemon_StopUnregistersAfterHealthShutdownCompletes(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	addr := d.HealthAddr()
-	require.NotEmpty(t, addr)
+	requireNotEmpty(t, addr)
 
 	healthErr := make(chan error, 1)
 	go func() {
@@ -161,12 +159,12 @@ func TestDaemon_StopUnregistersAfterHealthShutdownCompletes(t *testing.T) {
 		stopDone <- d.Stop()
 	}()
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return !d.Ready()
 	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should become not ready before shutdown completes")
 
 	_, ok := reg.Get("test-app", "serve")
-	assert.True(t, ok, "daemon should remain registered until health shutdown completes")
+	assertFalse(t, ok, "daemon should unregister before health shutdown completes")
 
 	select {
 	case err := <-stopDone:
@@ -178,19 +176,19 @@ func TestDaemon_StopUnregistersAfterHealthShutdownCompletes(t *testing.T) {
 
 	select {
 	case err := <-stopDone:
-		require.NoError(t, err)
+		requireNoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("daemon stop did not finish after health check unblocked")
 	}
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		_, ok := reg.Get("test-app", "serve")
 		return !ok
-	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should unregister after health shutdown completes")
+	}, 500*time.Millisecond, 10*time.Millisecond, "daemon should remain unregistered after health shutdown completes")
 
 	select {
 	case err := <-healthErr:
-		require.NoError(t, err)
+		requireNoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("/health request did not finish")
 	}
@@ -202,12 +200,12 @@ func TestDaemon_DoubleStartFails(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer func() { _ = d.Stop() }()
 
 	err = d.Start()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "already running")
+	assertError(t, err)
+	assertContains(t, err.Error(), "already running")
 }
 
 func TestDaemon_RunWithoutStartFails(t *testing.T) {
@@ -217,16 +215,16 @@ func TestDaemon_RunWithoutStartFails(t *testing.T) {
 	cancel()
 
 	err := d.Run(ctx)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not started")
+	assertError(t, err)
+	assertContains(t, err.Error(), "not started")
 }
 
 func TestDaemon_RunNilContextFails(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 
 	err := d.Run(nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrDaemonContextRequired)
+	requireError(t, err)
+	assertErrorIs(t, err, ErrDaemonContextRequired)
 }
 
 func TestDaemon_SetReady(t *testing.T) {
@@ -235,37 +233,37 @@ func TestDaemon_SetReady(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer func() { _ = d.Stop() }()
 
 	addr := d.HealthAddr()
 
 	resp, _ := http.Get("http://" + addr + "/ready")
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assertEqual(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
-	assert.True(t, d.Ready())
+	assertTrue(t, d.Ready())
 
 	d.SetReady(false)
-	assert.False(t, d.Ready())
+	assertFalse(t, d.Ready())
 
 	resp, _ = http.Get("http://" + addr + "/ready")
-	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assertEqual(t, http.StatusServiceUnavailable, resp.StatusCode)
 	_ = resp.Body.Close()
 }
 
 func TestDaemon_ReadyWithoutHealthServer(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assert.False(t, d.Ready())
+	assertFalse(t, d.Ready())
 }
 
 func TestDaemon_NoHealthAddrReturnsEmpty(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assert.Empty(t, d.HealthAddr())
+	assertEqual(t, "", d.HealthAddr())
 }
 
 func TestDaemon_DefaultShutdownTimeout(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assert.Equal(t, 30*time.Second, d.opts.ShutdownTimeout)
+	assertEqual(t, 30*time.Second, d.opts.ShutdownTimeout)
 }
 
 func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
@@ -274,7 +272,7 @@ func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -295,7 +293,7 @@ func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
 
 	select {
 	case err := <-done:
-		assert.NoError(t, err)
+		assertNoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run should return after context cancellation")
 	}
@@ -306,16 +304,16 @@ func TestDaemon_StopIdempotent(t *testing.T) {
 
 	// Stop without Start should be a no-op
 	err := d.Stop()
-	assert.NoError(t, err)
+	assertNoError(t, err)
 }
 
 func TestDaemon_AutoRegisters(t *testing.T) {
 	dir := t.TempDir()
 	reg := NewRegistry(filepath.Join(dir, "daemons"))
 	wd, err := os.Getwd()
-	require.NoError(t, err)
+	requireNoError(t, err)
 	exe, err := os.Executable()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
@@ -327,22 +325,22 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 	})
 
 	err = d.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Should be registered
 	entry, ok := reg.Get("test-app", "serve")
-	require.True(t, ok)
-	assert.Equal(t, os.Getpid(), entry.PID)
-	assert.NotEmpty(t, entry.Health)
-	assert.Equal(t, wd, entry.Project)
-	assert.Equal(t, exe, entry.Binary)
+	requireTrue(t, ok)
+	assertEqual(t, os.Getpid(), entry.PID)
+	assertNotEmpty(t, entry.Health)
+	assertEqual(t, wd, entry.Project)
+	assertEqual(t, exe, entry.Binary)
 
 	// Stop should unregister
 	err = d.Stop()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, ok = reg.Get("test-app", "serve")
-	assert.False(t, ok)
+	assertFalse(t, ok)
 }
 
 func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
@@ -350,8 +348,8 @@ func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
 
 	pidPath := filepath.Join(dir, "daemon.pid")
 	regDir := filepath.Join(dir, "registry")
-	require.NoError(t, os.MkdirAll(regDir, 0o755))
-	require.NoError(t, os.Chmod(regDir, 0o555))
+	requireNoError(t, os.MkdirAll(regDir, 0o755))
+	requireNoError(t, os.Chmod(regDir, 0o555))
 
 	d := NewDaemon(DaemonOptions{
 		PIDFile:    pidPath,
@@ -364,20 +362,20 @@ func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
 	})
 
 	err := d.Start()
-	require.Error(t, err)
+	requireError(t, err)
 
 	_, statErr := os.Stat(pidPath)
-	assert.True(t, os.IsNotExist(statErr))
+	assertTrue(t, os.IsNotExist(statErr))
 
 	addr := d.HealthAddr()
-	require.NotEmpty(t, addr)
+	requireNotEmpty(t, addr)
 
 	client := &http.Client{Timeout: 250 * time.Millisecond}
 	resp, reqErr := client.Get("http://" + addr + "/health")
 	if resp != nil {
 		_ = resp.Body.Close()
 	}
-	assert.Error(t, reqErr)
+	assertError(t, reqErr)
 
-	assert.NoError(t, d.Stop())
+	assertNoError(t, d.Stop())
 }

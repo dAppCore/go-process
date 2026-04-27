@@ -3,11 +3,11 @@ package process
 import (
 	"context"
 	"os"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 
-	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // DaemonOptions configures daemon mode execution.
@@ -109,7 +109,6 @@ func (d *Daemon) Start() error {
 	// Auto-register if registry is set
 	if d.opts.Registry != nil {
 		entry := d.opts.RegistryEntry
-		now := time.Now()
 		entry.PID = os.Getpid()
 		if d.health != nil {
 			entry.Health = d.health.Addr()
@@ -124,17 +123,6 @@ func (d *Daemon) Start() error {
 				entry.Binary = binary
 			}
 		}
-		if entry.StartedAt.IsZero() {
-			entry.StartedAt = now
-		}
-		if entry.Started.IsZero() {
-			entry.Started = entry.StartedAt
-		}
-		if entry.Config == nil {
-			entry.Config = map[string]string{}
-		}
-		entry.Config = cloneDaemonConfig(entry.Config)
-
 		if err := d.opts.Registry.Register(entry); err != nil {
 			if d.health != nil {
 				_ = d.health.Stop(context.Background())
@@ -195,9 +183,9 @@ func (d *Daemon) Stop() error {
 		d.health.SetReady(false)
 	}
 
-	if d.health != nil {
-		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+	if d.opts.Registry != nil {
+		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
 		}
 	}
 
@@ -207,18 +195,16 @@ func (d *Daemon) Stop() error {
 		}
 	}
 
-	// Auto-unregister after the daemon has stopped serving traffic and
-	// relinquished its PID file.
-	if d.opts.Registry != nil {
-		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
+	if d.health != nil {
+		if err := d.health.Stop(shutdownCtx); err != nil {
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
 		}
 	}
 
 	d.running = false
 
 	if len(errs) > 0 {
-		return core.ErrorJoin(errs...)
+		return coreerr.Join(errs...)
 	}
 	return nil
 }

@@ -9,16 +9,17 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 	"time"
 
+	"dappco.re/go/api"
+	"dappco.re/go/api/pkg/provider"
 	"dappco.re/go/core"
-	"dappco.re/go/core/api"
-	"dappco.re/go/core/api/pkg/provider"
-	coreerr "dappco.re/go/core/log"
-	process "dappco.re/go/core/process"
-	"dappco.re/go/core/ws"
+	corelog "dappco.re/go/log"
+	process "dappco.re/go/process"
+	"dappco.re/go/ws"
 	"github.com/gin-gonic/gin"
 )
 
@@ -936,12 +937,12 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 	id := c.Param("id")
 	if err := p.service.Signal(id, sig); err != nil {
 		if pid, ok := pidFromString(id); ok {
-			if pidErr := p.service.SignalPID(pid, sig); pidErr == nil {
+			pidErr := p.service.SignalPID(pid, sig)
+			if pidErr == nil {
 				c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
 				return
-			} else {
-				err = pidErr
 			}
+			err = pidErr
 		}
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
@@ -1030,9 +1031,8 @@ func daemonEventPayload(entry process.DaemonEntry) map[string]any {
 		"health":    entry.Health,
 		"project":   entry.Project,
 		"binary":    entry.Binary,
-		"config":    entry.Config,
 		"started":   entry.Started,
-		"startedAt": entry.StartedAt,
+		"startedAt": entry.Started,
 	}
 }
 
@@ -1081,7 +1081,7 @@ func startRunOptions(req process.TaskProcessStart) process.RunOptions {
 func parseSignal(value string) (syscall.Signal, error) {
 	trimmed := core.Trim(core.Upper(value))
 	if trimmed == "" {
-		return 0, coreerr.E("ProcessProvider.parseSignal", "signal is required", nil)
+		return 0, corelog.E("ProcessProvider.parseSignal", "signal is required", nil)
 	}
 
 	if n, err := strconv.Atoi(trimmed); err == nil {
@@ -1108,7 +1108,7 @@ func parseSignal(value string) (syscall.Signal, error) {
 	case "SIGUSR2", "USR2":
 		return syscall.SIGUSR2, nil
 	default:
-		return 0, coreerr.E("ProcessProvider.parseSignal", "unsupported signal", nil)
+		return 0, corelog.E("ProcessProvider.parseSignal", "unsupported signal", nil)
 	}
 }
 

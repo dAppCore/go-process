@@ -7,12 +7,12 @@ import (
 	"strings"
 	"unicode"
 
-	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	core "dappco.re/go/core"
+	coreerr "dappco.re/go/log"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.
-// Callers may use core.Is to detect this condition.
+// Callers may use errors.Is to detect this condition.
 var ErrProgramNotFound = coreerr.E("", "program: binary not found in PATH", nil)
 
 // ErrProgramContextRequired is returned when Run or RunDir is called without a context.
@@ -90,16 +90,20 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 		return "", coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired)
 	}
 
-	var out bytes.Buffer
+	out := &bytes.Buffer{}
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	cmd.Stdout = out
+	cmd.Stderr = out
 	if dir != "" {
 		cmd.Dir = dir
 	}
 
 	if err := cmd.Run(); err != nil {
-		return strings.TrimRightFunc(out.String(), unicode.IsSpace), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", p.Name), err)
+		return trimRightSpace(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err)
 	}
-	return strings.TrimRightFunc(out.String(), unicode.IsSpace), nil
+	return trimRightSpace(out.String()), nil
+}
+
+func trimRightSpace(s string) string {
+	return strings.TrimRightFunc(s, unicode.IsSpace)
 }

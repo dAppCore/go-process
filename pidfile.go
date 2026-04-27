@@ -2,11 +2,12 @@ package process
 
 import (
 	"strconv"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 
 	"dappco.re/go/core"
-	coreio "dappco.re/go/core/io"
+	coreio "dappco.re/go/io"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
@@ -65,6 +66,7 @@ func (p *PIDFile) Acquire() error {
 }
 
 // Release removes the PID file.
+// Returns nil if the PID file does not exist.
 //
 // Example:
 //
@@ -72,6 +74,9 @@ func (p *PIDFile) Acquire() error {
 func (p *PIDFile) Release() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !coreio.Local.Exists(p.path) {
+		return nil
+	}
 	if err := coreio.Local.Delete(p.path); err != nil {
 		return core.E("pidfile.release", "failed to remove PID file", err)
 	}

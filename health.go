@@ -2,21 +2,24 @@ package process
 
 import (
 	"context"
+	// Note: AX-6 — stdlib io is intrinsic to the structural HTTP boundary for response body reads.
 	"io"
+	// Note: AX-6 — stdlib net is intrinsic to the structural HTTP boundary for listener management.
 	"net"
+	// Note: AX-6 — stdlib net/http is intrinsic to the structural HTTP boundary implemented here.
 	"net/http"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	corelog "dappco.re/go/log"
 )
 
 // HealthCheck is a function that returns nil when the service is healthy.
 type HealthCheck func() error
 
-// HealthServer provides HTTP `/health/live`, `/health/ready` and legacy
-// compatibility aliases for process monitoring.
+// HealthServer provides HTTP `/health` and `/ready` endpoints for process monitoring.
 type HealthServer struct {
 	addr     string
 	server   *http.Server
@@ -49,7 +52,7 @@ func (h *HealthServer) AddCheck(check HealthCheck) {
 	h.mu.Unlock()
 }
 
-// SetReady sets the readiness status used by `/ready` and `/health/ready`.
+// SetReady sets the readiness status used by `/ready`.
 //
 // Example:
 //
@@ -81,7 +84,7 @@ func (h *HealthServer) Ready() bool {
 func (h *HealthServer) Start() error {
 	mux := http.NewServeMux()
 
-	healthHandler := func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		checks := h.checksSnapshot()
 
 		for _, check := range checks {
@@ -90,39 +93,33 @@ func (h *HealthServer) Start() error {
 			}
 			if err := check(); err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(core.Concat("unhealthy: ", err.Error(), "\n")))
+				core.Print(w, "unhealthy: %v", err)
 				return
 			}
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	}
+		core.Print(w, "ok")
+	})
 
-	mux.HandleFunc("/health/live", healthHandler)
-	mux.HandleFunc("/health", healthHandler)
-
-	readyHandler := func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		h.mu.RLock()
 		ready := h.ready
 		h.mu.RUnlock()
 
 		if !ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready\n"))
+			core.Print(w, "not ready")
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready\n"))
-	}
-
-	mux.HandleFunc("/health/ready", readyHandler)
-	mux.HandleFunc("/ready", readyHandler)
+		core.Print(w, "ready")
+	})
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return coreerr.E("HealthServer.Start", core.Concat("failed to listen on ", h.addr), err)
+		return corelog.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err)
 	}
 
 	server := &http.Server{Handler: mux}
@@ -185,12 +182,12 @@ func (h *HealthServer) Addr() string {
 	return h.addr
 }
 
-// WaitForHealth polls `/health/live` until it responds 200 or the timeout expires.
+// WaitForHealth polls `/health` until it responds 200 or the timeout expires.
 //
 // Example:
 //
 //	if !process.WaitForHealth("127.0.0.1:8080", 5_000) {
-//	    return core.NewError("service did not become ready")
+//	    return errors.New("service did not become ready")
 //	}
 func WaitForHealth(addr string, timeoutMs int) bool {
 	ok, _ := ProbeHealth(addr, timeoutMs)
@@ -205,7 +202,7 @@ func WaitForHealth(addr string, timeoutMs int) bool {
 //	ok, reason := process.ProbeHealth("127.0.0.1:8080", 5_000)
 func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	url := core.Concat("http://", addr, "/health/live")
+	url := core.Sprintf("http://%s/health", addr)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastReason string
@@ -234,12 +231,12 @@ func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	return false, lastReason
 }
 
-// WaitForReady polls `/health/ready` until it responds 200 or the timeout expires.
+// WaitForReady polls `/ready` until it responds 200 or the timeout expires.
 //
 // Example:
 //
 //	if !process.WaitForReady("127.0.0.1:8080", 5_000) {
-//	    return core.NewError("service did not become ready")
+//	    return errors.New("service did not become ready")
 //	}
 func WaitForReady(addr string, timeoutMs int) bool {
 	ok, _ := ProbeReady(addr, timeoutMs)
@@ -254,7 +251,7 @@ func WaitForReady(addr string, timeoutMs int) bool {
 //	ok, reason := process.ProbeReady("127.0.0.1:8080", 5_000)
 func ProbeReady(addr string, timeoutMs int) (bool, string) {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	url := core.Concat("http://", addr, "/health/ready")
+	url := core.Sprintf("http://%s/ready", addr)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastReason string

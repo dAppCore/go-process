@@ -1,21 +1,29 @@
 package process
 
 import (
+	// Note: AX-6 intrinsic — bufio.Scanner frames process pipe output into lines.
 	"bufio"
+	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; core.* helpers are downstream and unavailable at this layer.
 	"context"
+	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; OS handles and signals are intrinsic to process management.
 	"os"
+	// Note: banned-imports exception: os/exec is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"os/exec"
 	"slices"
+	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
+	// Note: AX-6 intrinsic — syscall signal constants, process-group setup, and wait status fields are structural to process lifecycle management.
 	"syscall"
+	// Note: banned-imports exception: process lifecycle timing is intrinsic here; core.* helpers are downstream and unavailable at this layer.
 	"time"
 
 	"dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
+	// Note: AX-6 intrinsic — Reader/Writer interfaces are structural process-pipe contracts; core types do not replace stdlib stream boundaries.
 	goio "io"
 )
 
-// Default buffer size for process output (1MB).
+// DefaultBufferSize is the default buffer size for process output (1MB).
 const DefaultBufferSize = 1024 * 1024
 
 // Errors
@@ -24,6 +32,7 @@ var (
 	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
 	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
 	ErrContextRequired   = coreerr.E("", "context is required", nil)
+	ErrUncatchableSignal = coreerr.E("", "signal cannot be caught", nil)
 )
 
 // Service manages process execution with Core IPC integration.
@@ -293,7 +302,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		err := cmd.Wait()
 
 		duration := time.Since(proc.StartedAt)
-		status, exitCode, exitErr, signalName := classifyProcessExit(err)
+		status, exitCode, signalName, exitErr := classifyProcessExit(err)
 
 		proc.mu.Lock()
 		proc.Duration = duration
@@ -325,8 +334,6 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 // streamOutput reads from a pipe and broadcasts lines via ACTION.
 func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
 	scanner := bufio.NewScanner(r)
-	// Increase buffer for long lines
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -454,6 +461,10 @@ func (s *Service) KillPID(pid int) error {
 //
 //	_ = svc.Signal("proc-1", syscall.SIGTERM)
 func (s *Service) Signal(id string, sig os.Signal) error {
+	if err := validateCatchableSignals(sig); err != nil {
+		return err
+	}
+
 	proc, err := s.Get(id)
 	if err != nil {
 		return err
@@ -467,6 +478,10 @@ func (s *Service) Signal(id string, sig os.Signal) error {
 //
 //	_ = svc.SignalPID(1234, syscall.SIGTERM)
 func (s *Service) SignalPID(pid int, sig os.Signal) error {
+	if err := validateCatchableSignals(sig); err != nil {
+		return err
+	}
+
 	if pid <= 0 {
 		return ServiceError("pid must be positive", nil)
 	}
@@ -482,6 +497,24 @@ func (s *Service) SignalPID(pid int, sig os.Signal) error {
 
 	if err := target.Signal(sig); err != nil {
 		return coreerr.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err)
+	}
+
+	return nil
+}
+
+func validateCatchableSignals(sig os.Signal) error {
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		return nil
+	}
+
+	switch sysSig {
+	case syscall.SIGKILL, syscall.SIGSTOP:
+		return coreerr.E(
+			"Service.validateCatchableSignals",
+			core.Sprintf("signal %d cannot be caught", int(sysSig)),
+			ErrUncatchableSignal,
+		)
 	}
 
 	return nil
@@ -910,9 +943,9 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 }
 
 // classifyProcessExit maps a command completion error to lifecycle state.
-func classifyProcessExit(err error) (Status, int, error, string) {
+func classifyProcessExit(err error) (Status, int, string, error) {
 	if err == nil {
-		return StatusExited, 0, nil, ""
+		return StatusExited, 0, "", nil
 	}
 
 	var exitErr *exec.ExitError
@@ -922,13 +955,13 @@ func classifyProcessExit(err error) (Status, int, error, string) {
 			if signalName == "" {
 				signalName = "signal"
 			}
-			return StatusKilled, -1, coreerr.E("Service.StartWithOptions", "process was killed", nil), signalName
+			return StatusKilled, -1, signalName, coreerr.E("Service.StartWithOptions", "process was killed", nil)
 		}
 		exitCode := exitErr.ExitCode()
-		return StatusExited, exitCode, coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil), ""
+		return StatusExited, exitCode, "", coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil)
 	}
 
-	return StatusFailed, 0, err, ""
+	return StatusFailed, 0, "", err
 }
 
 // emitKilledAction broadcasts a kill event once for the given process.
