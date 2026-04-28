@@ -100,7 +100,9 @@ func (d *Daemon) Start() error {
 	if d.health != nil {
 		if err := d.health.Start(); err != nil {
 			if d.pid != nil {
-				_ = d.pid.Release()
+				if releaseErr := d.pid.Release(); releaseErr != nil {
+					return coreerr.Join(err, releaseErr)
+				}
 			}
 			return err
 		}
@@ -124,13 +126,18 @@ func (d *Daemon) Start() error {
 			}
 		}
 		if err := d.opts.Registry.Register(entry); err != nil {
+			errs := []error{err}
 			if d.health != nil {
-				_ = d.health.Stop(context.Background())
+				if stopErr := d.health.Stop(context.Background()); stopErr != nil {
+					errs = append(errs, stopErr)
+				}
 			}
 			if d.pid != nil {
-				_ = d.pid.Release()
+				if releaseErr := d.pid.Release(); releaseErr != nil {
+					errs = append(errs, releaseErr)
+				}
 			}
-			return coreerr.E("Daemon.Start", "registry", err)
+			return coreerr.E("Daemon.Start", "registry", coreerr.Join(errs...))
 		}
 	}
 

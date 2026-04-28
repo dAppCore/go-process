@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	framework "dappco.re/go/core"
+	framework "dappco.re/go"
 )
 
 func newTestRunner(t *testing.T) *Runner {
@@ -366,4 +366,139 @@ func TestRunner_InvalidSpecNames(t *testing.T) {
 		requireError(t, err)
 		assertErrorIs(t, err, ErrRunnerInvalidSpecName)
 	})
+}
+
+func TestRunner_NewRunner_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	assertNotNil(t, runner)
+	assertEqual(t, svc, runner.service)
+}
+
+func TestRunner_NewRunner_Bad(t *testing.T) {
+	runner := NewRunner(nil)
+	result, err := runner.RunSequential(context.Background(), nil)
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerNoService)
+}
+
+func TestRunner_NewRunner_Ugly(t *testing.T) {
+	var svc *Service
+	runner := NewRunner(svc)
+	assertNotNil(t, runner)
+	assertNil(t, runner.service)
+}
+
+func TestRunner_RunResult_Passed_Good(t *testing.T) {
+	result := RunResult{ExitCode: 0}
+	got := result.Passed()
+	assertTrue(t, got)
+	assertEqual(t, 0, result.ExitCode)
+}
+
+func TestRunner_RunResult_Passed_Bad(t *testing.T) {
+	result := RunResult{ExitCode: 1}
+	got := result.Passed()
+	assertFalse(t, got)
+	assertEqual(t, 1, result.ExitCode)
+}
+
+func TestRunner_RunResult_Passed_Ugly(t *testing.T) {
+	result := RunResult{Skipped: true}
+	got := result.Passed()
+	assertFalse(t, got)
+	assertTrue(t, result.Skipped)
+}
+
+func TestRunner_RunAllResult_Success_Good(t *testing.T) {
+	result := RunAllResult{Failed: 0, Passed: 2}
+	got := result.Success()
+	assertTrue(t, got)
+	assertEqual(t, 2, result.Passed)
+}
+
+func TestRunner_RunAllResult_Success_Bad(t *testing.T) {
+	result := RunAllResult{Failed: 1}
+	got := result.Success()
+	assertFalse(t, got)
+	assertEqual(t, 1, result.Failed)
+}
+
+func TestRunner_RunAllResult_Success_Ugly(t *testing.T) {
+	result := RunAllResult{}
+	got := result.Success()
+	assertTrue(t, got)
+	assertEqual(t, 0, result.Failed)
+}
+
+func TestRunner_Runner_RunAll_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunAll(context.Background(), []RunSpec{{Name: "echo", Command: "echo", Args: []string{"ok"}}})
+	requireNoError(t, err)
+	requireLen(t, result.Results, 1)
+	assertTrue(t, result.Success())
+}
+
+func TestRunner_Runner_RunAll_Bad(t *testing.T) {
+	runner := NewRunner(nil)
+	result, err := runner.RunAll(context.Background(), nil)
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerNoService)
+}
+
+func TestRunner_Runner_RunAll_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunAll(context.Background(), []RunSpec{{Name: "self", Command: "echo", After: []string{"self"}}})
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerInvalidDependencyName)
+}
+
+func TestRunner_Runner_RunSequential_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunSequential(context.Background(), []RunSpec{{Name: "echo", Command: "echo", Args: []string{"ok"}}})
+	requireNoError(t, err)
+	requireLen(t, result.Results, 1)
+	assertTrue(t, result.Success())
+}
+
+func TestRunner_Runner_RunSequential_Bad(t *testing.T) {
+	runner := NewRunner(nil)
+	result, err := runner.RunSequential(context.Background(), nil)
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerNoService)
+}
+
+func TestRunner_Runner_RunSequential_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunSequential(nil, []RunSpec{{Name: "echo", Command: "echo"}})
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerContextRequired)
+}
+
+func TestRunner_Runner_RunParallel_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunParallel(context.Background(), []RunSpec{{Name: "echo", Command: "echo", Args: []string{"ok"}}})
+	requireNoError(t, err)
+	requireLen(t, result.Results, 1)
+	assertTrue(t, result.Success())
+}
+
+func TestRunner_Runner_RunParallel_Bad(t *testing.T) {
+	runner := NewRunner(nil)
+	result, err := runner.RunParallel(context.Background(), nil)
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerNoService)
+}
+
+func TestRunner_Runner_RunParallel_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	runner := NewRunner(svc)
+	result, err := runner.RunParallel(context.Background(), []RunSpec{{Name: "", Command: "echo"}})
+	assertNil(t, result)
+	assertErrorIs(t, err, ErrRunnerInvalidSpecName)
 }

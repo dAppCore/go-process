@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"dappco.re/go"
 	"dappco.re/go/api"
 	"dappco.re/go/api/pkg/provider"
-	"dappco.re/go/core"
 	corelog "dappco.re/go/log"
 	process "dappco.re/go/process"
 	"dappco.re/go/ws"
@@ -554,7 +554,10 @@ func (p *ProcessProvider) stopDaemon(c *gin.Context) {
 	}
 
 	// Remove from registry
-	_ = p.registry.Unregister(code, daemon)
+	if err := p.registry.Unregister(code, daemon); err != nil {
+		c.JSON(http.StatusInternalServerError, api.Fail("unregister_failed", err.Error()))
+		return
+	}
 
 	// Emit WS event
 	p.emitEvent("process.daemon.stopped", map[string]any{
@@ -1015,12 +1018,16 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 		Type: ws.TypeEvent,
 		Data: data,
 	}
-	_ = p.hub.Broadcast(ws.Message{
+	if err := p.hub.Broadcast(ws.Message{
 		Type:    msg.Type,
 		Channel: channel,
 		Data:    data,
-	})
-	_ = p.hub.SendToChannel(channel, msg)
+	}); err != nil {
+		return
+	}
+	if err := p.hub.SendToChannel(channel, msg); err != nil {
+		return
+	}
 }
 
 func daemonEventPayload(entry process.DaemonEntry) map[string]any {

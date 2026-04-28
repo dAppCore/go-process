@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"dappco.re/go/core"
+	"dappco.re/go"
 )
 
 func TestPIDFile_Acquire_Good(t *testing.T) {
@@ -42,7 +42,8 @@ func TestPIDFile_CreateDirectory_Good(t *testing.T) {
 
 func TestPIDFile_Path_Good(t *testing.T) {
 	pid := NewPIDFile("/tmp/test.pid")
-	assertEqual(t, "/tmp/test.pid", pid.Path())
+	got := pid.Path()
+	assertEqual(t, "/tmp/test.pid", got)
 }
 
 func TestPIDFile_Release_MissingIsNoop(t *testing.T) {
@@ -70,5 +71,121 @@ func TestReadPID_Stale_Bad(t *testing.T) {
 	requireNoError(t, os.WriteFile(path, []byte("999999999"), 0644))
 	pid, running := ReadPID(path)
 	assertEqual(t, 999999999, pid)
+	assertFalse(t, running)
+}
+
+func TestPidfile_NewPIDFile_Good(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "good.pid")
+	pid := NewPIDFile(path)
+	assertNotNil(t, pid)
+	assertEqual(t, path, pid.Path())
+}
+
+func TestPidfile_NewPIDFile_Bad(t *testing.T) {
+	pid := NewPIDFile("")
+	got := pid.Path()
+	assertNotNil(t, pid)
+	assertEqual(t, "", got)
+}
+
+func TestPidfile_NewPIDFile_Ugly(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "nested", "ugly.pid")
+	pid := NewPIDFile(path)
+	assertEqual(t, path, pid.Path())
+	assertNotNil(t, pid)
+}
+
+func TestPidfile_PIDFile_Acquire_Good(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "acquire.pid")
+	pid := NewPIDFile(path)
+	err := pid.Acquire()
+	requireNoError(t, err)
+	assertTrue(t, fileExists(path))
+}
+
+func TestPidfile_PIDFile_Acquire_Bad(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "running.pid")
+	requireNoError(t, os.WriteFile(path, []byte(core.Itoa(os.Getpid())), 0644))
+	pid := NewPIDFile(path)
+	err := pid.Acquire()
+	assertError(t, err)
+	assertContains(t, err.Error(), "another instance")
+}
+
+func TestPidfile_PIDFile_Acquire_Ugly(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "stale.pid")
+	requireNoError(t, os.WriteFile(path, []byte("999999999"), 0644))
+	pid := NewPIDFile(path)
+	err := pid.Acquire()
+	requireNoError(t, err)
+	assertTrue(t, fileExists(path))
+}
+
+func TestPidfile_PIDFile_Release_Good(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "release.pid")
+	pid := NewPIDFile(path)
+	requireNoError(t, pid.Acquire())
+	err := pid.Release()
+	requireNoError(t, err)
+	assertFalse(t, fileExists(path))
+}
+
+func TestPidfile_PIDFile_Release_Bad(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "missing.pid")
+	pid := NewPIDFile(path)
+	err := pid.Release()
+	requireNoError(t, err)
+	assertFalse(t, fileExists(path))
+}
+
+func TestPidfile_PIDFile_Release_Ugly(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "nested", "release.pid")
+	pid := NewPIDFile(path)
+	requireNoError(t, pid.Acquire())
+	requireNoError(t, pid.Release())
+	assertFalse(t, fileExists(path))
+}
+
+func TestPidfile_PIDFile_Path_Good(t *testing.T) {
+	pid := NewPIDFile("/tmp/process.pid")
+	got := pid.Path()
+	assertEqual(t, "/tmp/process.pid", got)
+	assertNotNil(t, pid)
+}
+
+func TestPidfile_PIDFile_Path_Bad(t *testing.T) {
+	pid := NewPIDFile("")
+	got := pid.Path()
+	assertEqual(t, "", got)
+	assertNotNil(t, pid)
+}
+
+func TestPidfile_PIDFile_Path_Ugly(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "space pid.pid")
+	pid := NewPIDFile(path)
+	got := pid.Path()
+	assertEqual(t, path, got)
+}
+
+func TestPidfile_ReadPID_Good(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "current.pid")
+	requireNoError(t, os.WriteFile(path, []byte(core.Itoa(os.Getpid())), 0644))
+	pid, running := ReadPID(path)
+	assertEqual(t, os.Getpid(), pid)
+	assertTrue(t, running)
+}
+
+func TestPidfile_ReadPID_Bad(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "missing.pid")
+	pid, running := ReadPID(path)
+	assertEqual(t, 0, pid)
+	assertFalse(t, running)
+}
+
+func TestPidfile_ReadPID_Ugly(t *testing.T) {
+	path := core.JoinPath(t.TempDir(), "invalid.pid")
+	requireNoError(t, os.WriteFile(path, []byte("not-a-pid"), 0644))
+	pid, running := ReadPID(path)
+	assertEqual(t, 0, pid)
 	assertFalse(t, running)
 }

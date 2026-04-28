@@ -131,7 +131,9 @@ func (c *Cmd) Start() error {
 
 	if c.opts.Background {
 		go func(cmd *exec.Cmd) {
-			_ = cmd.Wait()
+			if err := cmd.Wait(); err != nil {
+				c.logError("background command failed", wrapError("Cmd.Start", err, c.name, c.args))
+			}
 		}(c.cmd)
 	}
 

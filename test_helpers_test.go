@@ -3,12 +3,13 @@ package process
 import (
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 )
 
 var errSentinel = core.E("", "sentinel error", nil)
@@ -201,6 +202,35 @@ func requireEventually(t *testing.T, condition func() bool, timeout, interval ti
 		}
 		time.Sleep(interval)
 	}
+}
+
+func newProcessForTest(t *testing.T, status Status, exitCode int, output string) *Process {
+	t.Helper()
+	done := make(chan struct{})
+	if status != StatusRunning {
+		close(done)
+	}
+	buf := NewRingBuffer(1024)
+	if output != "" {
+		_, err := buf.Write([]byte(output))
+		requireNoError(t, err)
+	}
+	return &Process{
+		ID:        "proc-test",
+		Command:   "echo",
+		Args:      []string{"hello"},
+		StartedAt: time.Now().Add(-10 * time.Millisecond),
+		Status:    status,
+		ExitCode:  exitCode,
+		Duration:  10 * time.Millisecond,
+		output:    buf,
+		done:      done,
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func helperMessage(args ...any) string {

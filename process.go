@@ -301,7 +301,9 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 			case <-done:
 				return
 			case <-ticker.C:
-				_ = syscall.Kill(-pid, sig)
+				if err := syscall.Kill(-pid, sig); err != nil {
+					return
+				}
 			}
 		}
 
@@ -309,7 +311,9 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 		case <-done:
 			return
 		default:
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+				return
+			}
 		}
 	}(cmd.Process.Pid, sysSig, p.done)
 

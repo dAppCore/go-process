@@ -253,17 +253,23 @@ func TestDaemon_SetReady(t *testing.T) {
 
 func TestDaemon_ReadyWithoutHealthServer(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assertFalse(t, d.Ready())
+	ready := d.Ready()
+	assertFalse(t, ready)
+	assertEqual(t, "", d.HealthAddr())
 }
 
 func TestDaemon_NoHealthAddrReturnsEmpty(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assertEqual(t, "", d.HealthAddr())
+	addr := d.HealthAddr()
+	assertEqual(t, "", addr)
+	assertFalse(t, d.Ready())
 }
 
 func TestDaemon_DefaultShutdownTimeout(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	assertEqual(t, 30*time.Second, d.opts.ShutdownTimeout)
+	timeout := d.opts.ShutdownTimeout
+	assertEqual(t, 30*time.Second, timeout)
+	assertFalse(t, d.running)
 }
 
 func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
@@ -378,4 +384,161 @@ func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
 	assertError(t, reqErr)
 
 	assertNoError(t, d.Stop())
+}
+
+func TestDaemon_NewDaemon_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	assertNotNil(t, d)
+	assertNotNil(t, d.health)
+	assertEqual(t, 30*time.Second, d.opts.ShutdownTimeout)
+}
+
+func TestDaemon_NewDaemon_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{ShutdownTimeout: time.Second})
+	assertNotNil(t, d)
+	assertNil(t, d.health)
+	assertEqual(t, time.Second, d.opts.ShutdownTimeout)
+}
+
+func TestDaemon_NewDaemon_Ugly(t *testing.T) {
+	pidPath := filepath.Join(t.TempDir(), "daemon.pid")
+	d := NewDaemon(DaemonOptions{PIDFile: pidPath})
+	assertNotNil(t, d)
+	assertNotNil(t, d.pid)
+	assertEqual(t, pidPath, d.pid.Path())
+}
+
+func TestDaemon_Daemon_Start_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	err := d.Start()
+	requireNoError(t, err)
+	defer func() { requireNoError(t, d.Stop()) }()
+	assertNotEmpty(t, d.HealthAddr())
+}
+
+func TestDaemon_Daemon_Start_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	requireNoError(t, d.Start())
+	defer func() { requireNoError(t, d.Stop()) }()
+	err := d.Start()
+	assertError(t, err)
+}
+
+func TestDaemon_Daemon_Start_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "256.256.256.256:1"})
+	err := d.Start()
+	assertError(t, err)
+	assertFalse(t, d.running)
+}
+
+func TestDaemon_Daemon_Run_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	requireNoError(t, d.Start())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := d.Run(ctx)
+	requireNoError(t, err)
+}
+
+func TestDaemon_Daemon_Run_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	err := d.Run(nil)
+	assertError(t, err)
+	assertErrorIs(t, err, ErrDaemonContextRequired)
+}
+
+func TestDaemon_Daemon_Run_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := d.Run(ctx)
+	assertError(t, err)
+}
+
+func TestDaemon_Daemon_Stop_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	requireNoError(t, d.Start())
+	err := d.Stop()
+	requireNoError(t, err)
+	assertFalse(t, d.running)
+}
+
+func TestDaemon_Daemon_Stop_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	err := d.Stop()
+	requireNoError(t, err)
+	assertFalse(t, d.running)
+}
+
+func TestDaemon_Daemon_Stop_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	requireNoError(t, d.Start())
+	requireNoError(t, d.Stop())
+	err := d.Stop()
+	requireNoError(t, err)
+}
+
+func TestDaemon_Daemon_SetReady_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	d.SetReady(false)
+	assertFalse(t, d.Ready())
+	d.SetReady(true)
+	assertTrue(t, d.Ready())
+}
+
+func TestDaemon_Daemon_SetReady_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	d.SetReady(false)
+	assertFalse(t, d.Ready())
+	assertEqual(t, "", d.HealthAddr())
+}
+
+func TestDaemon_Daemon_SetReady_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	d.SetReady(false)
+	d.SetReady(false)
+	assertFalse(t, d.Ready())
+}
+
+func TestDaemon_Daemon_Ready_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	got := d.Ready()
+	assertTrue(t, got)
+	assertNotNil(t, d.health)
+}
+
+func TestDaemon_Daemon_Ready_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	got := d.Ready()
+	assertFalse(t, got)
+	assertNil(t, d.health)
+}
+
+func TestDaemon_Daemon_Ready_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	d.SetReady(false)
+	got := d.Ready()
+	assertFalse(t, got)
+}
+
+func TestDaemon_Daemon_HealthAddr_Good(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	requireNoError(t, d.Start())
+	defer func() { requireNoError(t, d.Stop()) }()
+	got := d.HealthAddr()
+	assertNotEmpty(t, got)
+}
+
+func TestDaemon_Daemon_HealthAddr_Bad(t *testing.T) {
+	d := NewDaemon(DaemonOptions{})
+	got := d.HealthAddr()
+	assertEqual(t, "", got)
+	assertFalse(t, d.Ready())
+}
+
+func TestDaemon_Daemon_HealthAddr_Ugly(t *testing.T) {
+	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
+	got := d.HealthAddr()
+	assertEqual(t, "127.0.0.1:0", got)
+	assertTrue(t, d.Ready())
 }

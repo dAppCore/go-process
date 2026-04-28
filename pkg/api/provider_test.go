@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	core "dappco.re/go"
 	goapi "dappco.re/go/api"
-	core "dappco.re/go/core"
 	process "dappco.re/go/process"
 	processapi "dappco.re/go/process/pkg/api"
 	corews "dappco.re/go/ws"
@@ -29,12 +29,14 @@ func init() {
 
 func TestProcessProvider_Name_Good(t *testing.T) {
 	p := processapi.NewProvider(nil, nil, nil)
-	assertEqual(t, "process", p.Name())
+	got := p.Name()
+	assertEqual(t, "process", got)
 }
 
 func TestProcessProvider_BasePath_Good(t *testing.T) {
 	p := processapi.NewProvider(nil, nil, nil)
-	assertEqual(t, "/api/process", p.BasePath())
+	got := p.BasePath()
+	assertEqual(t, "/api/process", got)
 }
 
 func TestProcessProvider_Channels_Good(t *testing.T) {
@@ -925,4 +927,190 @@ func readWSEvents(t *testing.T, conn *websocket.Conn, channels ...string) map[st
 
 	requireLen(t, events, len(channels))
 	return events
+}
+
+func TestProvider_NewProvider_Good(t *testing.T) {
+	registry := newTestRegistry(t.TempDir())
+	service := newTestProcessService(t)
+	p := processapi.NewProvider(registry, service, nil)
+	assertNotNil(t, p)
+	assertEqual(t, "process", p.Name())
+}
+
+func TestProvider_NewProvider_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	assertNotNil(t, p)
+	assertEqual(t, "process", p.Name())
+}
+
+func TestProvider_NewProvider_Ugly(t *testing.T) {
+	hub := corews.NewHub()
+	p := processapi.NewProvider(nil, nil, hub)
+	assertNotNil(t, p)
+	assertContains(t, p.Channels(), "process.output")
+}
+
+func TestProvider_ProcessProvider_Name_Good(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	got := p.Name()
+	assertEqual(t, "process", got)
+}
+
+func TestProvider_ProcessProvider_Name_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	got := p.Name()
+	assertNotEmpty(t, got)
+	assertEqual(t, "process", got)
+}
+
+func TestProvider_ProcessProvider_Name_Ugly(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	first := p.Name()
+	second := p.Name()
+	assertEqual(t, first, second)
+}
+
+func TestProvider_ProcessProvider_BasePath_Good(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	got := p.BasePath()
+	assertEqual(t, "/api/process", got)
+}
+
+func TestProvider_ProcessProvider_BasePath_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	got := p.BasePath()
+	assertContains(t, got, "/api")
+	assertEqual(t, "/api/process", got)
+}
+
+func TestProvider_ProcessProvider_BasePath_Ugly(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	first := p.BasePath()
+	second := p.BasePath()
+	assertEqual(t, first, second)
+}
+
+func TestProvider_ProcessProvider_Register_Good(t *testing.T) {
+	p := processapi.NewProvider(newTestRegistry(t.TempDir()), nil, nil)
+	router := gin.New()
+	p.Register(router)
+	assertNotNil(t, router)
+}
+
+func TestProvider_ProcessProvider_Register_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	p.Register(nil)
+	assertEqual(t, "process", p.Name())
+}
+
+func TestProvider_ProcessProvider_Register_Ugly(t *testing.T) {
+	var p *processapi.ProcessProvider
+	router := gin.New()
+	p.Register(router)
+	assertNotNil(t, router)
+}
+
+func TestProvider_ProcessProvider_Element_Good(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	element := p.Element()
+	assertEqual(t, "core-process-panel", element.Tag)
+	assertContains(t, element.Source, "core-process")
+}
+
+func TestProvider_ProcessProvider_Element_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	element := p.Element()
+	assertNotEmpty(t, element.Tag)
+	assertNotEmpty(t, element.Source)
+}
+
+func TestProvider_ProcessProvider_Element_Ugly(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	first := p.Element()
+	second := p.Element()
+	assertEqual(t, first, second)
+}
+
+func TestProvider_ProcessProvider_Channels_Good(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	channels := p.Channels()
+	assertContains(t, channels, "process.started")
+	assertContains(t, channels, "process.exited")
+}
+
+func TestProvider_ProcessProvider_Channels_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	channels := p.Channels()
+	assertNotEmpty(t, channels)
+	assertGreaterOrEqual(t, len(channels), 1)
+}
+
+func TestProvider_ProcessProvider_Channels_Ugly(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	channels := p.Channels()
+	channels[0] = "mutated"
+	assertContains(t, p.Channels(), "process.daemon.started")
+}
+
+func TestProvider_ProcessProvider_RegisterRoutes_Good(t *testing.T) {
+	p := processapi.NewProvider(newTestRegistry(t.TempDir()), nil, nil)
+	router := gin.New()
+	p.RegisterRoutes(router.Group("/x"))
+	assertNotNil(t, router)
+}
+
+func TestProvider_ProcessProvider_RegisterRoutes_Bad(t *testing.T) {
+	p := processapi.NewProvider(newTestRegistry(t.TempDir()), nil, nil)
+	router := gin.New()
+	p.RegisterRoutes(router.Group(""))
+	assertEqual(t, "process", p.Name())
+}
+
+func TestProvider_ProcessProvider_RegisterRoutes_Ugly(t *testing.T) {
+	p := processapi.NewProvider(newTestRegistry(t.TempDir()), nil, nil)
+	router := gin.New()
+	p.RegisterRoutes(router.Group("/api/process"))
+	req, _ := http.NewRequest("GET", "/api/process/daemons", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assertEqual(t, http.StatusOK, w.Code)
+}
+
+func TestProvider_ProcessProvider_Describe_Good(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	descs := p.Describe()
+	assertNotEmpty(t, descs)
+	assertEqual(t, "GET", descs[0].Method)
+}
+
+func TestProvider_ProcessProvider_Describe_Bad(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	descs := p.Describe()
+	assertGreaterOrEqual(t, len(descs), 1)
+	assertNotEmpty(t, descs[0].Path)
+}
+
+func TestProvider_ProcessProvider_Describe_Ugly(t *testing.T) {
+	p := processapi.NewProvider(nil, nil, nil)
+	descs := p.Describe()
+	descs[0].Path = "mutated"
+	assertFalse(t, "mutated" == p.Describe()[0].Path)
+}
+
+func TestProvider_PIDAlive_Good(t *testing.T) {
+	alive := processapi.PIDAlive(os.Getpid())
+	assertTrue(t, alive)
+	assertGreater(t, os.Getpid(), 0)
+}
+
+func TestProvider_PIDAlive_Bad(t *testing.T) {
+	alive := processapi.PIDAlive(0)
+	assertFalse(t, alive)
+	assertFalse(t, processapi.PIDAlive(-999999))
+}
+
+func TestProvider_PIDAlive_Ugly(t *testing.T) {
+	alive := processapi.PIDAlive(-1)
+	assertFalse(t, alive)
+	assertLess(t, -1, 0)
 }

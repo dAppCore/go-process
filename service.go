@@ -17,7 +17,7 @@ import (
 	// Note: banned-imports exception: process lifecycle timing is intrinsic here; core.* helpers are downstream and unavailable at this layer.
 	"time"
 
-	"dappco.re/go/core"
+	"dappco.re/go"
 	coreerr "dappco.re/go/log"
 	// Note: AX-6 intrinsic — Reader/Writer interfaces are structural process-pipe contracts; core types do not replace stdlib stream boundaries.
 	goio "io"
@@ -239,12 +239,14 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		close(proc.done)
 		cancel()
 		if c := s.coreApp(); c != nil {
-			_ = c.ACTION(ActionProcessExited{
+			if result := c.ACTION(ActionProcessExited{
 				ID:       id,
 				ExitCode: -1,
 				Duration: proc.Duration,
 				Error:    startErr,
-			})
+			}); !result.OK {
+				return proc, startErr
+			}
 		}
 		return proc, startErr
 	}
@@ -272,13 +274,15 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 
 	// Broadcast start
 	if c := s.coreApp(); c != nil {
-		_ = c.ACTION(ActionProcessStarted{
+		if result := c.ACTION(ActionProcessStarted{
 			ID:      id,
 			Command: opts.Command,
 			Args:    opts.Args,
 			Dir:     opts.Dir,
 			PID:     cmd.Process.Pid,
-		})
+		}); !result.OK {
+			core.Print(os.Stderr, "process start broadcast failed: %s\n", result.Error())
+		}
 	}
 
 	// Stream output in goroutines
@@ -324,7 +328,9 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) (*Proce
 		}
 
 		if c := s.coreApp(); c != nil {
-			_ = c.ACTION(exitAction)
+			if result := c.ACTION(exitAction); !result.OK {
+				return
+			}
 		}
 	}()
 
@@ -345,11 +351,13 @@ func (s *Service) streamOutput(proc *Process, r goio.Reader, stream Stream) {
 
 		// Broadcast output
 		if c := s.coreApp(); c != nil {
-			_ = c.ACTION(ActionProcessOutput{
+			if result := c.ACTION(ActionProcessOutput{
 				ID:     proc.ID,
 				Line:   line,
 				Stream: stream,
-			})
+			}); !result.OK {
+				continue
+			}
 		}
 	}
 }
@@ -985,10 +993,12 @@ func (s *Service) emitKilledAction(proc *Process, signalName string) {
 	proc.mu.Unlock()
 
 	if c := s.coreApp(); c != nil {
-		_ = c.ACTION(ActionProcessKilled{
+		if result := c.ACTION(ActionProcessKilled{
 			ID:     proc.ID,
 			Signal: signal,
-		})
+		}); !result.OK {
+			return
+		}
 	}
 }
 

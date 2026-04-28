@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"dappco.re/go/core"
+	"dappco.re/go"
 	corelog "dappco.re/go/log"
 )
 
@@ -129,7 +129,14 @@ func (h *HealthServer) Start() error {
 	h.mu.Unlock()
 
 	go func() {
-		_ = server.Serve(listener)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			h.mu.Lock()
+			if h.server == server {
+				h.server = nil
+				h.listener = nil
+			}
+			h.mu.Unlock()
+		}
 	}()
 
 	return nil
@@ -210,8 +217,18 @@ func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				lastReason = readErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
+			if closeErr != nil {
+				lastReason = closeErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}
@@ -259,8 +276,18 @@ func ProbeReady(addr string, timeoutMs int) (bool, string) {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				lastReason = readErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
+			if closeErr != nil {
+				lastReason = closeErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}

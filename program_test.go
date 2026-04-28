@@ -184,3 +184,102 @@ func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
 		t.Fatalf("expected ErrProgramNameRequired, got %v", err)
 	}
 }
+
+func TestProgram_Program_Find_Good(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	err := p.Find()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Path == "" {
+		t.Fatal("expected non-empty path")
+	}
+}
+
+func TestProgram_Program_Find_Bad(t *testing.T) {
+	p := &process.Program{Name: "definitely-not-a-real-process-binary"}
+	err := p.Find()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, process.ErrProgramNotFound) {
+		t.Fatalf("expected ErrProgramNotFound, got %v", err)
+	}
+}
+
+func TestProgram_Program_Find_Ugly(t *testing.T) {
+	p := &process.Program{}
+	err := p.Find()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if p.Path != "" {
+		t.Fatalf("expected empty path, got %q", p.Path)
+	}
+}
+
+func TestProgram_Program_Run_Good(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	out, err := p.Run(testCtx(t), "hello")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("want hello, got %q", out)
+	}
+}
+
+func TestProgram_Program_Run_Bad(t *testing.T) {
+	p := &process.Program{Name: "false"}
+	out, err := p.Run(testCtx(t))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_Run_Ugly(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	out, err := p.Run(nil, "hello")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Good(t *testing.T) {
+	p := &process.Program{Name: "pwd"}
+	out, err := p.RunDir(testCtx(t), "/tmp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "/tmp" && out != "/private/tmp" {
+		t.Fatalf("expected /tmp or /private/tmp, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Bad(t *testing.T) {
+	p := &process.Program{}
+	out, err := p.RunDir(testCtx(t), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Ugly(t *testing.T) {
+	p := &process.Program{Name: "printf"}
+	out, err := p.RunDir(testCtx(t), "", "hello\n\n")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("want hello, got %q", out)
+	}
+}

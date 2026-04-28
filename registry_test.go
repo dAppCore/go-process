@@ -130,5 +130,141 @@ func TestRegistry_CreatesDirectory(t *testing.T) {
 
 func TestDefaultRegistry(t *testing.T) {
 	reg := DefaultRegistry()
+	requireNotNil(t, reg)
 	assertNotNil(t, reg)
+}
+
+func TestRegistry_NewRegistry_Good(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "daemons")
+	reg := NewRegistry(dir)
+	assertNotNil(t, reg)
+	assertEqual(t, dir, reg.dir)
+}
+
+func TestRegistry_NewRegistry_Bad(t *testing.T) {
+	reg := NewRegistry("")
+	assertNotNil(t, reg)
+	assertEqual(t, "", reg.dir)
+}
+
+func TestRegistry_NewRegistry_Ugly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "daemons")
+	reg := NewRegistry(dir)
+	entries, err := reg.List()
+	requireNoError(t, err)
+	assertEmpty(t, entries)
+}
+
+func TestRegistry_DefaultRegistry_Good(t *testing.T) {
+	reg := DefaultRegistry()
+	requireNotNil(t, reg)
+	assertContains(t, reg.dir, ".core")
+}
+
+func TestRegistry_DefaultRegistry_Bad(t *testing.T) {
+	reg := DefaultRegistry()
+	requireNotNil(t, reg)
+	assertContains(t, reg.dir, "daemons")
+}
+
+func TestRegistry_DefaultRegistry_Ugly(t *testing.T) {
+	reg := DefaultRegistry()
+	requireNotNil(t, reg)
+	assertNotEmpty(t, reg.dir)
+}
+
+func TestRegistry_Registry_Register_Good(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	entry := DaemonEntry{Code: "app", Daemon: "web", PID: os.Getpid()}
+	err := reg.Register(entry)
+	requireNoError(t, err)
+	assertTrue(t, fileExists(filepath.Join(reg.dir, "app-web.json")))
+}
+
+func TestRegistry_Registry_Register_Bad(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	err := reg.Register(DaemonEntry{Code: "dead", Daemon: "web", PID: 0})
+	requireNoError(t, err)
+	entries, listErr := reg.List()
+	requireNoError(t, listErr)
+	assertEmpty(t, entries)
+}
+
+func TestRegistry_Registry_Register_Ugly(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	err := reg.Register(DaemonEntry{Code: "app/name", Daemon: "worker/name", PID: os.Getpid()})
+	requireNoError(t, err)
+	assertTrue(t, fileExists(filepath.Join(reg.dir, "app-name-worker-name.json")))
+}
+
+func TestRegistry_Registry_Unregister_Good(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, reg.Register(DaemonEntry{Code: "app", Daemon: "web", PID: os.Getpid()}))
+	err := reg.Unregister("app", "web")
+	requireNoError(t, err)
+	assertFalse(t, fileExists(filepath.Join(reg.dir, "app-web.json")))
+}
+
+func TestRegistry_Registry_Unregister_Bad(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	err := reg.Unregister("missing", "daemon")
+	requireNoError(t, err)
+	assertNotNil(t, reg)
+}
+
+func TestRegistry_Registry_Unregister_Ugly(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, reg.Register(DaemonEntry{Code: "app/name", Daemon: "worker/name", PID: os.Getpid()}))
+	err := reg.Unregister("app/name", "worker/name")
+	requireNoError(t, err)
+	assertFalse(t, fileExists(filepath.Join(reg.dir, "app-name-worker-name.json")))
+}
+
+func TestRegistry_Registry_Get_Good(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, reg.Register(DaemonEntry{Code: "app", Daemon: "web", PID: os.Getpid()}))
+	entry, ok := reg.Get("app", "web")
+	requireTrue(t, ok)
+	assertEqual(t, "app", entry.Code)
+}
+
+func TestRegistry_Registry_Get_Bad(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	entry, ok := reg.Get("missing", "web")
+	assertNil(t, entry)
+	assertFalse(t, ok)
+}
+
+func TestRegistry_Registry_Get_Ugly(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, os.MkdirAll(reg.dir, 0755))
+	requireNoError(t, os.WriteFile(filepath.Join(reg.dir, "bad-json.json"), []byte("{"), 0644))
+	entry, ok := reg.Get("bad", "json")
+	assertNil(t, entry)
+	assertFalse(t, ok)
+}
+
+func TestRegistry_Registry_List_Good(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, reg.Register(DaemonEntry{Code: "app", Daemon: "web", PID: os.Getpid()}))
+	entries, err := reg.List()
+	requireNoError(t, err)
+	requireLen(t, entries, 1)
+	assertEqual(t, "app", entries[0].Code)
+}
+
+func TestRegistry_Registry_List_Bad(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	entries, err := reg.List()
+	requireNoError(t, err)
+	assertEmpty(t, entries)
+}
+
+func TestRegistry_Registry_List_Ugly(t *testing.T) {
+	reg := NewRegistry(t.TempDir())
+	requireNoError(t, os.MkdirAll(reg.dir, 0755))
+	requireNoError(t, os.WriteFile(filepath.Join(reg.dir, "bad-json.json"), []byte("{"), 0644))
+	entries, err := reg.List()
+	requireNoError(t, err)
+	assertEmpty(t, entries)
 }

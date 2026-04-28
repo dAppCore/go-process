@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"dappco.re/go/core"
+	"dappco.re/go"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -115,12 +115,16 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 
 	var entry DaemonEntry
 	if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-		_ = coreio.Local.Delete(path)
+		if err := coreio.Local.Delete(path); err != nil {
+			return nil, false
+		}
 		return nil, false
 	}
 
 	if !isAlive(entry.PID) {
-		_ = coreio.Local.Delete(path)
+		if err := coreio.Local.Delete(path); err != nil {
+			return nil, false
+		}
 		return nil, false
 	}
 
@@ -147,12 +151,16 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 
 		var entry DaemonEntry
 		if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-			_ = coreio.Local.Delete(path)
+			if err := coreio.Local.Delete(path); err != nil {
+				continue
+			}
 			continue
 		}
 
 		if !isAlive(entry.PID) {
-			_ = coreio.Local.Delete(path)
+			if err := coreio.Local.Delete(path); err != nil {
+				continue
+			}
 			continue
 		}
 

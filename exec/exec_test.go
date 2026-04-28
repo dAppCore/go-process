@@ -327,3 +327,348 @@ func TestRunQuiet_Bad(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestExec_Command_Good(t *testing.T) {
+	cmd := exec.Command(context.Background(), "echo", "hello")
+	err := cmd.Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_Command_Bad(t *testing.T) {
+	cmd := exec.Command(nil, "echo")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected nil context error")
+	}
+}
+
+func TestExec_Command_Ugly(t *testing.T) {
+	cmd := exec.Command(context.Background(), "")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected empty command error")
+	}
+}
+
+func TestExec_Cmd_WithDir_Good(t *testing.T) {
+	out, err := exec.Command(context.Background(), "pwd").WithDir("/tmp").Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed != "/tmp" && trimmed != "/private/tmp" {
+		t.Fatalf("unexpected pwd: %q", trimmed)
+	}
+}
+
+func TestExec_Cmd_WithDir_Bad(t *testing.T) {
+	_, err := exec.Command(context.Background(), "pwd").WithDir("/definitely/missing").Output()
+	if err == nil {
+		t.Fatal("expected missing directory error")
+	}
+}
+
+func TestExec_Cmd_WithDir_Ugly(t *testing.T) {
+	out, err := exec.Command(context.Background(), "pwd").WithDir("").Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		t.Fatal("expected working directory output")
+	}
+}
+
+func TestExec_Cmd_WithEnv_Good(t *testing.T) {
+	out, err := exec.Command(context.Background(), "sh", "-c", "printf %s \"$AX7_ENV\"").WithEnv([]string{"AX7_ENV=ok"}).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "ok" {
+		t.Fatalf("expected env output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithEnv_Bad(t *testing.T) {
+	out, err := exec.Command(context.Background(), "sh", "-c", "printf %s \"$AX7_ENV\"").WithEnv(nil).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "" {
+		t.Fatalf("expected empty env output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithEnv_Ugly(t *testing.T) {
+	out, err := exec.Command(context.Background(), "sh", "-c", "printf %s \"$AX7_ENV\"").WithEnv([]string{"AX7_ENV="}).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "" {
+		t.Fatalf("expected empty env output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithStdin_Good(t *testing.T) {
+	out, err := exec.Command(context.Background(), "cat").WithStdin(strings.NewReader("input")).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "input" {
+		t.Fatalf("expected stdin echoed, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithStdin_Bad(t *testing.T) {
+	out, err := exec.Command(context.Background(), "cat").WithStdin(nil).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "" {
+		t.Fatalf("expected empty output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithStdin_Ugly(t *testing.T) {
+	out, err := exec.Command(context.Background(), "cat").WithStdin(strings.NewReader("")).Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "" {
+		t.Fatalf("expected empty output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_WithStdout_Good(t *testing.T) {
+	var stdout strings.Builder
+	err := exec.Command(context.Background(), "echo", "hello").WithStdout(&stdout).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "hello") {
+		t.Fatalf("expected stdout capture, got %q", stdout.String())
+	}
+}
+
+func TestExec_Cmd_WithStdout_Bad(t *testing.T) {
+	var stdout strings.Builder
+	err := exec.Command(context.Background(), "false").WithStdout(&stdout).Run()
+	if err == nil {
+		t.Fatal("expected command error")
+	}
+	if stdout.String() != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout.String())
+	}
+}
+
+func TestExec_Cmd_WithStdout_Ugly(t *testing.T) {
+	var stdout strings.Builder
+	err := exec.Command(context.Background(), "printf", "").WithStdout(&stdout).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout.String() != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout.String())
+	}
+}
+
+func TestExec_Cmd_WithStderr_Good(t *testing.T) {
+	var stderr strings.Builder
+	err := exec.Command(context.Background(), "sh", "-c", "echo err >&2").WithStderr(&stderr).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "err") {
+		t.Fatalf("expected stderr capture, got %q", stderr.String())
+	}
+}
+
+func TestExec_Cmd_WithStderr_Bad(t *testing.T) {
+	var stderr strings.Builder
+	err := exec.Command(context.Background(), "sh", "-c", "echo err >&2; exit 2").WithStderr(&stderr).Run()
+	if err == nil {
+		t.Fatal("expected command error")
+	}
+	if !strings.Contains(stderr.String(), "err") {
+		t.Fatalf("expected stderr capture, got %q", stderr.String())
+	}
+}
+
+func TestExec_Cmd_WithStderr_Ugly(t *testing.T) {
+	var stderr strings.Builder
+	err := exec.Command(context.Background(), "printf", "").WithStderr(&stderr).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestExec_Cmd_WithLogger_Good(t *testing.T) {
+	logger := &mockLogger{}
+	err := exec.Command(context.Background(), "echo", "hello").WithLogger(logger).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(logger.debugCalls) != 1 {
+		t.Fatalf("expected debug log")
+	}
+}
+
+func TestExec_Cmd_WithLogger_Bad(t *testing.T) {
+	logger := &mockLogger{}
+	err := exec.Command(context.Background(), "false").WithLogger(logger).Run()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(logger.errorCalls) != 1 {
+		t.Fatalf("expected error log")
+	}
+}
+
+func TestExec_Cmd_WithLogger_Ugly(t *testing.T) {
+	err := exec.Command(context.Background(), "echo", "hello").WithLogger(nil).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_Cmd_WithBackground_Good(t *testing.T) {
+	err := exec.Command(context.Background(), "true").WithBackground(true).Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_Cmd_WithBackground_Bad(t *testing.T) {
+	_, err := exec.Command(context.Background(), "true").WithBackground(true).Output()
+	if err == nil {
+		t.Fatal("expected background output error")
+	}
+}
+
+func TestExec_Cmd_WithBackground_Ugly(t *testing.T) {
+	err := exec.Command(context.Background(), "false").WithBackground(true).Run()
+	if err != nil {
+		t.Fatalf("start should succeed in background: %v", err)
+	}
+}
+
+func TestExec_Cmd_Start_Good(t *testing.T) {
+	err := exec.Command(context.Background(), "true").WithBackground(true).Start()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_Cmd_Start_Bad(t *testing.T) {
+	err := exec.Command(nil, "true").Start()
+	if err == nil {
+		t.Fatal("expected nil context error")
+	}
+}
+
+func TestExec_Cmd_Start_Ugly(t *testing.T) {
+	err := exec.Command(context.Background(), "definitely-not-a-real-command").Start()
+	if err == nil {
+		t.Fatal("expected start error")
+	}
+}
+
+func TestExec_Cmd_Run_Good(t *testing.T) {
+	err := exec.Command(context.Background(), "true").Run()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_Cmd_Run_Bad(t *testing.T) {
+	err := exec.Command(context.Background(), "false").Run()
+	if err == nil {
+		t.Fatal("expected run error")
+	}
+}
+
+func TestExec_Cmd_Run_Ugly(t *testing.T) {
+	err := exec.Command(nil, "true").Run()
+	if err == nil {
+		t.Fatal("expected nil context error")
+	}
+}
+
+func TestExec_Cmd_Output_Good(t *testing.T) {
+	out, err := exec.Command(context.Background(), "echo", "hello").Output()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(out), "hello") {
+		t.Fatalf("expected output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_Output_Bad(t *testing.T) {
+	out, err := exec.Command(context.Background(), "false").Output()
+	if err == nil {
+		t.Fatal("expected output error")
+	}
+	if out != nil {
+		t.Fatalf("expected nil output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_Output_Ugly(t *testing.T) {
+	_, err := exec.Command(context.Background(), "echo").WithBackground(true).Output()
+	if err == nil {
+		t.Fatal("expected background output error")
+	}
+}
+
+func TestExec_Cmd_CombinedOutput_Good(t *testing.T) {
+	out, err := exec.Command(context.Background(), "sh", "-c", "echo out; echo err >&2").CombinedOutput()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(out), "out") || !strings.Contains(string(out), "err") {
+		t.Fatalf("expected combined output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_CombinedOutput_Bad(t *testing.T) {
+	out, err := exec.Command(context.Background(), "sh", "-c", "echo bad; exit 2").CombinedOutput()
+	if err == nil {
+		t.Fatal("expected combined output error")
+	}
+	if !strings.Contains(string(out), "bad") {
+		t.Fatalf("expected partial output, got %q", string(out))
+	}
+}
+
+func TestExec_Cmd_CombinedOutput_Ugly(t *testing.T) {
+	_, err := exec.Command(context.Background(), "echo").WithBackground(true).CombinedOutput()
+	if err == nil {
+		t.Fatal("expected background combined output error")
+	}
+}
+
+func TestExec_RunQuiet_Good(t *testing.T) {
+	err := exec.RunQuiet(context.Background(), "true")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExec_RunQuiet_Bad(t *testing.T) {
+	err := exec.RunQuiet(context.Background(), "false")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestExec_RunQuiet_Ugly(t *testing.T) {
+	err := exec.RunQuiet(nil, "true")
+	if err == nil {
+		t.Fatal("expected nil context error")
+	}
+}

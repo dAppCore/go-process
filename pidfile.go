@@ -6,7 +6,7 @@ import (
 	"sync"
 	"syscall"
 
-	"dappco.re/go/core"
+	"dappco.re/go"
 	coreio "dappco.re/go/io"
 )
 
@@ -48,7 +48,9 @@ func (p *PIDFile) Acquire() error {
 				}
 			}
 		}
-		_ = coreio.Local.Delete(p.path)
+		if err := coreio.Local.Delete(p.path); err != nil {
+			return core.E("pidfile.acquire", "failed to remove stale PID file", err)
+		}
 	}
 
 	if dir := core.PathDir(p.path); dir != "." {
