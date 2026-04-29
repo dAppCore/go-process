@@ -16,14 +16,14 @@ func ExampleProgram_Find() {
 
 func ExampleProgram_Run() {
 	program := &process.Program{Name: "echo"}
-	out, _ := program.Run(context.Background(), "hello")
+	out := exampleStringResult(program.Run(context.Background(), "hello"))
 	Println(out)
 	// Output: hello
 }
 
 func ExampleProgram_RunDir() {
 	program := &process.Program{Name: "pwd"}
-	out, _ := program.RunDir(context.Background(), TempDir())
+	out := exampleStringResult(program.RunDir(context.Background(), TempDir()))
 	Println(out != "")
 	// Output: true
 }

@@ -22,8 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type goError = error
-
 // ProcessProvider wraps the go-process daemon Registry as a service provider.
 // It implements provider.Provider, provider.Streamable, provider.Describable,
 // and provider.Renderable.
@@ -506,11 +504,12 @@ func (p *ProcessProvider) Describe() []api.RouteDescription {
 // -- Handlers -----------------------------------------------------------------
 
 func (p *ProcessProvider) listDaemons(c *gin.Context) {
-	entries, err := p.registry.List()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("list_failed", err.Error()))
+	result := p.registry.List()
+	if !result.OK {
+		c.JSON(http.StatusInternalServerError, api.Fail("list_failed", result.Error()))
 		return
 	}
+	entries := result.Value.([]process.DaemonEntry)
 	if entries == nil {
 		entries = []process.DaemonEntry{}
 	}
@@ -643,11 +642,12 @@ func (p *ProcessProvider) startProcess(c *gin.Context) {
 		return
 	}
 
-	proc, err := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", err.Error()))
+	result := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
+	if !result.OK {
+		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", result.Error()))
 		return
 	}
+	proc := result.Value.(*process.Process)
 
 	c.JSON(http.StatusOK, api.OK(proc.Info()))
 }
@@ -668,11 +668,12 @@ func (p *ProcessProvider) startProcessRFC(c *gin.Context) {
 		return
 	}
 
-	proc, err := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", err.Error()))
+	result := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
+	if !result.OK {
+		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", result.Error()))
 		return
 	}
+	proc := result.Value.(*process.Process)
 
 	c.JSON(http.StatusOK, api.OK(proc.ID))
 }
@@ -693,7 +694,7 @@ func (p *ProcessProvider) runProcess(c *gin.Context) {
 		return
 	}
 
-	output, err := p.service.RunWithOptions(c.Request.Context(), process.RunOptions{
+	result := p.service.RunWithOptions(c.Request.Context(), process.RunOptions{
 		Command:        req.Command,
 		Args:           req.Args,
 		Dir:            req.Dir,
@@ -704,14 +705,14 @@ func (p *ProcessProvider) runProcess(c *gin.Context) {
 		GracePeriod:    req.GracePeriod,
 		KillGroup:      req.KillGroup,
 	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.FailWithDetails("run_failed", err.Error(), map[string]any{
-			"output": output,
+	if !result.OK {
+		c.JSON(http.StatusInternalServerError, api.FailWithDetails("run_failed", result.Error(), map[string]any{
+			"output": "",
 		}))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(output))
+	c.JSON(http.StatusOK, api.OK(result.Value.(string)))
 }
 
 func (p *ProcessProvider) getProcess(c *gin.Context) {
@@ -720,11 +721,12 @@ func (p *ProcessProvider) getProcess(c *gin.Context) {
 		return
 	}
 
-	proc, err := p.service.Get(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusNotFound, api.Fail("not_found", err.Error()))
+	result := p.service.Get(c.Param("id"))
+	if !result.OK {
+		c.JSON(http.StatusNotFound, api.Fail("not_found", result.Error()))
 		return
 	}
+	proc := result.Value.(*process.Process)
 
 	c.JSON(http.StatusOK, api.OK(proc.Info()))
 }
@@ -754,17 +756,17 @@ func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
 		return
 	}
 
-	output, err := p.service.Output(c.Param("id"))
-	if err != nil {
+	result := p.service.Output(c.Param("id"))
+	if !result.OK {
 		status := http.StatusInternalServerError
-		if err == process.ErrProcessNotFound {
+		if result.Value == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("not_found", err.Error()))
+		c.JSON(status, api.Fail("not_found", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(output))
+	c.JSON(http.StatusOK, api.OK(result.Value.(string)))
 }
 
 func (p *ProcessProvider) waitProcess(c *gin.Context) {
@@ -773,20 +775,24 @@ func (p *ProcessProvider) waitProcess(c *gin.Context) {
 		return
 	}
 
-	info, err := p.service.Wait(c.Param("id"))
-	if err != nil {
+	result := p.service.Wait(c.Param("id"))
+	if !result.OK {
 		status := http.StatusInternalServerError
+		info := process.Info{}
+		if waitErr, ok := result.Value.(*process.TaskProcessWaitError); ok {
+			info = waitErr.Info
+		}
 		switch {
-		case err == process.ErrProcessNotFound:
+		case result.Value == process.ErrProcessNotFound:
 			status = http.StatusNotFound
 		case info.Status == process.StatusExited || info.Status == process.StatusKilled:
 			status = http.StatusConflict
 		}
-		c.JSON(status, api.FailWithDetails("wait_failed", err.Error(), info))
+		c.JSON(status, api.FailWithDetails("wait_failed", result.Error(), info))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(info))
+	c.JSON(http.StatusOK, api.OK(result.Value.(process.Info)))
 }
 
 type processInputRequest struct {
@@ -931,11 +937,12 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 		return
 	}
 
-	sig, err := parseSignal(req.Signal)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_signal", err.Error()))
+	sigResult := parseSignal(req.Signal)
+	if !sigResult.OK {
+		c.JSON(http.StatusBadRequest, api.Fail("invalid_signal", sigResult.Error()))
 		return
 	}
+	sig := sigResult.Value.(syscall.Signal)
 
 	id := c.Param("id")
 	if result := p.service.Signal(id, sig); !result.OK {
@@ -987,28 +994,25 @@ func (p *ProcessProvider) runPipeline(c *gin.Context) {
 		ctx = context.Background()
 	}
 
-	var (
-		result *process.RunAllResult
-		err    error
-	)
+	var result core.Result
 
 	switch mode {
 	case "all":
-		result, err = p.runner.RunAll(ctx, req.Specs)
+		result = p.runner.RunAll(ctx, req.Specs)
 	case "sequential":
-		result, err = p.runner.RunSequential(ctx, req.Specs)
+		result = p.runner.RunSequential(ctx, req.Specs)
 	case "parallel":
-		result, err = p.runner.RunParallel(ctx, req.Specs)
+		result = p.runner.RunParallel(ctx, req.Specs)
 	default:
 		c.JSON(http.StatusBadRequest, api.Fail("invalid_mode", "mode must be one of: all, sequential, parallel"))
 		return
 	}
-	if err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("pipeline_failed", err.Error()))
+	if !result.OK {
+		c.JSON(http.StatusBadRequest, api.Fail("pipeline_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(result))
+	c.JSON(http.StatusOK, api.OK(result.Value.(*process.RunAllResult)))
 }
 
 // emitEvent sends a WS event if the hub is available.
@@ -1083,37 +1087,37 @@ func startRunOptions(req process.TaskProcessStart) process.RunOptions {
 	}
 }
 
-func parseSignal(value string) (syscall.Signal, goError) {
+func parseSignal(value string) core.Result {
 	trimmed := core.Trim(core.Upper(value))
 	if trimmed == "" {
-		return 0, corelog.E("ProcessProvider.parseSignal", "signal is required", nil)
+		return core.Fail(corelog.E("ProcessProvider.parseSignal", "signal is required", nil))
 	}
 
 	if n, err := strconv.Atoi(trimmed); err == nil {
-		return syscall.Signal(n), nil
+		return core.Ok(syscall.Signal(n))
 	}
 
 	switch trimmed {
 	case "SIGTERM", "TERM":
-		return syscall.SIGTERM, nil
+		return core.Ok(syscall.SIGTERM)
 	case "SIGKILL", "KILL":
-		return syscall.SIGKILL, nil
+		return core.Ok(syscall.SIGKILL)
 	case "SIGINT", "INT":
-		return syscall.SIGINT, nil
+		return core.Ok(syscall.SIGINT)
 	case "SIGQUIT", "QUIT":
-		return syscall.SIGQUIT, nil
+		return core.Ok(syscall.SIGQUIT)
 	case "SIGHUP", "HUP":
-		return syscall.SIGHUP, nil
+		return core.Ok(syscall.SIGHUP)
 	case "SIGSTOP", "STOP":
-		return syscall.SIGSTOP, nil
+		return core.Ok(syscall.SIGSTOP)
 	case "SIGCONT", "CONT":
-		return syscall.SIGCONT, nil
+		return core.Ok(syscall.SIGCONT)
 	case "SIGUSR1", "USR1":
-		return syscall.SIGUSR1, nil
+		return core.Ok(syscall.SIGUSR1)
 	case "SIGUSR2", "USR2":
-		return syscall.SIGUSR2, nil
+		return core.Ok(syscall.SIGUSR2)
 	default:
-		return 0, corelog.E("ProcessProvider.parseSignal", "unsupported signal", nil)
+		return core.Fail(corelog.E("ProcessProvider.parseSignal", "unsupported signal", nil))
 	}
 }
 
@@ -1177,10 +1181,11 @@ func (p *ProcessProvider) processEventPayload(id string) map[string]any {
 		return map[string]any{}
 	}
 
-	proc, err := p.service.Get(id)
-	if err != nil {
+	result := p.service.Get(id)
+	if !result.OK {
 		return map[string]any{}
 	}
+	proc := result.Value.(*process.Process)
 
 	info := proc.Info()
 	return map[string]any{

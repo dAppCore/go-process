@@ -48,11 +48,11 @@ func (p *Program) Find() core.Result {
 	if target == "" {
 		return core.Fail(coreerr.E("Program.Find", "program name is empty", nil))
 	}
-	path, err := lookPath(target)
-	if err != nil {
+	result := lookPath(target)
+	if !result.OK {
 		return core.Fail(coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound))
 	}
-	p.Path = path
+	p.Path = result.Value.(string)
 	return core.Ok(nil)
 }
 
@@ -61,8 +61,8 @@ func (p *Program) Find() core.Result {
 //
 // Example:
 //
-//	out, err := p.Run(ctx, "hello")
-func (p *Program) Run(ctx context.Context, args ...string) (string, goError) {
+//	result := p.Run(ctx, "hello")
+func (p *Program) Run(ctx context.Context, args ...string) core.Result {
 	return p.RunDir(ctx, "", args...)
 }
 
@@ -72,10 +72,10 @@ func (p *Program) Run(ctx context.Context, args ...string) (string, goError) {
 //
 // Example:
 //
-//	out, err := p.RunDir(ctx, "/tmp", "pwd")
-func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (string, goError) {
+//	result := p.RunDir(ctx, "/tmp", "pwd")
+func (p *Program) RunDir(ctx context.Context, dir string, args ...string) core.Result {
 	if ctx == nil {
-		return "", coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired)
+		return core.Fail(coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired))
 	}
 
 	binary := p.Path
@@ -84,7 +84,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if binary == "" {
-		return "", coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired)
+		return core.Fail(coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired))
 	}
 
 	out := core.NewBuffer()
@@ -96,9 +96,9 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 	}
 
 	if err := cmd.Run(); err != nil {
-		return trimRightSpace(out.String()), coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err)
+		return core.Fail(coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err))
 	}
-	return trimRightSpace(out.String()), nil
+	return core.Ok(trimRightSpace(out.String()))
 }
 
 func trimRightSpace(s string) string {

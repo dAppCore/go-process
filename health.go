@@ -16,8 +16,8 @@ import (
 	corelog "dappco.re/go/log"
 )
 
-// HealthCheck is a function that returns nil when the service is healthy.
-type HealthCheck func() error
+// HealthCheck is a function that returns a successful Result when the service is healthy.
+type HealthCheck func() core.Result
 
 // HealthServer provides HTTP `/health` and `/ready` endpoints for process monitoring.
 type HealthServer struct {
@@ -45,7 +45,7 @@ func NewHealthServer(addr string) *HealthServer {
 //
 // Example:
 //
-//	server.AddCheck(func() error { return nil })
+//	server.AddCheck(func() core.Result { return core.Ok(nil) })
 func (h *HealthServer) AddCheck(check HealthCheck) {
 	h.mu.Lock()
 	h.checks = append(h.checks, check)
@@ -80,7 +80,7 @@ func (h *HealthServer) Ready() bool {
 //
 // Example:
 //
-//	if err := server.Start(); err != nil { return err }
+//	if r := server.Start(); !r.OK { return r }
 func (h *HealthServer) Start() core.Result {
 	mux := http.NewServeMux()
 
@@ -91,9 +91,9 @@ func (h *HealthServer) Start() core.Result {
 			if check == nil {
 				continue
 			}
-			if err := check(); err != nil {
+			if r := check(); !r.OK {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				core.Print(w, "unhealthy: %v", err)
+				core.Print(w, "unhealthy: %s", r.Error())
 				return
 			}
 		}

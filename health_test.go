@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"testing"
+
+	core "dappco.re/go"
 )
 
 func TestHealthServer_Endpoints(t *testing.T) {
@@ -47,11 +49,11 @@ func TestHealthServer_WithChecks(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 
 	healthy := true
-	hs.AddCheck(func() error {
+	hs.AddCheck(func() core.Result {
 		if !healthy {
-			return errSentinel
+			return core.Fail(errSentinel)
 		}
-		return nil
+		return core.Ok(nil)
 	})
 
 	requireNoError(t, hs.Start())
@@ -92,9 +94,9 @@ func TestHealthServer_NilCheckIgnored(t *testing.T) {
 func TestHealthServer_ChecksSnapshotIsStable(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 
-	hs.AddCheck(func() error { return nil })
+	hs.AddCheck(func() core.Result { return core.Ok(nil) })
 	snapshot := hs.checksSnapshot()
-	hs.AddCheck(func() error { return errSentinel })
+	hs.AddCheck(func() core.Result { return core.Fail(errSentinel) })
 
 	requireLen(t, snapshot, 1)
 	requireNotNil(t, snapshot[0])
@@ -170,15 +172,15 @@ func TestHealth_NewHealthServer_Ugly(t *testing.T) {
 
 func TestHealth_HealthServer_AddCheck_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
-	hs.AddCheck(func() error { return nil })
+	hs.AddCheck(func() core.Result { return core.Ok(nil) })
 	checks := hs.checksSnapshot()
 	requireLen(t, checks, 1)
-	assertNil(t, checks[0]())
+	assertNoError(t, checks[0]())
 }
 
 func TestHealth_HealthServer_AddCheck_Bad(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
-	hs.AddCheck(func() error { return errSentinel })
+	hs.AddCheck(func() core.Result { return core.Fail(errSentinel) })
 	checks := hs.checksSnapshot()
 	requireLen(t, checks, 1)
 	assertErrorIs(t, checks[0](), errSentinel)
@@ -342,7 +344,7 @@ func TestHealth_ProbeHealth_Bad(t *testing.T) {
 
 func TestHealth_ProbeHealth_Ugly(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
-	hs.AddCheck(func() error { return errSentinel })
+	hs.AddCheck(func() core.Result { return core.Fail(errSentinel) })
 	requireNoError(t, hs.Start())
 	defer func() { requireNoError(t, hs.Stop(context.Background())) }()
 	ok, reason := ProbeHealth(hs.Addr(), 1)

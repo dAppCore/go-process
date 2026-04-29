@@ -135,8 +135,8 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 //
 // Example:
 //
-//	entries, err := reg.List()
-func (r *Registry) List() ([]DaemonEntry, goError) {
+//	result := reg.List()
+func (r *Registry) List() core.Result {
 	matches := core.PathGlob(core.PathJoin(r.dir, "*.json"))
 
 	var alive []DaemonEntry
@@ -174,7 +174,7 @@ func (r *Registry) List() ([]DaemonEntry, goError) {
 		return alive[i].Started.Before(alive[j].Started)
 	})
 
-	return alive, nil
+	return core.Ok(alive)
 }
 
 // entryPath returns the filesystem path for a daemon entry.

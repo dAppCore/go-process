@@ -27,29 +27,29 @@ func ExampleRunAllResult_Success() {
 
 func ExampleRunner_RunAll() {
 	runner := process.NewRunner(exampleService())
-	result, _ := runner.RunAll(context.Background(), []process.RunSpec{
+	result := exampleRunAllResult(runner.RunAll(context.Background(), []process.RunSpec{
 		{Name: "echo", Command: "echo", Args: []string{"ok"}},
-	})
+	}))
 	Println(result.Success())
 	// Output: true
 }
 
 func ExampleRunner_RunSequential() {
 	runner := process.NewRunner(exampleService())
-	result, _ := runner.RunSequential(context.Background(), []process.RunSpec{
+	result := exampleRunAllResult(runner.RunSequential(context.Background(), []process.RunSpec{
 		{Name: "first", Command: "echo", Args: []string{"first"}},
 		{Name: "second", Command: "echo", Args: []string{"second"}, After: []string{"first"}},
-	})
+	}))
 	Println(result.Passed)
 	// Output: 2
 }
 
 func ExampleRunner_RunParallel() {
 	runner := process.NewRunner(exampleService())
-	result, _ := runner.RunParallel(context.Background(), []process.RunSpec{
+	result := exampleRunAllResult(runner.RunParallel(context.Background(), []process.RunSpec{
 		{Name: "one", Command: "true"},
 		{Name: "two", Command: "true"},
-	})
+	}))
 	Println(result.Passed)
 	// Output: 2
 }

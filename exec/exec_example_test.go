@@ -14,20 +14,20 @@ func ExampleCommand() {
 }
 
 func ExampleCmd_WithDir() {
-	out, _ := exec.Command(context.Background(), "pwd").WithDir(TempDir()).Output()
-	Println(Trim(string(out)) != "")
+	result := exec.Command(context.Background(), "pwd").WithDir(TempDir()).Output()
+	Println(result.OK && Trim(string(result.Value.([]byte))) != "")
 	// Output: true
 }
 
 func ExampleCmd_WithEnv() {
-	out, _ := exec.Command(context.Background(), "sh", "-c", "printf %s \"$EXAMPLE_ENV\"").WithEnv([]string{"EXAMPLE_ENV=ok"}).Output()
-	Println(string(out))
+	result := exec.Command(context.Background(), "sh", "-c", "printf %s \"$EXAMPLE_ENV\"").WithEnv([]string{"EXAMPLE_ENV=ok"}).Output()
+	Println(string(result.Value.([]byte)))
 	// Output: ok
 }
 
 func ExampleCmd_WithStdin() {
-	out, _ := exec.Command(context.Background(), "cat").WithStdin(NewReader("input")).Output()
-	Println(string(out))
+	result := exec.Command(context.Background(), "cat").WithStdin(NewReader("input")).Output()
+	Println(string(result.Value.([]byte)))
 	// Output: input
 }
 
@@ -70,14 +70,15 @@ func ExampleCmd_Run() {
 }
 
 func ExampleCmd_Output() {
-	out, _ := exec.Command(context.Background(), "echo", "hello").Output()
-	Println(Trim(string(out)))
+	result := exec.Command(context.Background(), "echo", "hello").Output()
+	Println(Trim(string(result.Value.([]byte))))
 	// Output: hello
 }
 
 func ExampleCmd_CombinedOutput() {
-	out, _ := exec.Command(context.Background(), "sh", "-c", "echo out; echo err >&2").CombinedOutput()
-	Println(Contains(string(out), "out"), Contains(string(out), "err"))
+	result := exec.Command(context.Background(), "sh", "-c", "echo out; echo err >&2").CombinedOutput()
+	out := string(result.Value.([]byte))
+	Println(Contains(out, "out"), Contains(out, "err"))
 	// Output: true true
 }
 

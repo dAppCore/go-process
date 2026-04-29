@@ -73,8 +73,7 @@ func TestRegistry_List(t *testing.T) {
 	requireNoError(t, reg.Register(DaemonEntry{Code: "app1", Daemon: "web", PID: core.Getpid()}))
 	requireNoError(t, reg.Register(DaemonEntry{Code: "app2", Daemon: "api", PID: core.Getpid()}))
 
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	requireLen(t, entries, 2)
 	assertEqual(t, "app1", entries[0].Code)
 	assertEqual(t, "app2", entries[1].Code)
@@ -90,8 +89,7 @@ func TestRegistry_List_PrunesStale(t *testing.T) {
 	path := core.PathJoin(dir, "dead-proc.json")
 	requireTrue(t, core.Stat(path).OK)
 
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	assertEmpty(t, entries)
 
 	// Stale file should be removed
@@ -142,8 +140,7 @@ func TestRegistry_NewRegistry_Bad(t *testing.T) {
 func TestRegistry_NewRegistry_Ugly(t *testing.T) {
 	dir := core.PathJoin(t.TempDir(), "nested", "daemons")
 	reg := NewRegistry(dir)
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	assertEmpty(t, entries)
 }
 
@@ -175,8 +172,7 @@ func TestRegistry_Registry_Register_Good(t *testing.T) {
 func TestRegistry_Registry_Register_Bad(t *testing.T) {
 	reg := NewRegistry(t.TempDir())
 	requireNoError(t, reg.Register(DaemonEntry{Code: "dead", Daemon: "web", PID: 0}))
-	entries, listErr := reg.List()
-	requireNoError(t, listErr)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	assertEmpty(t, entries)
 }
 
@@ -233,16 +229,14 @@ func TestRegistry_Registry_Get_Ugly(t *testing.T) {
 func TestRegistry_Registry_List_Good(t *testing.T) {
 	reg := NewRegistry(t.TempDir())
 	requireNoError(t, reg.Register(DaemonEntry{Code: "app", Daemon: "web", PID: core.Getpid()}))
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	requireLen(t, entries, 1)
 	assertEqual(t, "app", entries[0].Code)
 }
 
 func TestRegistry_Registry_List_Bad(t *testing.T) {
 	reg := NewRegistry(t.TempDir())
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	assertEmpty(t, entries)
 }
 
@@ -250,7 +244,6 @@ func TestRegistry_Registry_List_Ugly(t *testing.T) {
 	reg := NewRegistry(t.TempDir())
 	requireTrue(t, core.MkdirAll(reg.dir, 0755).OK)
 	requireTrue(t, core.WriteFile(core.PathJoin(reg.dir, "bad-json.json"), []byte("{"), 0644).OK)
-	entries, err := reg.List()
-	requireNoError(t, err)
+	entries := requireResultValue[[]DaemonEntry](t, reg.List())
 	assertEmpty(t, entries)
 }

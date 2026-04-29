@@ -102,16 +102,16 @@ func (r RunAllResult) Success() bool {
 //
 // Example:
 //
-//	result, err := runner.RunAll(ctx, specs)
-func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+//	result := runner.RunAll(ctx, specs)
+func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) core.Result {
 	if result := r.ensureService(); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := ensureRunnerContext(ctx); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := validateSpecs(specs); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	start := time.Now()
 
@@ -228,7 +228,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, go
 		}
 	}
 
-	return aggResult, nil
+	return core.Ok(aggResult)
 }
 
 func (r *Runner) ensureService() core.Result {
@@ -252,20 +252,21 @@ func (r *Runner) canRun(spec RunSpec, completed map[string]*RunResult) bool {
 func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	start := time.Now()
 
-	proc, err := r.service.StartWithOptions(ctx, RunOptions{
+	startResult := r.service.StartWithOptions(ctx, RunOptions{
 		Command: spec.Command,
 		Args:    spec.Args,
 		Dir:     spec.Dir,
 		Env:     spec.Env,
 	})
-	if err != nil {
+	if !startResult.OK {
 		return RunResult{
 			Name:     spec.Name,
 			Spec:     spec,
 			Duration: time.Since(start),
-			Error:    err,
+			Error:    startResult.Value.(error),
 		}
 	}
+	proc := startResult.Value.(*Process)
 
 	<-proc.Done()
 
@@ -294,16 +295,16 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 //
 // Example:
 //
-//	result, err := runner.RunSequential(ctx, specs)
-func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+//	result := runner.RunSequential(ctx, specs)
+func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) core.Result {
 	if result := r.ensureService(); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := ensureRunnerContext(ctx); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := validateSpecs(specs); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
@@ -341,23 +342,23 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 		}
 	}
 
-	return aggResult, nil
+	return core.Ok(aggResult)
 }
 
 // RunParallel executes all specs concurrently, regardless of dependencies.
 //
 // Example:
 //
-//	result, err := runner.RunParallel(ctx, specs)
-func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+//	result := runner.RunParallel(ctx, specs)
+func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) core.Result {
 	if result := r.ensureService(); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := ensureRunnerContext(ctx); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	if result := validateSpecs(specs); !result.OK {
-		return nil, result.Value.(error)
+		return result
 	}
 	start := time.Now()
 	results := make([]RunResult, len(specs))
@@ -391,7 +392,7 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 		}
 	}
 
-	return aggResult, nil
+	return core.Ok(aggResult)
 }
 
 func validateSpecs(specs []RunSpec) core.Result {

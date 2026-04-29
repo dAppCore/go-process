@@ -36,7 +36,7 @@ func ExampleRegister() {
 
 func ExampleStart() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "echo", "start")
+	proc := exampleProcessResult(process.Start(context.Background(), "echo", "start"))
 	<-proc.Done()
 	Println(Trim(proc.Output()))
 	// Output: start
@@ -44,32 +44,32 @@ func ExampleStart() {
 
 func ExampleRun() {
 	useExampleDefault()
-	out, _ := process.Run(context.Background(), "echo", "run")
+	out := exampleStringResult(process.Run(context.Background(), "echo", "run"))
 	Println(out)
 	// Output: run
 }
 
 func ExampleGet() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "true")
+	proc := exampleProcessResult(process.Start(context.Background(), "true"))
 	<-proc.Done()
-	got, _ := process.Get(proc.ID)
+	got := exampleProcessResult(process.Get(proc.ID))
 	Println(got.ID == proc.ID)
 	// Output: true
 }
 
 func ExampleOutput() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "echo", "output")
+	proc := exampleProcessResult(process.Start(context.Background(), "echo", "output"))
 	<-proc.Done()
-	out, _ := process.Output(proc.ID)
+	out := exampleStringResult(process.Output(proc.ID))
 	Println(Trim(out))
 	// Output: output
 }
 
 func ExampleInput() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "cat")
+	proc := exampleProcessResult(process.Start(context.Background(), "cat"))
 	process.Input(proc.ID, "input\n")
 	process.CloseStdin(proc.ID)
 	<-proc.Done()
@@ -79,22 +79,22 @@ func ExampleInput() {
 
 func ExampleCloseStdin() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "cat")
+	proc := exampleProcessResult(process.Start(context.Background(), "cat"))
 	Println(process.CloseStdin(proc.ID).OK)
 	// Output: true
 }
 
 func ExampleWait() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "true")
-	info, _ := process.Wait(proc.ID)
+	proc := exampleProcessResult(process.Start(context.Background(), "true"))
+	info := exampleInfoResult(process.Wait(proc.ID))
 	Println(info.Status)
 	// Output: exited
 }
 
 func ExampleList() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "true")
+	proc := exampleProcessResult(process.Start(context.Background(), "true"))
 	<-proc.Done()
 	Println(len(process.List()) > 0)
 	// Output: true
@@ -102,35 +102,35 @@ func ExampleList() {
 
 func ExampleKill() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "sleep", "5")
+	proc := exampleProcessResult(process.Start(context.Background(), "sleep", "5"))
 	Println(process.Kill(proc.ID).OK)
 	// Output: true
 }
 
 func ExampleKillPID() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "sleep", "5")
+	proc := exampleProcessResult(process.Start(context.Background(), "sleep", "5"))
 	Println(process.KillPID(proc.Info().PID).OK)
 	// Output: true
 }
 
 func ExampleSignal() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "sleep", "5")
+	proc := exampleProcessResult(process.Start(context.Background(), "sleep", "5"))
 	Println(process.Signal(proc.ID, syscall.SIGTERM).OK)
 	// Output: true
 }
 
 func ExampleSignalPID() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "sleep", "5")
+	proc := exampleProcessResult(process.Start(context.Background(), "sleep", "5"))
 	Println(process.SignalPID(proc.Info().PID, syscall.SIGTERM).OK)
 	// Output: true
 }
 
 func ExampleStartWithOptions() {
 	useExampleDefault()
-	proc, _ := process.StartWithOptions(context.Background(), process.RunOptions{Command: "echo", Args: []string{"options"}})
+	proc := exampleProcessResult(process.StartWithOptions(context.Background(), process.RunOptions{Command: "echo", Args: []string{"options"}}))
 	<-proc.Done()
 	Println(Trim(proc.Output()))
 	// Output: options
@@ -138,14 +138,14 @@ func ExampleStartWithOptions() {
 
 func ExampleRunWithOptions() {
 	useExampleDefault()
-	out, _ := process.RunWithOptions(context.Background(), process.RunOptions{Command: "echo", Args: []string{"configured"}})
+	out := exampleStringResult(process.RunWithOptions(context.Background(), process.RunOptions{Command: "echo", Args: []string{"configured"}}))
 	Println(out)
 	// Output: configured
 }
 
 func ExampleRunning() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "sleep", "1")
+	proc := exampleProcessResult(process.Start(context.Background(), "sleep", "1"))
 	defer process.Kill(proc.ID)
 	Println(len(process.Running()) > 0)
 	// Output: true
@@ -153,7 +153,7 @@ func ExampleRunning() {
 
 func ExampleRemove() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "true")
+	proc := exampleProcessResult(process.Start(context.Background(), "true"))
 	<-proc.Done()
 	Println(process.Remove(proc.ID).OK)
 	// Output: true
@@ -161,7 +161,7 @@ func ExampleRemove() {
 
 func ExampleClear() {
 	useExampleDefault()
-	proc, _ := process.Start(context.Background(), "true")
+	proc := exampleProcessResult(process.Start(context.Background(), "true"))
 	<-proc.Done()
 	process.Clear()
 	Println(len(process.List()))

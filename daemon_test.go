@@ -43,10 +43,10 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 		HealthAddr:      "127.0.0.1:0",
 		ShutdownTimeout: 5 * time.Second,
 		HealthChecks: []HealthCheck{
-			func() error {
+			func() core.Result {
 				once.Do(func() { close(checkEntered) })
 				<-blockCheck
-				return nil
+				return core.Ok(nil)
 			},
 		},
 	})
@@ -121,10 +121,10 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 			Daemon: "serve",
 		},
 		HealthChecks: []HealthCheck{
-			func() error {
+			func() core.Result {
 				once.Do(func() { close(checkEntered) })
 				<-blockCheck
-				return nil
+				return core.Ok(nil)
 			},
 		},
 	})

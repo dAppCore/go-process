@@ -182,7 +182,7 @@ type processActionInput struct {
 	PID            int
 }
 
-func parseProcessActionInput(opts core.Options, requireCommand bool) (processActionInput, goError) {
+func parseProcessActionInput(opts core.Options, requireCommand bool) core.Result {
 	parsed := processActionInput{
 		Command:        core.Trim(opts.String("command")),
 		Dir:            opts.String("dir"),
@@ -193,35 +193,35 @@ func parseProcessActionInput(opts core.Options, requireCommand bool) (processAct
 		GracePeriod:    parseDurationOption(opts, "gracePeriod"),
 	}
 
-	var err error
-
-	parsed.Args, err = parseStringSliceOption(opts, "args")
-	if err != nil {
-		return processActionInput{}, err
+	argsResult := parseStringSliceOption(opts, "args")
+	if !argsResult.OK {
+		return argsResult
 	}
+	parsed.Args, _ = argsResult.Value.([]string)
 
-	parsed.Env, err = parseStringSliceOption(opts, "env")
-	if err != nil {
-		return processActionInput{}, err
+	envResult := parseStringSliceOption(opts, "env")
+	if !envResult.OK {
+		return envResult
 	}
+	parsed.Env, _ = envResult.Value.([]string)
 
 	parsed.ID = core.Trim(opts.String("id"))
 	parsed.PID = parseIntOption(opts, "pid")
 
 	if requireCommand && parsed.Command == "" {
-		return processActionInput{}, coreerr.E("process action", "command is required", nil)
+		return core.Fail(coreerr.E("process action", "command is required", nil))
 	}
 
-	return parsed, nil
+	return core.Ok(parsed)
 }
 
-func parseProcessActionTarget(opts core.Options) (string, int, goError) {
+func parseProcessActionTarget(opts core.Options) core.Result {
 	id := core.Trim(opts.String("id"))
 	pid := parseIntOption(opts, "pid")
 	if id == "" && pid <= 0 {
-		return "", 0, coreerr.E("process action", "id or pid is required", nil)
+		return core.Fail(coreerr.E("process action", "id or pid is required", nil))
 	}
-	return id, pid, nil
+	return core.Ok(processActionInput{ID: id, PID: pid})
 }
 
 func parseDurationOption(opts core.Options, key string) time.Duration {
@@ -310,15 +310,15 @@ func parseIntOption(opts core.Options, key string) int {
 	return 0
 }
 
-func parseStringSliceOption(opts core.Options, key string) ([]string, goError) {
+func parseStringSliceOption(opts core.Options, key string) core.Result {
 	r := opts.Get(key)
 	if !r.OK {
-		return nil, nil
+		return core.Ok([]string(nil))
 	}
 
 	raw, ok := r.Value.([]string)
 	if ok {
-		return raw, nil
+		return core.Ok(raw)
 	}
 
 	anyList, ok := r.Value.([]any)
@@ -326,7 +326,7 @@ func parseStringSliceOption(opts core.Options, key string) ([]string, goError) {
 		if alt, ok := r.Value.([]interface{}); ok {
 			anyList = alt
 		} else {
-			return nil, coreerr.E("process action", core.Sprintf("%s must be an array", key), nil)
+			return core.Fail(coreerr.E("process action", core.Sprintf("%s must be an array", key), nil))
 		}
 	}
 
@@ -334,12 +334,12 @@ func parseStringSliceOption(opts core.Options, key string) ([]string, goError) {
 	for _, item := range anyList {
 		value, ok := item.(string)
 		if !ok {
-			return nil, coreerr.E("process action", core.Sprintf("%s entries must be strings", key), nil)
+			return core.Fail(coreerr.E("process action", core.Sprintf("%s entries must be strings", key), nil))
 		}
 		items = append(items, value)
 	}
 
-	return items, nil
+	return core.Ok(items)
 }
 
 // TaskProcessList requests a snapshot of managed processes through Core.PERFORM.

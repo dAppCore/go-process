@@ -48,7 +48,7 @@ func ExampleRegistry_Get() {
 func ExampleRegistry_List() {
 	reg := exampleRegistry()
 	reg.Register(process.DaemonEntry{Code: "app", Daemon: "web", PID: Getpid()})
-	entries, _ := reg.List()
+	entries := reg.List().Value.([]process.DaemonEntry)
 	Println(len(entries))
 	// Output: 1
 }

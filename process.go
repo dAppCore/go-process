@@ -149,44 +149,47 @@ func (p *ManagedProcess) Done() <-chan struct{} {
 //
 //	_ = proc.Kill()
 func (p *ManagedProcess) Kill() core.Result {
-	_, err := p.kill()
-	return core.ResultOf(nil, err)
+	result := p.kill()
+	if !result.OK {
+		return result
+	}
+	return core.Ok(nil)
 }
 
 // kill terminates the process and reports whether a signal was actually sent.
-func (p *ManagedProcess) kill() (bool, goError) {
+func (p *ManagedProcess) kill() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.Status != StatusRunning {
-		return false, nil
+		return core.Ok(false)
 	}
 
 	if p.cmd == nil || p.cmd.Process == nil {
-		return false, nil
+		return core.Ok(false)
 	}
 
 	if p.killGroup {
 		// Kill entire process group (negative PID)
-		return true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		return core.ResultOf(true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL))
 	}
-	return true, p.cmd.Process.Kill()
+	return core.ResultOf(true, p.cmd.Process.Kill())
 }
 
 // killTree forcefully terminates the process group when one exists.
-func (p *ManagedProcess) killTree() (bool, goError) {
+func (p *ManagedProcess) killTree() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.Status != StatusRunning {
-		return false, nil
+		return core.Ok(false)
 	}
 
 	if p.cmd == nil || p.cmd.Process == nil {
-		return false, nil
+		return core.Ok(false)
 	}
 
-	return true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+	return core.ResultOf(true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL))
 }
 
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.

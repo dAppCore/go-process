@@ -15,7 +15,7 @@ func ExampleNewHealthServer() {
 
 func ExampleHealthServer_AddCheck() {
 	hs := process.NewHealthServer("127.0.0.1:0")
-	hs.AddCheck(func() error { return nil })
+	hs.AddCheck(func() Result { return Ok(nil) })
 	Println(hs.Start().OK)
 	hs.Stop(context.Background())
 	// Output: true
@@ -66,7 +66,7 @@ func ExampleWaitForHealth() {
 
 func ExampleProbeHealth() {
 	hs := process.NewHealthServer("127.0.0.1:0")
-	hs.AddCheck(func() error { return E("example", "down", nil) })
+	hs.AddCheck(func() Result { return Fail(E("example", "down", nil)) })
 	hs.Start()
 	defer hs.Stop(context.Background())
 	ok, reason := process.ProbeHealth(hs.Addr(), 1000)

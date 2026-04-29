@@ -22,16 +22,16 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 
 	assertNil(t, Default())
 
-	_, err := Start(context.Background(), "echo", "test")
+	err := resultErr(Start(context.Background(), "echo", "test"))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = Run(context.Background(), "echo", "test")
+	err = resultErr(Run(context.Background(), "echo", "test"))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = Get("proc-1")
+	err = resultErr(Get("proc-1"))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = Output("proc-1")
+	err = resultErr(Output("proc-1"))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
 	err = Input("proc-1", "test")
@@ -55,10 +55,10 @@ func TestGlobal_DefaultNotInitialized(t *testing.T) {
 	err = KillPID(1234)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = StartWithOptions(context.Background(), RunOptions{Command: "echo"})
+	err = resultErr(StartWithOptions(context.Background(), RunOptions{Command: "echo"}))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 
-	_, err = RunWithOptions(context.Background(), RunOptions{Command: "echo"})
+	err = resultErr(RunWithOptions(context.Background(), RunOptions{Command: "echo"}))
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
@@ -66,9 +66,9 @@ func newGlobalTestService(t *testing.T) *Service {
 	t.Helper()
 	c := framework.New()
 	factory := NewService(Options{})
-	raw, err := factory(c)
-	requireNoError(t, err)
-	return raw.(*Service)
+	result := factory(c)
+	requireNoError(t, result)
+	return result.Value.(*Service)
 }
 
 func TestGlobal_SetDefault(t *testing.T) {
@@ -190,8 +190,9 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			proc, err := Start(context.Background(), "echo", "concurrent")
-			if err == nil {
+			result := Start(context.Background(), "echo", "concurrent")
+			if result.OK {
+				proc := result.Value.(*Process)
 				procMu.Lock()
 				processes = append(processes, proc)
 				procMu.Unlock()
@@ -223,7 +224,7 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 		wg2.Add(1)
 		go func(id string) {
 			defer wg2.Done()
-			got, err := Get(id)
+			got, err := resultValue[*Process](Get(id))
 			assertNoError(t, err)
 			assertNotNil(t, got)
 		}(p.ID)
@@ -241,11 +242,10 @@ func TestGlobal_StartWithOptions(t *testing.T) {
 		}
 	}()
 
-	proc, err := StartWithOptions(context.Background(), RunOptions{
+	proc := requireResultValue[*Process](t, StartWithOptions(context.Background(), RunOptions{
 		Command: "echo",
 		Args:    []string{"with", "options"},
-	})
-	requireNoError(t, err)
+	}))
 
 	<-proc.Done()
 
@@ -263,11 +263,10 @@ func TestGlobal_RunWithOptions(t *testing.T) {
 		}
 	}()
 
-	output, err := RunWithOptions(context.Background(), RunOptions{
+	output := requireResultValue[string](t, RunWithOptions(context.Background(), RunOptions{
 		Command: "echo",
 		Args:    []string{"run", "options"},
-	})
-	requireNoError(t, err)
+	}))
 	assertContains(t, output, "run options")
 }
 
@@ -281,12 +280,10 @@ func TestGlobal_Output(t *testing.T) {
 		}
 	}()
 
-	proc, err := Start(context.Background(), "echo", "global-output")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "global-output"))
 	<-proc.Done()
 
-	output, err := Output(proc.ID)
-	requireNoError(t, err)
+	output := requireResultValue[string](t, Output(proc.ID))
 	assertContains(t, output, "global-output")
 }
 
@@ -300,10 +297,9 @@ func TestGlobal_InputAndCloseStdin(t *testing.T) {
 		}
 	}()
 
-	proc, err := Start(context.Background(), "cat")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "cat"))
 
-	err = Input(proc.ID, "global-input\n")
+	err := Input(proc.ID, "global-input\n")
 	requireNoError(t, err)
 
 	err = CloseStdin(proc.ID)
@@ -324,11 +320,9 @@ func TestGlobal_Wait(t *testing.T) {
 		}
 	}()
 
-	proc, err := Start(context.Background(), "echo", "global-wait")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "global-wait"))
 
-	info, err := Wait(proc.ID)
-	requireNoError(t, err)
+	info := requireResultValue[Info](t, Wait(proc.ID))
 	assertEqual(t, proc.ID, info.ID)
 	assertEqual(t, StatusExited, info.Status)
 	assertEqual(t, 0, info.ExitCode)
@@ -344,10 +338,9 @@ func TestGlobal_Signal(t *testing.T) {
 		}
 	}()
 
-	proc, err := Start(context.Background(), "sleep", "60")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "60"))
 
-	err = Signal(proc.ID, syscall.SIGTERM)
+	err := Signal(proc.ID, syscall.SIGTERM)
 	requireNoError(t, err)
 
 	select {
@@ -409,8 +402,7 @@ func TestGlobal_Running(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proc, err := Start(ctx, "sleep", "60")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(ctx, "sleep", "60"))
 
 	running := Running()
 	assertLen(t, running, 1)
@@ -433,23 +425,21 @@ func TestGlobal_RemoveAndClear(t *testing.T) {
 		}
 	}()
 
-	proc, err := Start(context.Background(), "echo", "remove-me")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "remove-me"))
 	<-proc.Done()
 
-	err = Remove(proc.ID)
-	requireNoError(t, err)
+	removeResult := Remove(proc.ID)
+	requireNoError(t, removeResult)
 
-	_, err = Get(proc.ID)
+	err := resultErr(Get(proc.ID))
 	requireErrorIs(t, err, ErrProcessNotFound)
 
-	proc2, err := Start(context.Background(), "echo", "clear-me")
-	requireNoError(t, err)
+	proc2 := requireResultValue[*Process](t, Start(context.Background(), "echo", "clear-me"))
 	<-proc2.Done()
 
 	Clear()
 
-	_, err = Get(proc2.ID)
+	err = resultErr(Get(proc2.ID))
 	requireErrorIs(t, err, ErrProcessNotFound)
 }
 
@@ -529,7 +519,7 @@ func TestProcessGlobal_SetDefault_Ugly(t *testing.T) {
 func TestProcessGlobal_Init_Good(t *testing.T) {
 	withoutGlobalDefault(t)
 	defaultOnce = sync.Once{}
-	defaultErr = nil
+	defaultResult = framework.Result{}
 	err := Init(framework.New())
 	requireNoError(t, err)
 	assertNotNil(t, Default())
@@ -538,7 +528,7 @@ func TestProcessGlobal_Init_Good(t *testing.T) {
 func TestProcessGlobal_Init_Bad(t *testing.T) {
 	withoutGlobalDefault(t)
 	defaultOnce = sync.Once{}
-	defaultErr = nil
+	defaultResult = framework.Result{}
 	err := Init(nil)
 	requireNoError(t, err)
 	assertNotNil(t, Default())
@@ -547,7 +537,7 @@ func TestProcessGlobal_Init_Bad(t *testing.T) {
 func TestProcessGlobal_Init_Ugly(t *testing.T) {
 	withoutGlobalDefault(t)
 	defaultOnce = sync.Once{}
-	defaultErr = nil
+	defaultResult = framework.Result{}
 	requireNoError(t, Init(framework.New()))
 	first := Default()
 	requireNoError(t, Init(framework.New()))
@@ -580,98 +570,91 @@ func TestProcessGlobal_Register_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Start_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "hello"))
 	<-proc.Done()
 	assertEqual(t, StatusExited, proc.Status)
 }
 
 func TestProcessGlobal_Start_Bad(t *testing.T) {
 	withoutGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo")
+	proc, err := resultValue[*Process](Start(context.Background(), "echo"))
 	assertNil(t, proc)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_Start_Ugly(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "")
+	proc, err := resultValue[*Process](Start(context.Background(), ""))
 	assertNil(t, proc)
 	assertError(t, err)
 }
 
 func TestProcessGlobal_Run_Good(t *testing.T) {
 	withGlobalDefault(t)
-	out, err := Run(context.Background(), "echo", "hello")
-	requireNoError(t, err)
+	out := requireResultValue[string](t, Run(context.Background(), "echo", "hello"))
 	assertContains(t, out, "hello")
 }
 
 func TestProcessGlobal_Run_Bad(t *testing.T) {
 	withoutGlobalDefault(t)
-	out, err := Run(context.Background(), "echo")
+	out, err := resultValue[string](Run(context.Background(), "echo"))
 	assertEqual(t, "", out)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_Run_Ugly(t *testing.T) {
 	withGlobalDefault(t)
-	out, err := Run(context.Background(), "false")
+	out, err := resultValue[string](Run(context.Background(), "false"))
 	assertEqual(t, "", out)
 	assertError(t, err)
 }
 
 func TestProcessGlobal_Get_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
-	got, err := Get(proc.ID)
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "hello"))
+	got := requireResultValue[*Process](t, Get(proc.ID))
 	assertEqual(t, proc, got)
 }
 
 func TestProcessGlobal_Get_Bad(t *testing.T) {
 	withGlobalDefault(t)
-	got, err := Get("missing")
+	got, err := resultValue[*Process](Get("missing"))
 	assertNil(t, got)
 	assertErrorIs(t, err, ErrProcessNotFound)
 }
 
 func TestProcessGlobal_Get_Ugly(t *testing.T) {
 	withoutGlobalDefault(t)
-	got, err := Get("")
+	got, err := resultValue[*Process](Get(""))
 	assertNil(t, got)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_Output_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "hello"))
 	<-proc.Done()
-	out, err := Output(proc.ID)
-	requireNoError(t, err)
+	out := requireResultValue[string](t, Output(proc.ID))
 	assertContains(t, out, "hello")
 }
 
 func TestProcessGlobal_Output_Bad(t *testing.T) {
 	withGlobalDefault(t)
-	out, err := Output("missing")
+	out, err := resultValue[string](Output("missing"))
 	assertEqual(t, "", out)
 	assertErrorIs(t, err, ErrProcessNotFound)
 }
 
 func TestProcessGlobal_Output_Ugly(t *testing.T) {
 	withoutGlobalDefault(t)
-	out, err := Output("")
+	out, err := resultValue[string](Output(""))
 	assertEqual(t, "", out)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_Input_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "cat")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "cat"))
 	requireNoError(t, Input(proc.ID, "hello\n"))
 	requireNoError(t, CloseStdin(proc.ID))
 	<-proc.Done()
@@ -694,9 +677,8 @@ func TestProcessGlobal_Input_Ugly(t *testing.T) {
 
 func TestProcessGlobal_CloseStdin_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "cat")
-	requireNoError(t, err)
-	err = CloseStdin(proc.ID)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "cat"))
+	err := CloseStdin(proc.ID)
 	requireNoError(t, err)
 	<-proc.Done()
 }
@@ -717,31 +699,28 @@ func TestProcessGlobal_CloseStdin_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Wait_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
-	info, err := Wait(proc.ID)
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "hello"))
+	info := requireResultValue[Info](t, Wait(proc.ID))
 	assertEqual(t, proc.ID, info.ID)
 }
 
 func TestProcessGlobal_Wait_Bad(t *testing.T) {
 	withGlobalDefault(t)
-	info, err := Wait("missing")
+	info, err := resultValue[Info](Wait("missing"))
 	assertEqual(t, Info{}, info)
 	assertErrorIs(t, err, ErrProcessNotFound)
 }
 
 func TestProcessGlobal_Wait_Ugly(t *testing.T) {
 	withoutGlobalDefault(t)
-	info, err := Wait("")
+	info, err := resultValue[Info](Wait(""))
 	assertEqual(t, Info{}, info)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_List_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "hello"))
 	<-proc.Done()
 	procs := List()
 	assertLen(t, procs, 1)
@@ -763,9 +742,8 @@ func TestProcessGlobal_List_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Kill_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
-	err = Kill(proc.ID)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
+	err := Kill(proc.ID)
 	requireNoError(t, err)
 	<-proc.Done()
 }
@@ -786,10 +764,9 @@ func TestProcessGlobal_Kill_Ugly(t *testing.T) {
 
 func TestProcessGlobal_KillPID_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
 	pid := proc.Info().PID
-	err = KillPID(pid)
+	err := KillPID(pid)
 	requireNoError(t, err)
 	<-proc.Done()
 }
@@ -810,9 +787,8 @@ func TestProcessGlobal_KillPID_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Signal_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
-	err = Signal(proc.ID, syscall.SIGTERM)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
+	err := Signal(proc.ID, syscall.SIGTERM)
 	requireNoError(t, err)
 	<-proc.Done()
 }
@@ -833,10 +809,9 @@ func TestProcessGlobal_Signal_Ugly(t *testing.T) {
 
 func TestProcessGlobal_SignalPID_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
 	pid := proc.Info().PID
-	err = SignalPID(pid, syscall.SIGTERM)
+	err := SignalPID(pid, syscall.SIGTERM)
 	requireNoError(t, err)
 	<-proc.Done()
 }
@@ -857,51 +832,48 @@ func TestProcessGlobal_SignalPID_Ugly(t *testing.T) {
 
 func TestProcessGlobal_StartWithOptions_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := StartWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}})
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, StartWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}}))
 	<-proc.Done()
 	assertEqual(t, StatusExited, proc.Status)
 }
 
 func TestProcessGlobal_StartWithOptions_Bad(t *testing.T) {
 	withoutGlobalDefault(t)
-	proc, err := StartWithOptions(context.Background(), RunOptions{Command: "echo"})
+	proc, err := resultValue[*Process](StartWithOptions(context.Background(), RunOptions{Command: "echo"}))
 	assertNil(t, proc)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_StartWithOptions_Ugly(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := StartWithOptions(context.Background(), RunOptions{})
+	proc, err := resultValue[*Process](StartWithOptions(context.Background(), RunOptions{}))
 	assertNil(t, proc)
 	assertError(t, err)
 }
 
 func TestProcessGlobal_RunWithOptions_Good(t *testing.T) {
 	withGlobalDefault(t)
-	out, err := RunWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}})
-	requireNoError(t, err)
+	out := requireResultValue[string](t, RunWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}}))
 	assertContains(t, out, "hello")
 }
 
 func TestProcessGlobal_RunWithOptions_Bad(t *testing.T) {
 	withoutGlobalDefault(t)
-	out, err := RunWithOptions(context.Background(), RunOptions{Command: "echo"})
+	out, err := resultValue[string](RunWithOptions(context.Background(), RunOptions{Command: "echo"}))
 	assertEqual(t, "", out)
 	assertErrorIs(t, err, ErrServiceNotInitialized)
 }
 
 func TestProcessGlobal_RunWithOptions_Ugly(t *testing.T) {
 	withGlobalDefault(t)
-	out, err := RunWithOptions(context.Background(), RunOptions{Command: "false"})
+	out, err := resultValue[string](RunWithOptions(context.Background(), RunOptions{Command: "false"}))
 	assertEqual(t, "", out)
 	assertError(t, err)
 }
 
 func TestProcessGlobal_Running_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
 	running := Running()
 	requireLen(t, running, 1)
 	assertEqual(t, proc.ID, running[0].ID)
@@ -924,10 +896,9 @@ func TestProcessGlobal_Running_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Remove_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "remove")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "remove"))
 	<-proc.Done()
-	err = Remove(proc.ID)
+	err := Remove(proc.ID)
 	requireNoError(t, err)
 }
 
@@ -947,8 +918,7 @@ func TestProcessGlobal_Remove_Ugly(t *testing.T) {
 
 func TestProcessGlobal_Clear_Good(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "echo", "clear")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "echo", "clear"))
 	<-proc.Done()
 	Clear()
 	assertEmpty(t, List())
@@ -963,8 +933,7 @@ func TestProcessGlobal_Clear_Bad(t *testing.T) {
 
 func TestProcessGlobal_Clear_Ugly(t *testing.T) {
 	withGlobalDefault(t)
-	proc, err := Start(context.Background(), "sleep", "5")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, Start(context.Background(), "sleep", "5"))
 	Clear()
 	assertLen(t, Running(), 1)
 	requireNoError(t, Kill(proc.ID))

@@ -11,8 +11,7 @@ import (
 
 func exampleManagedProcess(command string, args ...string) *process.ManagedProcess {
 	svc := exampleService()
-	proc, _ := svc.Start(context.Background(), command, args...)
-	return proc
+	return exampleProcessResult(svc.Start(context.Background(), command, args...))
 }
 
 func ExampleManagedProcess_Info() {
@@ -64,11 +63,11 @@ func ExampleManagedProcess_Kill() {
 
 func ExampleManagedProcess_Shutdown() {
 	svc := exampleService()
-	proc, _ := svc.StartWithOptions(context.Background(), process.RunOptions{
+	proc := exampleProcessResult(svc.StartWithOptions(context.Background(), process.RunOptions{
 		Command:     "sleep",
 		Args:        []string{"5"},
 		GracePeriod: time.Millisecond,
-	})
+	}))
 	Println(proc.Shutdown().OK)
 	// Output: true
 }

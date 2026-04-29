@@ -221,6 +221,26 @@ func helperMessage(args ...any) string {
 	return ": " + core.Sprintf(format, args[1:]...)
 }
 
+func resultValue[T any](r core.Result) (T, error) {
+	var zero T
+	err, _ := testError(r)
+	if err != nil {
+		return zero, err
+	}
+	value, ok := r.Value.(T)
+	if !ok {
+		return zero, core.NewError(core.Sprintf("unexpected result value %T", r.Value))
+	}
+	return value, nil
+}
+
+func requireResultValue[T any](t *testing.T, r core.Result) T {
+	t.Helper()
+	value, err := resultValue[T](r)
+	requireNoError(t, err)
+	return value
+}
+
 func testError(value any) (error, bool) {
 	switch v := value.(type) {
 	case nil:

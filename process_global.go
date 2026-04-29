@@ -15,7 +15,7 @@ import (
 var (
 	defaultService atomic.Pointer[Service]
 	defaultOnce    sync.Once
-	defaultErr     error
+	defaultResult  core.Result
 )
 
 // Default returns the global process service.
@@ -51,14 +51,15 @@ func SetDefault(s *Service) core.Result {
 func Init(c *core.Core) core.Result {
 	defaultOnce.Do(func() {
 		factory := NewService(Options{})
-		svc, err := factory(c)
-		if err != nil {
-			defaultErr = err
+		result := factory(c)
+		if !result.OK {
+			defaultResult = result
 			return
 		}
-		defaultService.Store(svc.(*Service))
+		defaultService.Store(result.Value.(*Service))
+		defaultResult = core.Ok(nil)
 	})
-	return core.ResultOf(nil, defaultErr)
+	return defaultResult
 }
 
 // Register creates a process service for Core registration.
@@ -68,11 +69,11 @@ func Init(c *core.Core) core.Result {
 //	result := process.Register(coreInstance)
 func Register(c *core.Core) core.Result {
 	factory := NewService(Options{})
-	svc, err := factory(c)
-	if err != nil {
-		return core.Result{Value: err, OK: false}
+	result := factory(c)
+	if !result.OK {
+		return result
 	}
-	return core.Result{Value: svc, OK: true}
+	return core.Ok(result.Value)
 }
 
 // --- Global convenience functions ---
@@ -81,11 +82,11 @@ func Register(c *core.Core) core.Result {
 //
 // Example:
 //
-//	proc, err := process.Start(ctx, "echo", "hello")
-func Start(ctx context.Context, command string, args ...string) (*Process, goError) {
+//	result := process.Start(ctx, "echo", "hello")
+func Start(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Start(ctx, command, args...)
 }
@@ -94,11 +95,11 @@ func Start(ctx context.Context, command string, args ...string) (*Process, goErr
 //
 // Example:
 //
-//	out, err := process.Run(ctx, "echo", "hello")
-func Run(ctx context.Context, command string, args ...string) (string, goError) {
+//	result := process.Run(ctx, "echo", "hello")
+func Run(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Run(ctx, command, args...)
 }
@@ -107,11 +108,11 @@ func Run(ctx context.Context, command string, args ...string) (string, goError) 
 //
 // Example:
 //
-//	proc, err := process.Get("proc-1")
-func Get(id string) (*Process, goError) {
+//	result := process.Get("proc-1")
+func Get(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Get(id)
 }
@@ -120,11 +121,11 @@ func Get(id string) (*Process, goError) {
 //
 // Example:
 //
-//	out, err := process.Output("proc-1")
-func Output(id string) (string, goError) {
+//	result := process.Output("proc-1")
+func Output(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Output(id)
 }
@@ -159,11 +160,11 @@ func CloseStdin(id string) core.Result {
 //
 // Example:
 //
-//	info, err := process.Wait("proc-1")
-func Wait(id string) (Info, goError) {
+//	result := process.Wait("proc-1")
+func Wait(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return Info{}, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Wait(id)
 }
@@ -237,11 +238,11 @@ func SignalPID(pid int, sig syscall.Signal) core.Result {
 //
 // Example:
 //
-//	proc, err := process.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
-func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, goError) {
+//	result := process.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
+func StartWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.StartWithOptions(ctx, opts)
 }
@@ -250,11 +251,11 @@ func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, goError) 
 //
 // Example:
 //
-//	out, err := process.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
-func RunWithOptions(ctx context.Context, opts RunOptions) (string, goError) {
+//	result := process.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
+func RunWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.RunWithOptions(ctx, opts)
 }

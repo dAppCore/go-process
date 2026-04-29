@@ -26,6 +26,17 @@ func programResultError(r core.Result) (err error) {
 	return core.NewError(r.Error())
 }
 
+func programResultString(r core.Result) (string, error) {
+	if err := programResultError(r); err != nil {
+		return "", err
+	}
+	out, ok := r.Value.(string)
+	if !ok {
+		return "", core.NewError(core.Sprintf("unexpected program output %T", r.Value))
+	}
+	return out, nil
+}
+
 func TestProgram_Find_KnownBinary(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 	if err := programResultError(p.Find()); err != nil {
@@ -96,7 +107,7 @@ func TestProgram_Run_ReturnsOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	out, err := p.Run(testCtx(t), "hello")
+	out, err := programResultString(p.Run(testCtx(t), "hello"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,7 +122,7 @@ func TestProgram_Run_PreservesLeadingWhitespace(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	out, err := p.Run(testCtx(t), "-c", "printf '  hello  \n'")
+	out, err := programResultString(p.Run(testCtx(t), "-c", "printf '  hello  \n'"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,7 +135,7 @@ func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	// Path is empty; RunDir should fall back to Name for OS PATH resolution.
 	p := &process.Program{Name: "echo"}
 
-	out, err := p.Run(testCtx(t), "fallback")
+	out, err := programResultString(p.Run(testCtx(t), "fallback"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +152,7 @@ func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 
 	dir := t.TempDir()
 
-	out, err := p.RunDir(testCtx(t), dir)
+	out, err := programResultString(p.RunDir(testCtx(t), dir))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -167,7 +178,7 @@ func TestProgram_Run_FailingCommand(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err := p.Run(testCtx(t))
+	err := programResultError(p.Run(testCtx(t)))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -176,7 +187,7 @@ func TestProgram_Run_FailingCommand(t *testing.T) {
 func TestProgram_Run_NilContextRejected(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 
-	_, err := p.Run(nil, "test")
+	err := programResultError(p.Run(nil, "test"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -188,7 +199,7 @@ func TestProgram_Run_NilContextRejected(t *testing.T) {
 func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
 	p := &process.Program{}
 
-	_, err := p.RunDir(testCtx(t), "", "test")
+	err := programResultError(p.RunDir(testCtx(t), "", "test"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -232,7 +243,7 @@ func TestProgram_Program_Find_Ugly(t *testing.T) {
 
 func TestProgram_Program_Run_Good(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	out, err := p.Run(testCtx(t), "hello")
+	out, err := programResultString(p.Run(testCtx(t), "hello"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -243,7 +254,7 @@ func TestProgram_Program_Run_Good(t *testing.T) {
 
 func TestProgram_Program_Run_Bad(t *testing.T) {
 	p := &process.Program{Name: "false"}
-	out, err := p.Run(testCtx(t))
+	out, err := programResultString(p.Run(testCtx(t)))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -254,7 +265,7 @@ func TestProgram_Program_Run_Bad(t *testing.T) {
 
 func TestProgram_Program_Run_Ugly(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	out, err := p.Run(nil, "hello")
+	out, err := programResultString(p.Run(nil, "hello"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -265,7 +276,7 @@ func TestProgram_Program_Run_Ugly(t *testing.T) {
 
 func TestProgram_Program_RunDir_Good(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
-	out, err := p.RunDir(testCtx(t), "/tmp")
+	out, err := programResultString(p.RunDir(testCtx(t), "/tmp"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,7 +287,7 @@ func TestProgram_Program_RunDir_Good(t *testing.T) {
 
 func TestProgram_Program_RunDir_Bad(t *testing.T) {
 	p := &process.Program{}
-	out, err := p.RunDir(testCtx(t), t.TempDir())
+	out, err := programResultString(p.RunDir(testCtx(t), t.TempDir()))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -287,7 +298,7 @@ func TestProgram_Program_RunDir_Bad(t *testing.T) {
 
 func TestProgram_Program_RunDir_Ugly(t *testing.T) {
 	p := &process.Program{Name: "printf"}
-	out, err := p.RunDir(testCtx(t), "", "hello\n\n")
+	out, err := programResultString(p.RunDir(testCtx(t), "", "hello\n\n"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

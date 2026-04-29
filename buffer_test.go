@@ -8,9 +8,9 @@ func TestRingBufferBasics(t *testing.T) {
 	t.Run("write and read", func(t *testing.T) {
 		rb := NewRingBuffer(10)
 
-		n, err := rb.Write([]byte("hello"))
-		assertNoError(t, err)
-		assertEqual(t, 5, n)
+		result := rb.Write([]byte("hello"))
+		assertNoError(t, result)
+		assertEqual(t, 5, result.Value.(int))
 		assertEqual(t, "hello", rb.String())
 		assertEqual(t, 5, rb.Len())
 	})
@@ -18,10 +18,10 @@ func TestRingBufferBasics(t *testing.T) {
 	t.Run("overflow wraps around", func(t *testing.T) {
 		rb := NewRingBuffer(5)
 
-		_, _ = rb.Write([]byte("hello"))
+		assertNoError(t, rb.Write([]byte("hello")))
 		assertEqual(t, "hello", rb.String())
 
-		_, _ = rb.Write([]byte("world"))
+		assertNoError(t, rb.Write([]byte("world")))
 		// Should contain "world" (overwrote "hello")
 		assertEqual(t, 5, rb.Len())
 		assertEqual(t, "world", rb.String())
@@ -30,8 +30,8 @@ func TestRingBufferBasics(t *testing.T) {
 	t.Run("partial overflow", func(t *testing.T) {
 		rb := NewRingBuffer(10)
 
-		_, _ = rb.Write([]byte("hello"))
-		_, _ = rb.Write([]byte("worldx"))
+		assertNoError(t, rb.Write([]byte("hello")))
+		assertNoError(t, rb.Write([]byte("worldx")))
 		// Should contain "lloworldx" (11 chars, buffer is 10)
 		assertEqual(t, 10, rb.Len())
 	})
@@ -45,7 +45,7 @@ func TestRingBufferBasics(t *testing.T) {
 
 	t.Run("reset", func(t *testing.T) {
 		rb := NewRingBuffer(10)
-		_, _ = rb.Write([]byte("hello"))
+		assertNoError(t, rb.Write([]byte("hello")))
 		rb.Reset()
 		assertEqual(t, "", rb.String())
 		assertEqual(t, 0, rb.Len())
@@ -58,7 +58,7 @@ func TestRingBufferBasics(t *testing.T) {
 
 	t.Run("bytes returns copy", func(t *testing.T) {
 		rb := NewRingBuffer(10)
-		_, _ = rb.Write([]byte("hello"))
+		assertNoError(t, rb.Write([]byte("hello")))
 
 		bytes := rb.Bytes()
 		assertEqual(t, []byte("hello"), bytes)
@@ -72,9 +72,9 @@ func TestRingBufferBasics(t *testing.T) {
 		for _, size := range []int{0, -1} {
 			rb := NewRingBuffer(size)
 
-			n, err := rb.Write([]byte("discarded"))
-			assertNoError(t, err)
-			assertEqual(t, len("discarded"), n)
+			result := rb.Write([]byte("discarded"))
+			assertNoError(t, result)
+			assertEqual(t, len("discarded"), result.Value.(int))
 			assertEqual(t, 0, rb.Cap())
 			assertEqual(t, 0, rb.Len())
 			assertEqual(t, "", rb.String())
@@ -85,57 +85,56 @@ func TestRingBufferBasics(t *testing.T) {
 
 func TestBuffer_NewRingBuffer_Good(t *testing.T) {
 	rb := NewRingBuffer(4)
-	n, err := rb.Write([]byte("go"))
-	requireNoError(t, err)
-	assertEqual(t, 2, n)
+	result := rb.Write([]byte("go"))
+	requireNoError(t, result)
+	assertEqual(t, 2, result.Value.(int))
 	assertEqual(t, 4, rb.Cap())
 }
 
 func TestBuffer_NewRingBuffer_Bad(t *testing.T) {
 	rb := NewRingBuffer(-1)
-	n, err := rb.Write([]byte("drop"))
-	requireNoError(t, err)
+	result := rb.Write([]byte("drop"))
+	requireNoError(t, result)
 	assertEqual(t, 0, rb.Cap())
 	assertEqual(t, 0, rb.Len())
-	assertEqual(t, len("drop"), n)
+	assertEqual(t, len("drop"), result.Value.(int))
 }
 
 func TestBuffer_NewRingBuffer_Ugly(t *testing.T) {
 	rb := NewRingBuffer(0)
-	n, err := rb.Write(nil)
-	requireNoError(t, err)
-	assertEqual(t, 0, n)
+	result := rb.Write(nil)
+	requireNoError(t, result)
+	assertEqual(t, 0, result.Value.(int))
 	assertEqual(t, "", rb.String())
 }
 
 func TestBuffer_RingBuffer_Write_Good(t *testing.T) {
 	rb := NewRingBuffer(8)
-	n, err := rb.Write([]byte("abc"))
-	requireNoError(t, err)
-	assertEqual(t, 3, n)
+	result := rb.Write([]byte("abc"))
+	requireNoError(t, result)
+	assertEqual(t, 3, result.Value.(int))
 	assertEqual(t, "abc", rb.String())
 }
 
 func TestBuffer_RingBuffer_Write_Bad(t *testing.T) {
 	rb := NewRingBuffer(0)
-	n, err := rb.Write([]byte("abc"))
-	requireNoError(t, err)
-	assertEqual(t, len("abc"), n)
+	result := rb.Write([]byte("abc"))
+	requireNoError(t, result)
+	assertEqual(t, len("abc"), result.Value.(int))
 	assertEqual(t, "", rb.String())
 }
 
 func TestBuffer_RingBuffer_Write_Ugly(t *testing.T) {
 	rb := NewRingBuffer(3)
-	n, err := rb.Write([]byte("abcdef"))
-	requireNoError(t, err)
-	assertEqual(t, 6, n)
+	result := rb.Write([]byte("abcdef"))
+	requireNoError(t, result)
+	assertEqual(t, 6, result.Value.(int))
 	assertEqual(t, "def", rb.String())
 }
 
 func TestBuffer_RingBuffer_String_Good(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("hello"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("hello")))
 	assertEqual(t, "hello", rb.String())
 }
 
@@ -148,15 +147,13 @@ func TestBuffer_RingBuffer_String_Bad(t *testing.T) {
 
 func TestBuffer_RingBuffer_String_Ugly(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("hello!"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("hello!")))
 	assertEqual(t, "ello!", rb.String())
 }
 
 func TestBuffer_RingBuffer_Bytes_Good(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("hello"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("hello")))
 	assertEqual(t, []byte("hello"), rb.Bytes())
 }
 
@@ -169,15 +166,13 @@ func TestBuffer_RingBuffer_Bytes_Bad(t *testing.T) {
 
 func TestBuffer_RingBuffer_Bytes_Ugly(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("hello!"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("hello!")))
 	assertEqual(t, []byte("ello!"), rb.Bytes())
 }
 
 func TestBuffer_RingBuffer_Len_Good(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("abc"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("abc")))
 	assertEqual(t, 3, rb.Len())
 }
 
@@ -190,8 +185,7 @@ func TestBuffer_RingBuffer_Len_Bad(t *testing.T) {
 
 func TestBuffer_RingBuffer_Len_Ugly(t *testing.T) {
 	rb := NewRingBuffer(2)
-	_, err := rb.Write([]byte("abcd"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("abcd")))
 	assertEqual(t, 2, rb.Len())
 }
 
@@ -211,15 +205,13 @@ func TestBuffer_RingBuffer_Cap_Bad(t *testing.T) {
 
 func TestBuffer_RingBuffer_Cap_Ugly(t *testing.T) {
 	rb := NewRingBuffer(1)
-	_, err := rb.Write([]byte("xy"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("xy")))
 	assertEqual(t, 1, rb.Cap())
 }
 
 func TestBuffer_RingBuffer_Reset_Good(t *testing.T) {
 	rb := NewRingBuffer(5)
-	_, err := rb.Write([]byte("abc"))
-	requireNoError(t, err)
+	requireNoError(t, rb.Write([]byte("abc")))
 	rb.Reset()
 	assertEqual(t, "", rb.String())
 }
@@ -234,7 +226,7 @@ func TestBuffer_RingBuffer_Reset_Bad(t *testing.T) {
 func TestBuffer_RingBuffer_Reset_Ugly(t *testing.T) {
 	rb := NewRingBuffer(0)
 	rb.Reset()
-	n, err := rb.Write([]byte("abc"))
-	requireNoError(t, err)
-	assertEqual(t, 3, n)
+	result := rb.Write([]byte("abc"))
+	requireNoError(t, result)
+	assertEqual(t, 3, result.Value.(int))
 }

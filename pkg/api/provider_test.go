@@ -252,7 +252,7 @@ func TestProcessProvider_RunPipeline_Unavailable(t *testing.T) {
 
 func TestProcessProviderListProcessesRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "echo", "hello-api")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "echo", "hello-api"))
 	requireNoError(t, err)
 	<-proc.Done()
 
@@ -278,10 +278,10 @@ func TestProcessProviderListProcessesRoute(t *testing.T) {
 func TestProcessProviderListProcessesRunningOnly(t *testing.T) {
 	svc := newTestProcessService(t)
 
-	runningProc, err := svc.Start(context.Background(), "sleep", "60")
+	runningProc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 
-	exitedProc, err := svc.Start(context.Background(), "echo", "done")
+	exitedProc, err := resultValue[*process.Process](svc.Start(context.Background(), "echo", "done"))
 	requireNoError(t, err)
 	<-exitedProc.Done()
 
@@ -336,7 +336,7 @@ func TestProcessProviderStartProcessRoute(t *testing.T) {
 	assertTrue(t, resp.Data.Running)
 	assertNotEmpty(t, resp.Data.ID)
 
-	managed, err := svc.Get(resp.Data.ID)
+	managed, err := resultValue[*process.Process](svc.Get(resp.Data.ID))
 	requireNoError(t, err)
 	requireNoError(t, svc.Kill(managed.ID))
 	select {
@@ -373,7 +373,7 @@ func TestProcessProviderRunProcessRoute(t *testing.T) {
 
 func TestProcessProviderGetProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "echo", "single")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "echo", "single"))
 	requireNoError(t, err)
 	<-proc.Done()
 
@@ -397,7 +397,7 @@ func TestProcessProviderGetProcessRoute(t *testing.T) {
 
 func TestProcessProviderGetProcessOutputRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "echo", "output-check")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "echo", "output-check"))
 	requireNoError(t, err)
 	<-proc.Done()
 
@@ -420,7 +420,7 @@ func TestProcessProviderGetProcessOutputRoute(t *testing.T) {
 
 func TestProcessProviderWaitProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "echo", "wait-check")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "echo", "wait-check"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -444,7 +444,7 @@ func TestProcessProviderWaitProcessRoute(t *testing.T) {
 
 func TestProcessProviderWaitProcessNonZeroExit(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sh", "-c", "exit 7"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -474,7 +474,7 @@ func TestProcessProviderWaitProcessNonZeroExit(t *testing.T) {
 
 func TestProcessProviderInputAndCloseStdinRoutes(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "cat")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "cat"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -509,7 +509,7 @@ func TestProcessProviderInputAndCloseStdinRoutes(t *testing.T) {
 
 func TestProcessProviderKillProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -541,7 +541,7 @@ func TestProcessProviderKillProcessByPIDRoute(t *testing.T) {
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 	t.Cleanup(func() {
 		if proc.IsRunning() {
@@ -575,7 +575,7 @@ func TestProcessProviderKillProcessByPIDRoute(t *testing.T) {
 
 func TestProcessProviderSignalProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -608,7 +608,7 @@ func TestProcessProviderSignalProcessByPIDRoute(t *testing.T) {
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 	t.Cleanup(func() {
 		if proc.IsRunning() {
@@ -643,7 +643,7 @@ func TestProcessProviderSignalProcessByPIDRoute(t *testing.T) {
 
 func TestProcessProviderSignalProcessInvalidSignal(t *testing.T) {
 	svc := newTestProcessService(t)
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 
 	p := processapi.NewProvider(nil, svc, nil)
@@ -681,7 +681,7 @@ func TestProcessProviderBroadcastsProcessEvents(t *testing.T) {
 		return hub.ClientCount() == 1
 	}, time.Second, 10*time.Millisecond)
 
-	proc, err := svc.Start(context.Background(), "sh", "-c", "echo live-event")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sh", "-c", "echo live-event"))
 	requireNoError(t, err)
 	<-proc.Done()
 
@@ -727,7 +727,7 @@ func TestProcessProviderBroadcastsKilledEvents(t *testing.T) {
 		return hub.ClientCount() == 1
 	}, time.Second, 10*time.Millisecond)
 
-	proc, err := svc.Start(context.Background(), "sleep", "60")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "60"))
 	requireNoError(t, err)
 
 	requireNoError(t, svc.Kill(proc.ID))
@@ -790,7 +790,7 @@ func TestProcessProviderRFCListAlias(t *testing.T) {
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	proc, err := svc.Start(context.Background(), "sleep", "0.1")
+	proc, err := resultValue[*process.Process](svc.Start(context.Background(), "sleep", "0.1"))
 	requireNoError(t, err)
 	t.Cleanup(func() {
 		_ = svc.Kill(proc.ID)
@@ -830,7 +830,7 @@ func TestProcessProviderRFCStartAlias(t *testing.T) {
 	assertTrue(t, resp.Success)
 	assertNotEmpty(t, resp.Data)
 
-	proc, err := svc.Get(resp.Data)
+	proc, err := resultValue[*process.Process](svc.Get(resp.Data))
 	requireNoError(t, err)
 
 	select {
@@ -871,10 +871,9 @@ func newTestProcessService(t *testing.T) *process.Service {
 
 	c := core.New()
 	factory := process.NewService(process.Options{})
-	raw, err := factory(c)
-	requireNoError(t, err)
+	raw := requireResultValue[*process.Service](t, factory(c))
 
-	return raw.(*process.Service)
+	return raw
 }
 
 func connectWS(t *testing.T, serverURL string) *websocket.Conn {

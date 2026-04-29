@@ -13,28 +13,34 @@ func ExampleNewRingBuffer() {
 
 func ExampleRingBuffer_Write() {
 	rb := process.NewRingBuffer(8)
-	n, _ := rb.Write([]byte("hello"))
-	Println(n, rb.String())
+	result := rb.Write([]byte("hello"))
+	Println(result.Value, rb.String())
 	// Output: 5 hello
 }
 
 func ExampleRingBuffer_String() {
 	rb := process.NewRingBuffer(5)
-	rb.Write([]byte("hello world"))
+	if result := rb.Write([]byte("hello world")); !result.OK {
+		Println(result.Error())
+	}
 	Println(rb.String())
 	// Output: world
 }
 
 func ExampleRingBuffer_Bytes() {
 	rb := process.NewRingBuffer(4)
-	rb.Write([]byte("data"))
+	if result := rb.Write([]byte("data")); !result.OK {
+		Println(result.Error())
+	}
 	Println(string(rb.Bytes()))
 	// Output: data
 }
 
 func ExampleRingBuffer_Len() {
 	rb := process.NewRingBuffer(8)
-	rb.Write([]byte("abc"))
+	if result := rb.Write([]byte("abc")); !result.OK {
+		Println(result.Error())
+	}
 	Println(rb.Len())
 	// Output: 3
 }
@@ -47,7 +53,9 @@ func ExampleRingBuffer_Cap() {
 
 func ExampleRingBuffer_Reset() {
 	rb := process.NewRingBuffer(8)
-	rb.Write([]byte("abc"))
+	if result := rb.Write([]byte("abc")); !result.OK {
+		Println(result.Error())
+	}
 	rb.Reset()
 	Println(rb.Len())
 	// Output: 0

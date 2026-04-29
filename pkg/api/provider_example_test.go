@@ -8,8 +8,8 @@ import (
 )
 
 func exampleProvider() *processapi.ProcessProvider {
-	raw, _ := process.NewService(process.Options{})(New())
-	svc := raw.(*process.Service)
+	result := process.NewService(process.Options{})(New())
+	svc := result.Value.(*process.Service)
 	reg := process.NewRegistry(PathJoin(TempDir(), "go-process-provider-"+ID()))
 	return processapi.NewProvider(reg, svc, nil)
 }
