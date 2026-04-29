@@ -28,7 +28,7 @@ func NewRingBuffer(size int) *RingBuffer {
 }
 
 // Write appends data to the buffer, overwriting oldest data if full.
-func (rb *RingBuffer) Write(p []byte) (n int, err error) {
+func (rb *RingBuffer) Write(p []byte) (n int, err goError) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 

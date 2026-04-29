@@ -1,9 +1,9 @@
-package exec_test
+package command_test
 
 import (
 	"testing"
 
-	"dappco.re/go/process/exec"
+	exec "dappco.re/go/process/exec"
 )
 
 func TestLogger_NopLogger_Debug_Good(t *testing.T) {

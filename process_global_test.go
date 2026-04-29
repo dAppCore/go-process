@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"os/exec"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
@@ -368,7 +367,7 @@ func TestGlobal_SignalPID(t *testing.T) {
 		}
 	}()
 
-	cmd := exec.Command("sleep", "60")
+	cmd := commandContext(context.Background(), "sleep", "60")
 	requireNoError(t, cmd.Start())
 
 	waitCh := make(chan error, 1)

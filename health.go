@@ -81,7 +81,7 @@ func (h *HealthServer) Ready() bool {
 // Example:
 //
 //	if err := server.Start(); err != nil { return err }
-func (h *HealthServer) Start() error {
+func (h *HealthServer) Start() core.Result {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func (h *HealthServer) Start() error {
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return corelog.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err)
+		return core.Fail(corelog.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err))
 	}
 
 	server := &http.Server{Handler: mux}
@@ -139,7 +139,7 @@ func (h *HealthServer) Start() error {
 		}
 	}()
 
-	return nil
+	return core.Ok(nil)
 }
 
 // checksSnapshot returns a stable copy of the registered health checks.
@@ -161,7 +161,7 @@ func (h *HealthServer) checksSnapshot() []HealthCheck {
 // Example:
 //
 //	_ = server.Stop(context.Background())
-func (h *HealthServer) Stop(ctx context.Context) error {
+func (h *HealthServer) Stop(ctx context.Context) core.Result {
 	h.mu.Lock()
 	server := h.server
 	h.server = nil
@@ -170,9 +170,9 @@ func (h *HealthServer) Stop(ctx context.Context) error {
 	h.mu.Unlock()
 
 	if server == nil {
-		return nil
+		return core.Ok(nil)
 	}
-	return server.Shutdown(ctx)
+	return core.ResultOf(nil, server.Shutdown(ctx))
 }
 
 // Addr returns the actual address the server is listening on.

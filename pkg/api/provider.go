@@ -7,7 +7,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"os"
 	"strconv"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
@@ -22,6 +21,8 @@ import (
 	"dappco.re/go/ws"
 	"github.com/gin-gonic/gin"
 )
+
+type goError = error
 
 // ProcessProvider wraps the go-process daemon Registry as a service provider.
 // It implements provider.Provider, provider.Streamable, provider.Describable,
@@ -542,20 +543,15 @@ func (p *ProcessProvider) stopDaemon(c *gin.Context) {
 		return
 	}
 
-	// Send SIGTERM to the process
-	proc, err := os.FindProcess(entry.PID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("signal_failed", err.Error()))
-		return
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
+	// Send SIGTERM to the process.
+	if err := syscall.Kill(entry.PID, syscall.SIGTERM); err != nil {
 		c.JSON(http.StatusInternalServerError, api.Fail("signal_failed", err.Error()))
 		return
 	}
 
 	// Remove from registry
-	if err := p.registry.Unregister(code, daemon); err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("unregister_failed", err.Error()))
+	if result := p.registry.Unregister(code, daemon); !result.OK {
+		c.JSON(http.StatusInternalServerError, api.Fail("unregister_failed", result.Error()))
 		return
 	}
 
@@ -809,12 +805,13 @@ func (p *ProcessProvider) inputProcess(c *gin.Context) {
 		return
 	}
 
-	if err := p.service.Input(c.Param("id"), req.Input); err != nil {
+	if result := p.service.Input(c.Param("id"), req.Input); !result.OK {
+		err, _ := result.Value.(error)
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("input_failed", err.Error()))
+		c.JSON(status, api.Fail("input_failed", result.Error()))
 		return
 	}
 
@@ -827,12 +824,13 @@ func (p *ProcessProvider) closeProcessStdin(c *gin.Context) {
 		return
 	}
 
-	if err := p.service.CloseStdin(c.Param("id")); err != nil {
+	if result := p.service.CloseStdin(c.Param("id")); !result.OK {
+		err, _ := result.Value.(error)
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("close_stdin_failed", err.Error()))
+		c.JSON(status, api.Fail("close_stdin_failed", result.Error()))
 		return
 	}
 
@@ -847,12 +845,13 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 
 	id := c.Param("id")
 	pid, _ := pidFromString(id)
-	if err := p.killProcessByTarget(id, pid); err != nil {
+	if result := p.killProcessByTarget(id, pid); !result.OK {
+		err, _ := result.Value.(error)
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("kill_failed", err.Error()))
+		c.JSON(status, api.Fail("kill_failed", result.Error()))
 		return
 	}
 
@@ -885,34 +884,35 @@ func (p *ProcessProvider) killProcessJSON(c *gin.Context) {
 		}
 	}
 
-	if err := p.killProcessByTarget(req.ID, req.PID); err != nil {
+	if result := p.killProcessByTarget(req.ID, req.PID); !result.OK {
+		err, _ := result.Value.(error)
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("kill_failed", err.Error()))
+		c.JSON(status, api.Fail("kill_failed", result.Error()))
 		return
 	}
 
 	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
 }
 
-func (p *ProcessProvider) killProcessByTarget(id string, pid int) error {
-	if err := p.service.Kill(id); err != nil {
+func (p *ProcessProvider) killProcessByTarget(id string, pid int) core.Result {
+	if result := p.service.Kill(id); !result.OK {
 		if pid <= 0 {
-			return err
+			return result
 		}
-		if pidErr := p.service.KillPID(pid); pidErr != nil {
-			return pidErr
+		if pidResult := p.service.KillPID(pid); !pidResult.OK {
+			return pidResult
 		}
-		return nil
+		return core.Ok(nil)
 	}
 	if id == "" && pid > 0 {
-		if err := p.service.KillPID(pid); err != nil {
-			return err
+		if result := p.service.KillPID(pid); !result.OK {
+			return result
 		}
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 type processSignalRequest struct {
@@ -938,20 +938,22 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	if err := p.service.Signal(id, sig); err != nil {
+	if result := p.service.Signal(id, sig); !result.OK {
+		err, _ := result.Value.(error)
 		if pid, ok := pidFromString(id); ok {
-			pidErr := p.service.SignalPID(pid, sig)
-			if pidErr == nil {
+			pidResult := p.service.SignalPID(pid, sig)
+			if pidResult.OK {
 				c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
 				return
 			}
-			err = pidErr
+			result = pidResult
+			err, _ = result.Value.(error)
 		}
 		status := http.StatusInternalServerError
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("signal_failed", err.Error()))
+		c.JSON(status, api.Fail("signal_failed", result.Error()))
 		return
 	}
 
@@ -1049,11 +1051,7 @@ func PIDAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return syscall.Kill(pid, syscall.Signal(0)) == nil
 }
 
 // intParam parses a URL param as int, returning 0 on failure.
@@ -1085,7 +1083,7 @@ func startRunOptions(req process.TaskProcessStart) process.RunOptions {
 	}
 }
 
-func parseSignal(value string) (syscall.Signal, error) {
+func parseSignal(value string) (syscall.Signal, goError) {
 	trimmed := core.Trim(core.Upper(value))
 	if trimmed == "" {
 		return 0, corelog.E("ProcessProvider.parseSignal", "signal is required", nil)

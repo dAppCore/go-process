@@ -4,13 +4,9 @@ package api_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -74,7 +70,7 @@ func TestProcessProvider_Describe_Good(t *testing.T) {
 	assertTrue(t, foundSignalRoute, "signal route should be described")
 }
 
-func TestProcessProvider_ListDaemons_Good(t *testing.T) {
+func TestProcessProviderListDaemonsRoute(t *testing.T) {
 	// Use a temp directory so the registry has no daemons
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
@@ -88,18 +84,18 @@ func TestProcessProvider_ListDaemons_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[[]any]
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	err := unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	assertTrue(t, resp.Success)
 }
 
-func TestProcessProvider_ListDaemons_BroadcastsStarted_Good(t *testing.T) {
+func TestProcessProviderListDaemonsBroadcastsStarted(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
 	requireNoError(t, registry.Register(process.DaemonEntry{
 		Code:   "test",
 		Daemon: "serve",
-		PID:    os.Getpid(),
+		PID:    core.Getpid(),
 	}))
 
 	hub := corews.NewHub()
@@ -132,10 +128,10 @@ func TestProcessProvider_ListDaemons_BroadcastsStarted_Good(t *testing.T) {
 	startedData := started.Data.(map[string]any)
 	assertEqual(t, "test", startedData["code"])
 	assertEqual(t, "serve", startedData["daemon"])
-	assertEqual(t, float64(os.Getpid()), startedData["pid"])
+	assertEqual(t, float64(core.Getpid()), startedData["pid"])
 }
 
-func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
+func TestProcessProviderGetDaemonNotFound(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
 	p := processapi.NewProvider(registry, nil, nil)
@@ -148,7 +144,7 @@ func TestProcessProvider_GetDaemon_Bad(t *testing.T) {
 	assertEqual(t, http.StatusNotFound, w.Code)
 }
 
-func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
+func TestProcessProviderHealthCheckUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(dir)
 
@@ -158,11 +154,11 @@ func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
 	}))
 	defer healthSrv.Close()
 
-	hostPort := strings.TrimPrefix(healthSrv.URL, "http://")
+	hostPort := core.TrimPrefix(healthSrv.URL, "http://")
 	requireNoError(t, registry.Register(process.DaemonEntry{
 		Code:   "test",
 		Daemon: "broken",
-		PID:    os.Getpid(),
+		PID:    core.Getpid(),
 		Health: hostPort,
 	}))
 
@@ -176,7 +172,7 @@ func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
 	assertEqual(t, http.StatusServiceUnavailable, w.Code)
 
 	var resp goapi.Response[map[string]any]
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	err := unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 
@@ -185,7 +181,7 @@ func TestProcessProvider_HealthCheck_Bad(t *testing.T) {
 	assertEqual(t, "upstream health check failed", resp.Data["reason"])
 }
 
-func TestProcessProvider_RegistersAsRouteGroup_Good(t *testing.T) {
+func TestProcessProviderRegistersAsRouteGroup(t *testing.T) {
 	p := processapi.NewProvider(nil, nil, nil)
 
 	engine, err := goapi.New()
@@ -209,14 +205,14 @@ func TestProcessProvider_Channels_RegisterAsStreamGroup_Good(t *testing.T) {
 	assertContains(t, channels, "process.daemon.started")
 }
 
-func TestProcessProvider_RunPipeline_Good(t *testing.T) {
+func TestProcessProviderRunPipelineRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
 
-	body := strings.NewReader(`{
+	body := core.NewReader(`{
 		"mode": "parallel",
 		"specs": [
 			{"name": "first", "command": "echo", "args": ["1"]},
@@ -232,7 +228,7 @@ func TestProcessProvider_RunPipeline_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[process.RunAllResult]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	assertTrue(t, resp.Success)
 	assertEqual(t, 2, resp.Data.Passed)
@@ -245,7 +241,7 @@ func TestProcessProvider_RunPipeline_Unavailable(t *testing.T) {
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
 
-	req, err := http.NewRequest("POST", "/api/process/pipelines/run", strings.NewReader(`{"mode":"all","specs":[]}`))
+	req, err := http.NewRequest("POST", "/api/process/pipelines/run", core.NewReader(`{"mode":"all","specs":[]}`))
 	requireNoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -254,7 +250,7 @@ func TestProcessProvider_RunPipeline_Unavailable(t *testing.T) {
 	assertEqual(t, http.StatusServiceUnavailable, w.Code)
 }
 
-func TestProcessProvider_ListProcesses_Good(t *testing.T) {
+func TestProcessProviderListProcessesRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "hello-api")
 	requireNoError(t, err)
@@ -271,7 +267,7 @@ func TestProcessProvider_ListProcesses_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[[]process.Info]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	requireLen(t, resp.Data, 1)
@@ -279,7 +275,7 @@ func TestProcessProvider_ListProcesses_Good(t *testing.T) {
 	assertEqual(t, "echo", resp.Data[0].Command)
 }
 
-func TestProcessProvider_ListProcesses_RunningOnly_Good(t *testing.T) {
+func TestProcessProviderListProcessesRunningOnly(t *testing.T) {
 	svc := newTestProcessService(t)
 
 	runningProc, err := svc.Start(context.Background(), "sleep", "60")
@@ -300,7 +296,7 @@ func TestProcessProvider_ListProcesses_RunningOnly_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[[]process.Info]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	requireLen(t, resp.Data, 1)
@@ -311,12 +307,12 @@ func TestProcessProvider_ListProcesses_RunningOnly_Good(t *testing.T) {
 	<-runningProc.Done()
 }
 
-func TestProcessProvider_StartProcess_Good(t *testing.T) {
+func TestProcessProviderStartProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	body := strings.NewReader(`{
+	body := core.NewReader(`{
 		"command": "sleep",
 		"args": ["60"],
 		"detach": true,
@@ -332,7 +328,7 @@ func TestProcessProvider_StartProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[process.Info]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, "sleep", resp.Data.Command)
@@ -350,12 +346,12 @@ func TestProcessProvider_StartProcess_Good(t *testing.T) {
 	}
 }
 
-func TestProcessProvider_RunProcess_Good(t *testing.T) {
+func TestProcessProviderRunProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	body := strings.NewReader(`{
+	body := core.NewReader(`{
 		"command": "echo",
 		"args": ["run-check"]
 	}`)
@@ -369,13 +365,13 @@ func TestProcessProvider_RunProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[string]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertContains(t, resp.Data, "run-check")
 }
 
-func TestProcessProvider_GetProcess_Good(t *testing.T) {
+func TestProcessProviderGetProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "single")
 	requireNoError(t, err)
@@ -392,14 +388,14 @@ func TestProcessProvider_GetProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[process.Info]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, proc.ID, resp.Data.ID)
 	assertEqual(t, "echo", resp.Data.Command)
 }
 
-func TestProcessProvider_GetProcessOutput_Good(t *testing.T) {
+func TestProcessProviderGetProcessOutputRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "output-check")
 	requireNoError(t, err)
@@ -416,13 +412,13 @@ func TestProcessProvider_GetProcessOutput_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[string]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertContains(t, resp.Data, "output-check")
 }
 
-func TestProcessProvider_WaitProcess_Good(t *testing.T) {
+func TestProcessProviderWaitProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "echo", "wait-check")
 	requireNoError(t, err)
@@ -438,7 +434,7 @@ func TestProcessProvider_WaitProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[process.Info]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, proc.ID, resp.Data.ID)
@@ -446,7 +442,7 @@ func TestProcessProvider_WaitProcess_Good(t *testing.T) {
 	assertEqual(t, 0, resp.Data.ExitCode)
 }
 
-func TestProcessProvider_WaitProcess_NonZeroExit_Good(t *testing.T) {
+func TestProcessProviderWaitProcessNonZeroExit(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
 	requireNoError(t, err)
@@ -462,7 +458,7 @@ func TestProcessProvider_WaitProcess_NonZeroExit_Good(t *testing.T) {
 	assertEqual(t, http.StatusConflict, w.Code)
 
 	var resp goapi.Response[any]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireFalse(t, resp.Success)
 	requireNotNil(t, resp.Error)
@@ -476,7 +472,7 @@ func TestProcessProvider_WaitProcess_NonZeroExit_Good(t *testing.T) {
 	assertEqual(t, proc.ID, details["id"])
 }
 
-func TestProcessProvider_InputAndCloseStdin_Good(t *testing.T) {
+func TestProcessProviderInputAndCloseStdinRoutes(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "cat")
 	requireNoError(t, err)
@@ -484,7 +480,7 @@ func TestProcessProvider_InputAndCloseStdin_Good(t *testing.T) {
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	inputReq := strings.NewReader("{\"input\":\"hello-api\\n\"}")
+	inputReq := core.NewReader("{\"input\":\"hello-api\\n\"}")
 	inputHTTPReq, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/input", inputReq)
 	requireNoError(t, err)
 	inputHTTPReq.Header.Set("Content-Type", "application/json")
@@ -511,7 +507,7 @@ func TestProcessProvider_InputAndCloseStdin_Good(t *testing.T) {
 	assertContains(t, proc.Output(), "hello-api")
 }
 
-func TestProcessProvider_KillProcess_Good(t *testing.T) {
+func TestProcessProviderKillProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
 	requireNoError(t, err)
@@ -527,7 +523,7 @@ func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[map[string]any]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, true, resp.Data["killed"])
@@ -540,51 +536,44 @@ func TestProcessProvider_KillProcess_Good(t *testing.T) {
 	assertEqual(t, process.StatusKilled, proc.Status)
 }
 
-func TestProcessProvider_KillProcess_ByPID_Good(t *testing.T) {
+func TestProcessProviderKillProcessByPIDRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	cmd := exec.Command("sleep", "60")
-	requireNoError(t, cmd.Start())
-
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- cmd.Wait()
-	}()
-
+	proc, err := svc.Start(context.Background(), "sleep", "60")
+	requireNoError(t, err)
 	t.Cleanup(func() {
-		if cmd.ProcessState == nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
+		if proc.IsRunning() {
+			_ = svc.Kill(proc.ID)
 		}
 		select {
-		case <-waitCh:
+		case <-proc.Done():
 		case <-time.After(2 * time.Second):
 		}
 	})
 
 	w := httptest.NewRecorder()
-	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(cmd.Process.Pid)+"/kill", nil)
+	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(proc.Info().PID)+"/kill", nil)
 	requireNoError(t, err)
 	r.ServeHTTP(w, req)
 
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[map[string]any]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, true, resp.Data["killed"])
 
 	select {
-	case err := <-waitCh:
-		requireError(t, err)
+	case <-proc.Done():
 	case <-time.After(5 * time.Second):
-		t.Fatal("unmanaged process should have been killed by PID")
+		t.Fatal("process should have been killed by PID")
 	}
 }
 
-func TestProcessProvider_SignalProcess_Good(t *testing.T) {
+func TestProcessProviderSignalProcessRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
 	requireNoError(t, err)
@@ -593,7 +582,7 @@ func TestProcessProvider_SignalProcess_Good(t *testing.T) {
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
 
-	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/signal", strings.NewReader(`{"signal":"SIGTERM"}`))
+	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/signal", core.NewReader(`{"signal":"SIGTERM"}`))
 	requireNoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
@@ -601,7 +590,7 @@ func TestProcessProvider_SignalProcess_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[map[string]any]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, true, resp.Data["signalled"])
@@ -614,31 +603,25 @@ func TestProcessProvider_SignalProcess_Good(t *testing.T) {
 	assertEqual(t, process.StatusKilled, proc.Status)
 }
 
-func TestProcessProvider_SignalProcess_ByPID_Good(t *testing.T) {
+func TestProcessProviderSignalProcessByPIDRoute(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	cmd := exec.Command("sleep", "60")
-	requireNoError(t, cmd.Start())
-
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- cmd.Wait()
-	}()
-
+	proc, err := svc.Start(context.Background(), "sleep", "60")
+	requireNoError(t, err)
 	t.Cleanup(func() {
-		if cmd.ProcessState == nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
+		if proc.IsRunning() {
+			_ = svc.Kill(proc.ID)
 		}
 		select {
-		case <-waitCh:
+		case <-proc.Done():
 		case <-time.After(2 * time.Second):
 		}
 	})
 
 	w := httptest.NewRecorder()
-	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(cmd.Process.Pid)+"/signal", strings.NewReader(`{"signal":"SIGTERM"}`))
+	req, err := http.NewRequest("POST", "/api/process/processes/"+strconv.Itoa(proc.Info().PID)+"/signal", core.NewReader(`{"signal":"SIGTERM"}`))
 	requireNoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
@@ -646,20 +629,19 @@ func TestProcessProvider_SignalProcess_ByPID_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[map[string]any]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	requireTrue(t, resp.Success)
 	assertEqual(t, true, resp.Data["signalled"])
 
 	select {
-	case err := <-waitCh:
-		requireError(t, err)
+	case <-proc.Done():
 	case <-time.After(5 * time.Second):
-		t.Fatal("unmanaged process should have been signalled by PID")
+		t.Fatal("process should have been signalled by PID")
 	}
 }
 
-func TestProcessProvider_SignalProcess_InvalidSignal_Bad(t *testing.T) {
+func TestProcessProviderSignalProcessInvalidSignal(t *testing.T) {
 	svc := newTestProcessService(t)
 	proc, err := svc.Start(context.Background(), "sleep", "60")
 	requireNoError(t, err)
@@ -668,7 +650,7 @@ func TestProcessProvider_SignalProcess_InvalidSignal_Bad(t *testing.T) {
 	r := setupRouter(p)
 	w := httptest.NewRecorder()
 
-	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/signal", strings.NewReader(`{"signal":"NOPE"}`))
+	req, err := http.NewRequest("POST", "/api/process/processes/"+proc.ID+"/signal", core.NewReader(`{"signal":"NOPE"}`))
 	requireNoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
@@ -680,7 +662,7 @@ func TestProcessProvider_SignalProcess_InvalidSignal_Bad(t *testing.T) {
 	<-proc.Done()
 }
 
-func TestProcessProvider_BroadcastsProcessEvents_Good(t *testing.T) {
+func TestProcessProviderBroadcastsProcessEvents(t *testing.T) {
 	svc := newTestProcessService(t)
 	hub := corews.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -726,7 +708,7 @@ func TestProcessProvider_BroadcastsProcessEvents_Good(t *testing.T) {
 	assertEqual(t, float64(0), exitedData["exitCode"])
 }
 
-func TestProcessProvider_BroadcastsKilledEvents_Good(t *testing.T) {
+func TestProcessProviderBroadcastsKilledEvents(t *testing.T) {
 	svc := newTestProcessService(t)
 	hub := corews.NewHub()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -790,10 +772,10 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 		w := httptest.NewRecorder()
 		method := "GET"
 		switch {
-		case strings.HasSuffix(path, "/kill"),
-			strings.HasSuffix(path, "/wait"),
-			strings.HasSuffix(path, "/input"),
-			strings.HasSuffix(path, "/close-stdin"):
+		case core.HasSuffix(path, "/kill"),
+			core.HasSuffix(path, "/wait"),
+			core.HasSuffix(path, "/input"),
+			core.HasSuffix(path, "/close-stdin"):
 			method = "POST"
 		}
 		req, err := http.NewRequest(method, path, nil)
@@ -803,7 +785,7 @@ func TestProcessProvider_ProcessRoutes_Unavailable(t *testing.T) {
 	}
 }
 
-func TestProcessProvider_RFCListAlias_Good(t *testing.T) {
+func TestProcessProviderRFCListAlias(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
@@ -822,18 +804,18 @@ func TestProcessProvider_RFCListAlias_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[[]string]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	assertTrue(t, resp.Success)
 	assertContains(t, resp.Data, proc.ID)
 }
 
-func TestProcessProvider_RFCStartAlias_Good(t *testing.T) {
+func TestProcessProviderRFCStartAlias(t *testing.T) {
 	svc := newTestProcessService(t)
 	p := processapi.NewProvider(nil, svc, nil)
 	r := setupRouter(p)
 
-	body := strings.NewReader(`{"command":"sleep","args":["0.1"]}`)
+	body := core.NewReader(`{"command":"sleep","args":["0.1"]}`)
 	w := httptest.NewRecorder()
 	req, err := http.NewRequest("POST", "/api/process/process/start", body)
 	requireNoError(t, err)
@@ -843,7 +825,7 @@ func TestProcessProvider_RFCStartAlias_Good(t *testing.T) {
 	assertEqual(t, http.StatusOK, w.Code)
 
 	var resp goapi.Response[string]
-	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	err = unmarshalJSON(t, w.Body.Bytes(), &resp)
 	requireNoError(t, err)
 	assertTrue(t, resp.Success)
 	assertNotEmpty(t, resp.Data)
@@ -862,6 +844,16 @@ func TestProcessProvider_RFCStartAlias_Good(t *testing.T) {
 }
 
 // -- Test helpers -------------------------------------------------------------
+
+func unmarshalJSON(t *testing.T, data []byte, target any) (err error) {
+	t.Helper()
+	result := core.JSONUnmarshal(data, target)
+	if result.OK {
+		return nil
+	}
+	err, _ = result.Value.(error)
+	return err
+}
 
 func setupRouter(p *processapi.ProcessProvider) *gin.Engine {
 	r := gin.New()
@@ -888,7 +880,7 @@ func newTestProcessService(t *testing.T) *process.Service {
 func connectWS(t *testing.T, serverURL string) *websocket.Conn {
 	t.Helper()
 
-	wsURL := "ws" + strings.TrimPrefix(serverURL, "http")
+	wsURL := "ws" + core.TrimPrefix(serverURL, "http")
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	requireNoError(t, err)
 	return conn
@@ -911,13 +903,13 @@ func readWSEvents(t *testing.T, conn *websocket.Conn, channels ...string) map[st
 		_, payload, err := conn.ReadMessage()
 		requireNoError(t, err)
 
-		for _, line := range strings.Split(strings.TrimSpace(string(payload)), "\n") {
-			if strings.TrimSpace(line) == "" {
+		for _, line := range core.Split(core.Trim(string(payload)), "\n") {
+			if core.Trim(line) == "" {
 				continue
 			}
 
 			var msg corews.Message
-			requireNoError(t, json.Unmarshal([]byte(line), &msg))
+			requireNoError(t, unmarshalJSON(t, []byte(line), &msg))
 
 			if _, ok := want[msg.Channel]; ok {
 				events[msg.Channel] = msg
@@ -1098,9 +1090,9 @@ func TestProvider_ProcessProvider_Describe_Ugly(t *testing.T) {
 }
 
 func TestProvider_PIDAlive_Good(t *testing.T) {
-	alive := processapi.PIDAlive(os.Getpid())
+	alive := processapi.PIDAlive(core.Getpid())
 	assertTrue(t, alive)
-	assertGreater(t, os.Getpid(), 0)
+	assertGreater(t, core.Getpid(), 0)
 }
 
 func TestProvider_PIDAlive_Bad(t *testing.T) {

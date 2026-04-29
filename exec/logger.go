@@ -1,4 +1,4 @@
-package exec
+package command
 
 import (
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2

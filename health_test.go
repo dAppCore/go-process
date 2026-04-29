@@ -9,8 +9,7 @@ import (
 func TestHealthServer_Endpoints(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	assertTrue(t, hs.Ready())
-	err := hs.Start()
-	requireNoError(t, err)
+	requireNoError(t, hs.Start())
 	defer func() { _ = hs.Stop(context.Background()) }()
 
 	addr := hs.Addr()
@@ -55,8 +54,7 @@ func TestHealthServer_WithChecks(t *testing.T) {
 		return nil
 	})
 
-	err := hs.Start()
-	requireNoError(t, err)
+	requireNoError(t, hs.Start())
 	defer func() { _ = hs.Stop(context.Background()) }()
 
 	addr := hs.Addr()
@@ -80,8 +78,7 @@ func TestHealthServer_NilCheckIgnored(t *testing.T) {
 	var check HealthCheck
 	hs.AddCheck(check)
 
-	err := hs.Start()
-	requireNoError(t, err)
+	requireNoError(t, hs.Start())
 	defer func() { _ = hs.Stop(context.Background()) }()
 
 	addr := hs.Addr()
@@ -242,8 +239,7 @@ func TestHealth_HealthServer_Ready_Ugly(t *testing.T) {
 
 func TestHealth_HealthServer_Start_Good(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
-	err := hs.Start()
-	requireNoError(t, err)
+	requireNoError(t, hs.Start())
 	defer func() { requireNoError(t, hs.Stop(context.Background())) }()
 	assertNotEmpty(t, hs.Addr())
 }
@@ -253,15 +249,13 @@ func TestHealth_HealthServer_Start_Bad(t *testing.T) {
 	requireNoError(t, hs.Start())
 	defer func() { requireNoError(t, hs.Stop(context.Background())) }()
 	second := NewHealthServer(hs.Addr())
-	err := second.Start()
-	assertError(t, err)
+	assertError(t, second.Start())
 }
 
 func TestHealth_HealthServer_Start_Ugly(t *testing.T) {
 	hs := NewHealthServer("127.0.0.1:0")
 	hs.AddCheck(nil)
-	err := hs.Start()
-	requireNoError(t, err)
+	requireNoError(t, hs.Start())
 	defer func() { requireNoError(t, hs.Stop(context.Background())) }()
 	assertTrue(t, WaitForHealth(hs.Addr(), 2_000))
 }

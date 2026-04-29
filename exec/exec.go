@@ -1,16 +1,14 @@
-package exec
+package command
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
 
+	core "dappco.re/go"
 	coreerr "dappco.re/go/log"
 	goio "io"
 )
+
+type goError = error
 
 // ErrCommandContextRequired is returned when a command is created without a context.
 var ErrCommandContextRequired = coreerr.E("", "exec: command context is required", nil)
@@ -45,7 +43,7 @@ type Cmd struct {
 	args   []string
 	ctx    context.Context
 	opts   Options
-	cmd    *exec.Cmd
+	cmd    *core.Cmd
 	logger Logger
 }
 
@@ -117,27 +115,28 @@ func (c *Cmd) WithBackground(background bool) *Cmd {
 // Example:
 //
 //	if err := cmd.Start(); err != nil { return err }
-func (c *Cmd) Start() error {
-	if err := c.prepare(); err != nil {
-		return err
+func (c *Cmd) Start() core.Result {
+	if r := c.prepare(); !r.OK {
+		return r
 	}
 	c.logDebug("executing command")
 
 	if err := c.cmd.Start(); err != nil {
 		wrapped := wrapError("Cmd.Start", err, c.name, c.args)
-		c.logError("command failed", wrapped)
+		c.logError("command failed", wrapped.Value.(error))
 		return wrapped
 	}
+	c.watchContext()
 
 	if c.opts.Background {
-		go func(cmd *exec.Cmd) {
+		go func(cmd *core.Cmd) {
 			if err := cmd.Wait(); err != nil {
-				c.logError("background command failed", wrapError("Cmd.Start", err, c.name, c.args))
+				c.logError("background command failed", wrapError("Cmd.Start", err, c.name, c.args).Value.(error))
 			}
 		}(c.cmd)
 	}
 
-	return nil
+	return core.Ok(nil)
 }
 
 // Run executes the command and waits for it to finish.
@@ -146,22 +145,28 @@ func (c *Cmd) Start() error {
 // Example:
 //
 //	if err := cmd.Run(); err != nil { return err }
-func (c *Cmd) Run() error {
+func (c *Cmd) Run() core.Result {
 	if c.opts.Background {
 		return c.Start()
 	}
 
-	if err := c.prepare(); err != nil {
-		return err
+	if r := c.prepare(); !r.OK {
+		return r
 	}
 	c.logDebug("executing command")
 
-	if err := c.cmd.Run(); err != nil {
+	if err := c.cmd.Start(); err != nil {
 		wrapped := wrapError("Cmd.Run", err, c.name, c.args)
-		c.logError("command failed", wrapped)
+		c.logError("command failed", wrapped.Value.(error))
 		return wrapped
 	}
-	return nil
+	c.watchContext()
+	if err := c.cmd.Wait(); err != nil {
+		wrapped := wrapError("Cmd.Run", err, c.name, c.args)
+		c.logError("command failed", wrapped.Value.(error))
+		return wrapped
+	}
+	return core.Ok(nil)
 }
 
 // Output runs the command and returns its standard output.
@@ -169,21 +174,21 @@ func (c *Cmd) Run() error {
 // Example:
 //
 //	out, err := cmd.Output()
-func (c *Cmd) Output() ([]byte, error) {
+func (c *Cmd) Output() ([]byte, goError) {
 	if c.opts.Background {
 		return nil, coreerr.E("Cmd.Output", "background execution is incompatible with Output", nil)
 	}
 
-	if err := c.prepare(); err != nil {
-		return nil, err
+	if r := c.prepare(); !r.OK {
+		return nil, r.Value.(error)
 	}
 	c.logDebug("executing command")
 
 	out, err := c.cmd.Output()
 	if err != nil {
 		wrapped := wrapError("Cmd.Output", err, c.name, c.args)
-		c.logError("command failed", wrapped)
-		return nil, wrapped
+		c.logError("command failed", wrapped.Value.(error))
+		return nil, wrapped.Value.(error)
 	}
 	return out, nil
 }
@@ -193,41 +198,55 @@ func (c *Cmd) Output() ([]byte, error) {
 // Example:
 //
 //	out, err := cmd.CombinedOutput()
-func (c *Cmd) CombinedOutput() ([]byte, error) {
+func (c *Cmd) CombinedOutput() ([]byte, goError) {
 	if c.opts.Background {
 		return nil, coreerr.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil)
 	}
 
-	if err := c.prepare(); err != nil {
-		return nil, err
+	if r := c.prepare(); !r.OK {
+		return nil, r.Value.(error)
 	}
 	c.logDebug("executing command")
 
 	out, err := c.cmd.CombinedOutput()
 	if err != nil {
 		wrapped := wrapError("Cmd.CombinedOutput", err, c.name, c.args)
-		c.logError("command failed", wrapped)
-		return out, wrapped
+		c.logError("command failed", wrapped.Value.(error))
+		return out, wrapped.Value.(error)
 	}
 	return out, nil
 }
 
-func (c *Cmd) prepare() error {
+func (c *Cmd) prepare() core.Result {
 	if c.ctx == nil {
-		return coreerr.E("Cmd.prepare", "exec: command context is required", ErrCommandContextRequired)
+		return core.Fail(coreerr.E("Cmd.prepare", "exec: command context is required", ErrCommandContextRequired))
 	}
 
-	c.cmd = exec.CommandContext(c.ctx, c.name, c.args...)
+	c.cmd = commandContext(c.ctx, c.name, c.args...)
 
 	c.cmd.Dir = c.opts.Dir
 	if len(c.opts.Env) > 0 {
-		c.cmd.Env = append(os.Environ(), c.opts.Env...)
+		c.cmd.Env = append(core.Environ(), c.opts.Env...)
 	}
 
 	c.cmd.Stdin = c.opts.Stdin
 	c.cmd.Stdout = c.opts.Stdout
 	c.cmd.Stderr = c.opts.Stderr
-	return nil
+	return core.Ok(nil)
+}
+
+func (c *Cmd) watchContext() {
+	if c.ctx == nil || c.cmd == nil {
+		return
+	}
+	go func() {
+		<-c.ctx.Done()
+		if c.cmd.Process != nil {
+			if err := c.cmd.Process.Kill(); err != nil {
+				core.Print(core.Stderr(), "command context kill failed: %s", err)
+			}
+		}
+	}()
 }
 
 // RunQuiet executes the command suppressing stdout unless there is an error.
@@ -236,22 +255,22 @@ func (c *Cmd) prepare() error {
 // Example:
 //
 //	err := exec.RunQuiet(ctx, "go", "vet", "./...")
-func RunQuiet(ctx context.Context, name string, args ...string) error {
-	var stderr bytes.Buffer
-	cmd := Command(ctx, name, args...).WithStderr(&stderr)
-	if err := cmd.Run(); err != nil {
+func RunQuiet(ctx context.Context, name string, args ...string) core.Result {
+	stderr := core.NewBuffer()
+	cmd := Command(ctx, name, args...).WithStderr(stderr)
+	if r := cmd.Run(); !r.OK {
 		// Include stderr in error message
-		return coreerr.E("RunQuiet", strings.TrimSpace(stderr.String()), err)
+		return core.Fail(coreerr.E("RunQuiet", core.Trim(stderr.String()), r.Value.(error)))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
-func wrapError(caller string, err error, name string, args []string) error {
-	cmdStr := name + " " + strings.Join(args, " ")
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return coreerr.E(caller, fmt.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err)
+func wrapError(caller string, err error, name string, args []string) core.Result {
+	cmdStr := core.Join(" ", append([]string{name}, args...)...)
+	if exitErr, ok := err.(interface{ ExitCode() int }); ok {
+		return core.Fail(coreerr.E(caller, core.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err))
 	}
-	return coreerr.E(caller, fmt.Sprintf("failed to execute %q", cmdStr), err)
+	return core.Fail(coreerr.E(caller, core.Sprintf("failed to execute %q", cmdStr), err))
 }
 
 func (c *Cmd) getLogger() Logger {
@@ -262,9 +281,57 @@ func (c *Cmd) getLogger() Logger {
 }
 
 func (c *Cmd) logDebug(msg string) {
-	c.getLogger().Debug(msg, "cmd", c.name, "args", strings.Join(c.args, " "))
+	c.getLogger().Debug(msg, "cmd", c.name, "args", core.Join(" ", c.args...))
 }
 
-func (c *Cmd) logError(msg string, err error) {
-	c.getLogger().Error(msg, "cmd", c.name, "args", strings.Join(c.args, " "), "err", err)
+func (c *Cmd) logError(msg string, err goError) {
+	c.getLogger().Error(msg, "cmd", c.name, "args", core.Join(" ", c.args...), "err", err)
+}
+
+func commandContext(ctx context.Context, name string, arg ...string) *core.Cmd {
+	path := name
+	if found, err := lookPath(name); err == nil {
+		path = found
+	}
+
+	cmd := &core.Cmd{
+		Path: path,
+		Args: append([]string{name}, arg...),
+	}
+	return cmd
+}
+
+func lookPath(file string) (string, goError) {
+	if file == "" {
+		return "", coreerr.E("lookPath", "executable file not found in PATH", nil)
+	}
+	if core.Contains(file, string(core.PathSeparator)) {
+		if isExecutable(file) {
+			return file, nil
+		}
+		return "", coreerr.E("lookPath", core.Sprintf("executable file %q not found", file), nil)
+	}
+
+	for _, dir := range core.Split(core.Getenv("PATH"), string(core.PathListSeparator)) {
+		if dir == "" {
+			dir = "."
+		}
+		path := core.PathJoin(dir, file)
+		if isExecutable(path) {
+			return path, nil
+		}
+	}
+	return "", coreerr.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil)
+}
+
+func isExecutable(path string) bool {
+	stat := core.Stat(path)
+	if !stat.OK {
+		return false
+	}
+	info, ok := stat.Value.(core.FsFileInfo)
+	if !ok || info.IsDir() {
+		return false
+	}
+	return info.Mode()&0111 != 0
 }

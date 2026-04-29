@@ -123,7 +123,9 @@ func (e *TaskProcessWaitError) Error() string {
 }
 
 // Unwrap returns the underlying wait error.
-func (e *TaskProcessWaitError) Unwrap() error {
+func (e *TaskProcessWaitError) Unwrap() (
+	err error,
+) {
 	if e == nil {
 		return nil
 	}
@@ -180,7 +182,7 @@ type processActionInput struct {
 	PID            int
 }
 
-func parseProcessActionInput(opts core.Options, requireCommand bool) (processActionInput, error) {
+func parseProcessActionInput(opts core.Options, requireCommand bool) (processActionInput, goError) {
 	parsed := processActionInput{
 		Command:        core.Trim(opts.String("command")),
 		Dir:            opts.String("dir"),
@@ -213,7 +215,7 @@ func parseProcessActionInput(opts core.Options, requireCommand bool) (processAct
 	return parsed, nil
 }
 
-func parseProcessActionTarget(opts core.Options) (string, int, error) {
+func parseProcessActionTarget(opts core.Options) (string, int, goError) {
 	id := core.Trim(opts.String("id"))
 	pid := parseIntOption(opts, "pid")
 	if id == "" && pid <= 0 {
@@ -308,7 +310,7 @@ func parseIntOption(opts core.Options, key string) int {
 	return 0
 }
 
-func parseStringSliceOption(opts core.Options, key string) ([]string, error) {
+func parseStringSliceOption(opts core.Options, key string) ([]string, goError) {
 	r := opts.Get(key)
 	if !r.OK {
 		return nil, nil

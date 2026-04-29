@@ -1,18 +1,14 @@
-package exec_test
+package command_test
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"testing"
 	"time"
 
-	"dappco.re/go/process/exec"
+	core "dappco.re/go"
+	exec "dappco.re/go/process/exec"
 )
 
 // mockLogger captures log calls for testing
@@ -24,6 +20,16 @@ type mockLogger struct {
 type logCall struct {
 	msg     string
 	keyvals []any
+}
+
+func resultError(r core.Result) (err error) {
+	if r.OK {
+		return nil
+	}
+	if err, ok := r.Value.(error); ok {
+		return err
+	}
+	return core.NewError(r.Error())
 }
 
 func (m *mockLogger) Debug(msg string, keyvals ...any) {
@@ -38,9 +44,9 @@ func TestCommand_Run_Good_LogsDebug(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
-	err := exec.Command(ctx, "echo", "hello").
+	err := resultError(exec.Command(ctx, "echo", "hello").
 		WithLogger(logger).
-		Run()
+		Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,9 +66,9 @@ func TestCommand_Run_Bad_LogsError(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 
-	err := exec.Command(ctx, "false").
+	err := resultError(exec.Command(ctx, "false").
 		WithLogger(logger).
-		Run()
+		Run())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -88,7 +94,7 @@ func TestCommand_Output_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "test" {
+	if core.Trim(string(out)) != "test" {
 		t.Errorf("expected 'test', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -106,7 +112,7 @@ func TestCommand_CombinedOutput_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "combined" {
+	if core.Trim(string(out)) != "combined" {
 		t.Errorf("expected 'combined', got %q", string(out))
 	}
 	if len(logger.debugCalls) != 1 {
@@ -188,7 +194,7 @@ func TestCommand_WithDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	trimmed := strings.TrimSpace(string(out))
+	trimmed := core.Trim(string(out))
 	if trimmed != "/tmp" && trimmed != "/private/tmp" {
 		t.Errorf("expected /tmp or /private/tmp, got %q", trimmed)
 	}
@@ -203,26 +209,27 @@ func TestCommand_WithEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) != "exec_val" {
+	if core.Trim(string(out)) != "exec_val" {
 		t.Errorf("expected 'exec_val', got %q", string(out))
 	}
 }
 
 func TestCommand_WithStdinStdoutStderr(t *testing.T) {
 	ctx := context.Background()
-	input := strings.NewReader("piped input\n")
-	var stdout, stderr strings.Builder
+	input := core.NewReader("piped input\n")
+	stdout := core.NewBuilder()
+	stderr := core.NewBuilder()
 
-	err := exec.Command(ctx, "cat").
+	err := resultError(exec.Command(ctx, "cat").
 		WithStdin(input).
-		WithStdout(&stdout).
-		WithStderr(&stderr).
+		WithStdout(stdout).
+		WithStderr(stderr).
 		WithLogger(&mockLogger{}).
-		Run()
+		Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(stdout.String()) != "piped input" {
+	if core.Trim(stdout.String()) != "piped input" {
 		t.Errorf("expected 'piped input', got %q", stdout.String())
 	}
 }
@@ -231,13 +238,13 @@ func TestCommand_Run_Background(t *testing.T) {
 	logger := &mockLogger{}
 	ctx := context.Background()
 	dir := t.TempDir()
-	marker := filepath.Join(dir, "marker.txt")
+	marker := core.PathJoin(dir, "marker.txt")
 
 	start := time.Now()
-	err := exec.Command(ctx, "sh", "-c", fmt.Sprintf("sleep 0.2; printf done > %q", marker)).
+	err := resultError(exec.Command(ctx, "sh", "-c", core.Sprintf("sleep 0.2; printf done > %q", marker)).
 		WithBackground(true).
 		WithLogger(logger).
-		Run()
+		Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -248,8 +255,8 @@ func TestCommand_Run_Background(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		data, readErr := os.ReadFile(marker)
-		if readErr == nil && strings.TrimSpace(string(data)) == "done" {
+		data := core.ReadFile(marker)
+		if data.OK && core.Trim(string(data.Value.([]byte))) == "done" {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -261,21 +268,21 @@ func TestCommand_Run_Background(t *testing.T) {
 
 func TestCommand_NilContextRejected(t *testing.T) {
 	t.Run("start", func(t *testing.T) {
-		err := exec.Command(nil, "echo", "test").Start()
+		err := resultError(exec.Command(nil, "echo", "test").Start())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, exec.ErrCommandContextRequired) {
+		if !core.Is(err, exec.ErrCommandContextRequired) {
 			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
 		}
 	})
 
 	t.Run("run", func(t *testing.T) {
-		err := exec.Command(nil, "echo", "test").Run()
+		err := resultError(exec.Command(nil, "echo", "test").Run())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, exec.ErrCommandContextRequired) {
+		if !core.Is(err, exec.ErrCommandContextRequired) {
 			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
 		}
 	})
@@ -285,7 +292,7 @@ func TestCommand_NilContextRejected(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, exec.ErrCommandContextRequired) {
+		if !core.Is(err, exec.ErrCommandContextRequired) {
 			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
 		}
 	})
@@ -295,7 +302,7 @@ func TestCommand_NilContextRejected(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !errors.Is(err, exec.ErrCommandContextRequired) {
+		if !core.Is(err, exec.ErrCommandContextRequired) {
 			t.Fatalf("expected ErrCommandContextRequired, got %v", err)
 		}
 	})
@@ -314,7 +321,7 @@ func TestCommand_Output_BackgroundRejected(t *testing.T) {
 
 func TestRunQuiet_Good(t *testing.T) {
 	ctx := context.Background()
-	err := exec.RunQuiet(ctx, "echo", "quiet")
+	err := resultError(exec.RunQuiet(ctx, "echo", "quiet"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,7 +329,7 @@ func TestRunQuiet_Good(t *testing.T) {
 
 func TestRunQuiet_Bad(t *testing.T) {
 	ctx := context.Background()
-	err := exec.RunQuiet(ctx, "sh", "-c", "echo fail >&2; exit 1")
+	err := resultError(exec.RunQuiet(ctx, "sh", "-c", "echo fail >&2; exit 1"))
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -330,7 +337,7 @@ func TestRunQuiet_Bad(t *testing.T) {
 
 func TestExec_Command_Good(t *testing.T) {
 	cmd := exec.Command(context.Background(), "echo", "hello")
-	err := cmd.Run()
+	err := resultError(cmd.Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -338,7 +345,7 @@ func TestExec_Command_Good(t *testing.T) {
 
 func TestExec_Command_Bad(t *testing.T) {
 	cmd := exec.Command(nil, "echo")
-	err := cmd.Run()
+	err := resultError(cmd.Run())
 	if err == nil {
 		t.Fatal("expected nil context error")
 	}
@@ -346,7 +353,7 @@ func TestExec_Command_Bad(t *testing.T) {
 
 func TestExec_Command_Ugly(t *testing.T) {
 	cmd := exec.Command(context.Background(), "")
-	err := cmd.Run()
+	err := resultError(cmd.Run())
 	if err == nil {
 		t.Fatal("expected empty command error")
 	}
@@ -357,7 +364,7 @@ func TestExec_Cmd_WithDir_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	trimmed := strings.TrimSpace(string(out))
+	trimmed := core.Trim(string(out))
 	if trimmed != "/tmp" && trimmed != "/private/tmp" {
 		t.Fatalf("unexpected pwd: %q", trimmed)
 	}
@@ -375,7 +382,7 @@ func TestExec_Cmd_WithDir_Ugly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(string(out)) == "" {
+	if core.Trim(string(out)) == "" {
 		t.Fatal("expected working directory output")
 	}
 }
@@ -411,7 +418,7 @@ func TestExec_Cmd_WithEnv_Ugly(t *testing.T) {
 }
 
 func TestExec_Cmd_WithStdin_Good(t *testing.T) {
-	out, err := exec.Command(context.Background(), "cat").WithStdin(strings.NewReader("input")).Output()
+	out, err := exec.Command(context.Background(), "cat").WithStdin(core.NewReader("input")).Output()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -431,7 +438,7 @@ func TestExec_Cmd_WithStdin_Bad(t *testing.T) {
 }
 
 func TestExec_Cmd_WithStdin_Ugly(t *testing.T) {
-	out, err := exec.Command(context.Background(), "cat").WithStdin(strings.NewReader("")).Output()
+	out, err := exec.Command(context.Background(), "cat").WithStdin(core.NewReader("")).Output()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -441,19 +448,19 @@ func TestExec_Cmd_WithStdin_Ugly(t *testing.T) {
 }
 
 func TestExec_Cmd_WithStdout_Good(t *testing.T) {
-	var stdout strings.Builder
-	err := exec.Command(context.Background(), "echo", "hello").WithStdout(&stdout).Run()
+	stdout := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "echo", "hello").WithStdout(stdout).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "hello") {
+	if !core.Contains(stdout.String(), "hello") {
 		t.Fatalf("expected stdout capture, got %q", stdout.String())
 	}
 }
 
 func TestExec_Cmd_WithStdout_Bad(t *testing.T) {
-	var stdout strings.Builder
-	err := exec.Command(context.Background(), "false").WithStdout(&stdout).Run()
+	stdout := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "false").WithStdout(stdout).Run())
 	if err == nil {
 		t.Fatal("expected command error")
 	}
@@ -463,8 +470,8 @@ func TestExec_Cmd_WithStdout_Bad(t *testing.T) {
 }
 
 func TestExec_Cmd_WithStdout_Ugly(t *testing.T) {
-	var stdout strings.Builder
-	err := exec.Command(context.Background(), "printf", "").WithStdout(&stdout).Run()
+	stdout := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "printf", "").WithStdout(stdout).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -474,30 +481,30 @@ func TestExec_Cmd_WithStdout_Ugly(t *testing.T) {
 }
 
 func TestExec_Cmd_WithStderr_Good(t *testing.T) {
-	var stderr strings.Builder
-	err := exec.Command(context.Background(), "sh", "-c", "echo err >&2").WithStderr(&stderr).Run()
+	stderr := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "sh", "-c", "echo err >&2").WithStderr(stderr).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "err") {
+	if !core.Contains(stderr.String(), "err") {
 		t.Fatalf("expected stderr capture, got %q", stderr.String())
 	}
 }
 
 func TestExec_Cmd_WithStderr_Bad(t *testing.T) {
-	var stderr strings.Builder
-	err := exec.Command(context.Background(), "sh", "-c", "echo err >&2; exit 2").WithStderr(&stderr).Run()
+	stderr := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "sh", "-c", "echo err >&2; exit 2").WithStderr(stderr).Run())
 	if err == nil {
 		t.Fatal("expected command error")
 	}
-	if !strings.Contains(stderr.String(), "err") {
+	if !core.Contains(stderr.String(), "err") {
 		t.Fatalf("expected stderr capture, got %q", stderr.String())
 	}
 }
 
 func TestExec_Cmd_WithStderr_Ugly(t *testing.T) {
-	var stderr strings.Builder
-	err := exec.Command(context.Background(), "printf", "").WithStderr(&stderr).Run()
+	stderr := core.NewBuilder()
+	err := resultError(exec.Command(context.Background(), "printf", "").WithStderr(stderr).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -508,7 +515,7 @@ func TestExec_Cmd_WithStderr_Ugly(t *testing.T) {
 
 func TestExec_Cmd_WithLogger_Good(t *testing.T) {
 	logger := &mockLogger{}
-	err := exec.Command(context.Background(), "echo", "hello").WithLogger(logger).Run()
+	err := resultError(exec.Command(context.Background(), "echo", "hello").WithLogger(logger).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -519,7 +526,7 @@ func TestExec_Cmd_WithLogger_Good(t *testing.T) {
 
 func TestExec_Cmd_WithLogger_Bad(t *testing.T) {
 	logger := &mockLogger{}
-	err := exec.Command(context.Background(), "false").WithLogger(logger).Run()
+	err := resultError(exec.Command(context.Background(), "false").WithLogger(logger).Run())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -529,14 +536,14 @@ func TestExec_Cmd_WithLogger_Bad(t *testing.T) {
 }
 
 func TestExec_Cmd_WithLogger_Ugly(t *testing.T) {
-	err := exec.Command(context.Background(), "echo", "hello").WithLogger(nil).Run()
+	err := resultError(exec.Command(context.Background(), "echo", "hello").WithLogger(nil).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestExec_Cmd_WithBackground_Good(t *testing.T) {
-	err := exec.Command(context.Background(), "true").WithBackground(true).Run()
+	err := resultError(exec.Command(context.Background(), "true").WithBackground(true).Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -550,49 +557,49 @@ func TestExec_Cmd_WithBackground_Bad(t *testing.T) {
 }
 
 func TestExec_Cmd_WithBackground_Ugly(t *testing.T) {
-	err := exec.Command(context.Background(), "false").WithBackground(true).Run()
+	err := resultError(exec.Command(context.Background(), "false").WithBackground(true).Run())
 	if err != nil {
 		t.Fatalf("start should succeed in background: %v", err)
 	}
 }
 
 func TestExec_Cmd_Start_Good(t *testing.T) {
-	err := exec.Command(context.Background(), "true").WithBackground(true).Start()
+	err := resultError(exec.Command(context.Background(), "true").WithBackground(true).Start())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestExec_Cmd_Start_Bad(t *testing.T) {
-	err := exec.Command(nil, "true").Start()
+	err := resultError(exec.Command(nil, "true").Start())
 	if err == nil {
 		t.Fatal("expected nil context error")
 	}
 }
 
 func TestExec_Cmd_Start_Ugly(t *testing.T) {
-	err := exec.Command(context.Background(), "definitely-not-a-real-command").Start()
+	err := resultError(exec.Command(context.Background(), "definitely-not-a-real-command").Start())
 	if err == nil {
 		t.Fatal("expected start error")
 	}
 }
 
 func TestExec_Cmd_Run_Good(t *testing.T) {
-	err := exec.Command(context.Background(), "true").Run()
+	err := resultError(exec.Command(context.Background(), "true").Run())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestExec_Cmd_Run_Bad(t *testing.T) {
-	err := exec.Command(context.Background(), "false").Run()
+	err := resultError(exec.Command(context.Background(), "false").Run())
 	if err == nil {
 		t.Fatal("expected run error")
 	}
 }
 
 func TestExec_Cmd_Run_Ugly(t *testing.T) {
-	err := exec.Command(nil, "true").Run()
+	err := resultError(exec.Command(nil, "true").Run())
 	if err == nil {
 		t.Fatal("expected nil context error")
 	}
@@ -603,7 +610,7 @@ func TestExec_Cmd_Output_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(string(out), "hello") {
+	if !core.Contains(string(out), "hello") {
 		t.Fatalf("expected output, got %q", string(out))
 	}
 }
@@ -630,7 +637,7 @@ func TestExec_Cmd_CombinedOutput_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(string(out), "out") || !strings.Contains(string(out), "err") {
+	if !core.Contains(string(out), "out") || !core.Contains(string(out), "err") {
 		t.Fatalf("expected combined output, got %q", string(out))
 	}
 }
@@ -640,7 +647,7 @@ func TestExec_Cmd_CombinedOutput_Bad(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected combined output error")
 	}
-	if !strings.Contains(string(out), "bad") {
+	if !core.Contains(string(out), "bad") {
 		t.Fatalf("expected partial output, got %q", string(out))
 	}
 }
@@ -653,21 +660,21 @@ func TestExec_Cmd_CombinedOutput_Ugly(t *testing.T) {
 }
 
 func TestExec_RunQuiet_Good(t *testing.T) {
-	err := exec.RunQuiet(context.Background(), "true")
+	err := resultError(exec.RunQuiet(context.Background(), "true"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestExec_RunQuiet_Bad(t *testing.T) {
-	err := exec.RunQuiet(context.Background(), "false")
+	err := resultError(exec.RunQuiet(context.Background(), "false"))
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
 func TestExec_RunQuiet_Ugly(t *testing.T) {
-	err := exec.RunQuiet(nil, "true")
+	err := resultError(exec.RunQuiet(nil, "true"))
 	if err == nil {
 		t.Fatal("expected nil context error")
 	}

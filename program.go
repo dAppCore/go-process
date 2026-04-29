@@ -1,10 +1,7 @@
 package process
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
-	"strings"
 	"unicode"
 
 	core "dappco.re/go"
@@ -37,26 +34,26 @@ type Program struct {
 	Path string
 }
 
-// Find resolves the program's absolute path using exec.LookPath.
+// Find resolves the program's absolute path using the OS search path.
 // Returns ErrProgramNotFound (wrapped) if the binary is not on PATH.
 //
 // Example:
 //
 //	if err := p.Find(); err != nil { return err }
-func (p *Program) Find() error {
+func (p *Program) Find() core.Result {
 	target := p.Path
 	if target == "" {
 		target = p.Name
 	}
 	if target == "" {
-		return coreerr.E("Program.Find", "program name is empty", nil)
+		return core.Fail(coreerr.E("Program.Find", "program name is empty", nil))
 	}
-	path, err := exec.LookPath(target)
+	path, err := lookPath(target)
 	if err != nil {
-		return coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound)
+		return core.Fail(coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound))
 	}
 	p.Path = path
-	return nil
+	return core.Ok(nil)
 }
 
 // Run executes the program with args in the current working directory.
@@ -65,7 +62,7 @@ func (p *Program) Find() error {
 // Example:
 //
 //	out, err := p.Run(ctx, "hello")
-func (p *Program) Run(ctx context.Context, args ...string) (string, error) {
+func (p *Program) Run(ctx context.Context, args ...string) (string, goError) {
 	return p.RunDir(ctx, "", args...)
 }
 
@@ -76,7 +73,7 @@ func (p *Program) Run(ctx context.Context, args ...string) (string, error) {
 // Example:
 //
 //	out, err := p.RunDir(ctx, "/tmp", "pwd")
-func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (string, error) {
+func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (string, goError) {
 	if ctx == nil {
 		return "", coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired)
 	}
@@ -90,8 +87,8 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 		return "", coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired)
 	}
 
-	out := &bytes.Buffer{}
-	cmd := exec.CommandContext(ctx, binary, args...)
+	out := core.NewBuffer()
+	cmd := commandContext(ctx, binary, args...)
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if dir != "" {
@@ -105,5 +102,26 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) (strin
 }
 
 func trimRightSpace(s string) string {
-	return strings.TrimRightFunc(s, unicode.IsSpace)
+	i := len(s)
+	for i > 0 {
+		r, size := utf8LastRuneInString(s[:i])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		i -= size
+	}
+	return s[:i]
+}
+
+func utf8LastRuneInString(s string) (rune, int) {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] < 0x80 || s[i]&0xc0 == 0xc0 {
+			r := []rune(s[i:])
+			if len(r) == 0 {
+				return rune(s[i]), 1
+			}
+			return r[0], len(s) - i
+		}
+	}
+	return 0, 0
 }

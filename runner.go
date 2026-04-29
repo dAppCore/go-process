@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	core "dappco.re/go"
 	coreerr "dappco.re/go/log"
 )
 
@@ -102,15 +103,15 @@ func (r RunAllResult) Success() bool {
 // Example:
 //
 //	result, err := runner.RunAll(ctx, specs)
-func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
-	if err := r.ensureService(); err != nil {
-		return nil, err
+func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+	if result := r.ensureService(); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := ensureRunnerContext(ctx); err != nil {
-		return nil, err
+	if result := ensureRunnerContext(ctx); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := validateSpecs(specs); err != nil {
-		return nil, err
+	if result := validateSpecs(specs); !result.OK {
+		return nil, result.Value.(error)
 	}
 	start := time.Now()
 
@@ -230,11 +231,11 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) (*RunAllResult, er
 	return aggResult, nil
 }
 
-func (r *Runner) ensureService() error {
+func (r *Runner) ensureService() core.Result {
 	if r == nil || r.service == nil {
-		return ErrRunnerNoService
+		return core.Fail(ErrRunnerNoService)
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // canRun checks if all dependencies are completed.
@@ -294,15 +295,15 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 // Example:
 //
 //	result, err := runner.RunSequential(ctx, specs)
-func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
-	if err := r.ensureService(); err != nil {
-		return nil, err
+func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+	if result := r.ensureService(); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := ensureRunnerContext(ctx); err != nil {
-		return nil, err
+	if result := ensureRunnerContext(ctx); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := validateSpecs(specs); err != nil {
-		return nil, err
+	if result := validateSpecs(specs); !result.OK {
+		return nil, result.Value.(error)
 	}
 	start := time.Now()
 	results := make([]RunResult, 0, len(specs))
@@ -348,15 +349,15 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) (*RunAllRes
 // Example:
 //
 //	result, err := runner.RunParallel(ctx, specs)
-func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, error) {
-	if err := r.ensureService(); err != nil {
-		return nil, err
+func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResult, goError) {
+	if result := r.ensureService(); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := ensureRunnerContext(ctx); err != nil {
-		return nil, err
+	if result := ensureRunnerContext(ctx); !result.OK {
+		return nil, result.Value.(error)
 	}
-	if err := validateSpecs(specs); err != nil {
-		return nil, err
+	if result := validateSpecs(specs); !result.OK {
+		return nil, result.Value.(error)
 	}
 	start := time.Now()
 	results := make([]RunResult, len(specs))
@@ -393,39 +394,39 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) (*RunAllResul
 	return aggResult, nil
 }
 
-func validateSpecs(specs []RunSpec) error {
+func validateSpecs(specs []RunSpec) core.Result {
 	seen := make(map[string]struct{}, len(specs))
 	for _, spec := range specs {
 		if spec.Name == "" {
-			return coreerr.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName)
+			return core.Fail(coreerr.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName))
 		}
 		if _, ok := seen[spec.Name]; ok {
-			return coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName)
+			return core.Fail(coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName))
 		}
 		seen[spec.Name] = struct{}{}
 
 		deps := make(map[string]struct{}, len(spec.After))
 		for _, dep := range spec.After {
 			if dep == "" {
-				return coreerr.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName)
+				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName))
 			}
 			if dep == spec.Name {
-				return coreerr.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName)
+				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName))
 			}
 			if _, ok := deps[dep]; ok {
-				return coreerr.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName)
+				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName))
 			}
 			deps[dep] = struct{}{}
 		}
 	}
-	return nil
+	return core.Ok(nil)
 }
 
-func ensureRunnerContext(ctx context.Context) error {
+func ensureRunnerContext(ctx context.Context) core.Result {
 	if ctx == nil {
-		return coreerr.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired)
+		return core.Fail(coreerr.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 func skippedRunResult(op string, spec RunSpec, err error) RunResult {

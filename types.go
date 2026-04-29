@@ -39,6 +39,8 @@ package process
 
 import "time"
 
+type goError = error
+
 // Status represents the process lifecycle state.
 //
 // Example:

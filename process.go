@@ -1,23 +1,14 @@
 package process
 
 import (
-	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; core.* helpers are downstream and unavailable at this layer.
 	"context"
-	// Note: banned-imports exception: core.* string/format helpers are downstream from this core.Process primitive and unavailable here.
-	"fmt"
-	// Note: banned-imports exception: go-process is THE implementation of core.Process and cannot depend on itself; OS handles and signals are intrinsic to process management.
-	"os"
-	// Note: banned-imports exception: os/exec is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
-	"os/exec"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
-	// Note: banned-imports exception: syscall is intrinsic to process management in THE implementation of core.Process, which cannot depend on itself.
 	"syscall"
-	// Note: banned-imports exception: process lifecycle timing is intrinsic here; core.* helpers are downstream and unavailable at this layer.
 	"time"
 
+	core "dappco.re/go"
 	coreerr "dappco.re/go/log"
-	// Note: banned-imports exception: stdlib io is intrinsic for process pipes; go-process is THE core.Process implementation and cannot self-depend.
 	goio "io"
 )
 
@@ -37,7 +28,7 @@ type ManagedProcess struct {
 	ExitCode  int
 	Duration  time.Duration
 
-	cmd          *exec.Cmd
+	cmd          *core.Cmd
 	ctx          context.Context
 	cancel       context.CancelFunc
 	output       *RingBuffer
@@ -90,7 +81,7 @@ func (p *ManagedProcess) Info() Info {
 //
 // Example:
 //
-//	fmt.Println(proc.Output())
+//	core.Println(proc.Output())
 func (p *ManagedProcess) Output() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -125,24 +116,21 @@ func (p *ManagedProcess) IsRunning() bool {
 //
 // Example:
 //
-//	if err := proc.Wait(); err != nil { return err }
-func (p *ManagedProcess) Wait() error {
+//	if r := proc.Wait(); !r.OK { return r }
+func (p *ManagedProcess) Wait() core.Result {
 	<-p.done
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
-		// fmt is intentional: core format helpers are downstream of Process.Wait.
-		return coreerr.E("Process.Wait", fmt.Sprintf("process failed to start: %s", p.ID), nil)
+		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process failed to start: %s", p.ID), nil))
 	}
 	if p.Status == StatusKilled {
-		// fmt is intentional: core format helpers are downstream of Process.Wait.
-		return coreerr.E("Process.Wait", fmt.Sprintf("process was killed: %s", p.ID), nil)
+		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process was killed: %s", p.ID), nil))
 	}
 	if p.ExitCode != 0 {
-		// fmt is intentional: core format helpers are downstream of Process.Wait.
-		return coreerr.E("Process.Wait", fmt.Sprintf("process exited with code %d", p.ExitCode), nil)
+		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process exited with code %d", p.ExitCode), nil))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // Done returns a channel that closes when the process exits.
@@ -160,13 +148,13 @@ func (p *ManagedProcess) Done() <-chan struct{} {
 // Example:
 //
 //	_ = proc.Kill()
-func (p *ManagedProcess) Kill() error {
+func (p *ManagedProcess) Kill() core.Result {
 	_, err := p.kill()
-	return err
+	return core.ResultOf(nil, err)
 }
 
 // kill terminates the process and reports whether a signal was actually sent.
-func (p *ManagedProcess) kill() (bool, error) {
+func (p *ManagedProcess) kill() (bool, goError) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -186,7 +174,7 @@ func (p *ManagedProcess) kill() (bool, error) {
 }
 
 // killTree forcefully terminates the process group when one exists.
-func (p *ManagedProcess) killTree() (bool, error) {
+func (p *ManagedProcess) killTree() (bool, goError) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -208,7 +196,7 @@ func (p *ManagedProcess) killTree() (bool, error) {
 // Example:
 //
 //	_ = proc.Shutdown()
-func (p *ManagedProcess) Shutdown() error {
+func (p *ManagedProcess) Shutdown() core.Result {
 	p.mu.RLock()
 	grace := p.gracePeriod
 	p.mu.RUnlock()
@@ -218,45 +206,45 @@ func (p *ManagedProcess) Shutdown() error {
 	}
 
 	// Send SIGTERM
-	if err := p.terminate(); err != nil {
+	if r := p.terminate(); !r.OK {
 		return p.Kill()
 	}
 
 	// Wait for exit or grace period
 	select {
 	case <-p.done:
-		return nil
+		return core.Ok(nil)
 	case <-time.After(grace):
 		return p.Kill()
 	}
 }
 
 // terminate sends SIGTERM to the process (or process group if KillGroup is set).
-func (p *ManagedProcess) terminate() error {
+func (p *ManagedProcess) terminate() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.Status != StatusRunning {
-		return nil
+		return core.Ok(nil)
 	}
 
 	if p.cmd == nil || p.cmd.Process == nil {
-		return nil
+		return core.Ok(nil)
 	}
 
 	pid := p.cmd.Process.Pid
 	if p.killGroup {
 		pid = -pid
 	}
-	return syscall.Kill(pid, syscall.SIGTERM)
+	return core.ResultOf(nil, syscall.Kill(pid, syscall.SIGTERM))
 }
 
 // Signal sends a signal to the process.
 //
 // Example:
 //
-//	_ = proc.Signal(os.Interrupt)
-func (p *ManagedProcess) Signal(sig os.Signal) error {
+//	_ = proc.Signal(syscall.SIGINT)
+func (p *ManagedProcess) Signal(sig syscall.Signal) core.Result {
 	p.mu.RLock()
 	status := p.Status
 	cmd := p.cmd
@@ -264,28 +252,23 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 	p.mu.RUnlock()
 
 	if status != StatusRunning {
-		return ErrProcessNotRunning
+		return core.Fail(ErrProcessNotRunning)
 	}
 
 	if cmd == nil || cmd.Process == nil {
-		return nil
+		return core.Ok(nil)
 	}
 
 	if !killGroup {
-		return cmd.Process.Signal(sig)
+		return core.ResultOf(nil, cmd.Process.Signal(sig))
 	}
 
-	sysSig, ok := sig.(syscall.Signal)
-	if !ok {
-		return cmd.Process.Signal(sig)
+	if sig == 0 {
+		return core.ResultOf(nil, syscall.Kill(-cmd.Process.Pid, 0))
 	}
 
-	if sysSig == 0 {
-		return syscall.Kill(-cmd.Process.Pid, 0)
-	}
-
-	if err := syscall.Kill(-cmd.Process.Pid, sysSig); err != nil {
-		return err
+	if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
+		return core.Fail(err)
 	}
 
 	// Some shells briefly ignore or defer the signal while they are still
@@ -315,9 +298,9 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 				return
 			}
 		}
-	}(cmd.Process.Pid, sysSig, p.done)
+	}(cmd.Process.Pid, sig, p.done)
 
-	return nil
+	return core.Ok(nil)
 }
 
 // SendInput writes to the process stdin.
@@ -325,20 +308,20 @@ func (p *ManagedProcess) Signal(sig os.Signal) error {
 // Example:
 //
 //	_ = proc.SendInput("hello\n")
-func (p *ManagedProcess) SendInput(input string) error {
+func (p *ManagedProcess) SendInput(input string) core.Result {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if p.Status != StatusRunning {
-		return ErrProcessNotRunning
+		return core.Fail(ErrProcessNotRunning)
 	}
 
 	if p.stdin == nil {
-		return ErrStdinNotAvailable
+		return core.Fail(ErrStdinNotAvailable)
 	}
 
 	_, err := p.stdin.Write([]byte(input))
-	return err
+	return core.ResultOf(nil, err)
 }
 
 // CloseStdin closes the process stdin pipe.
@@ -346,15 +329,15 @@ func (p *ManagedProcess) SendInput(input string) error {
 // Example:
 //
 //	_ = proc.CloseStdin()
-func (p *ManagedProcess) CloseStdin() error {
+func (p *ManagedProcess) CloseStdin() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.stdin == nil {
-		return nil
+		return core.Ok(nil)
 	}
 
 	err := p.stdin.Close()
 	p.stdin = nil
-	return err
+	return core.ResultOf(nil, err)
 }

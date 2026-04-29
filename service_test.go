@@ -2,9 +2,7 @@ package process
 
 import (
 	"context"
-	"os/exec"
 	"strconv"
-	"strings"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
@@ -28,7 +26,7 @@ func newTestService(t *testing.T) (*Service, *framework.Core) {
 
 // resultErr converts a core.Result returned from Startable/Stoppable hooks
 // into the (error) shape the test suite was originally written against.
-func resultErr(r framework.Result) error {
+func resultErr(r framework.Result) (err error) {
 	if r.OK {
 		return nil
 	}
@@ -147,7 +145,7 @@ func TestService_Start(t *testing.T) {
 		<-proc.Done()
 
 		// On macOS /tmp is a symlink to /private/tmp
-		output := strings.TrimSpace(proc.Output())
+		output := framework.Trim(proc.Output())
 		assertTrue(t, output == "/tmp" || output == "/private/tmp", "got: "+output)
 	})
 
@@ -308,7 +306,7 @@ func TestService_Actions(t *testing.T) {
 		assertNotEmpty(t, outputs)
 		foundTest := false
 		for _, o := range outputs {
-			if strings.Contains(o.Line, "test") {
+			if framework.Contains(o.Line, "test") {
 				foundTest = true
 				break
 			}
@@ -485,10 +483,9 @@ func TestService_Remove(t *testing.T) {
 		proc, _ := svc.Start(context.Background(), "echo", "test")
 		<-proc.Done()
 
-		err := svc.Remove(proc.ID)
-		requireNoError(t, err)
+		requireNoError(t, svc.Remove(proc.ID))
 
-		_, err = svc.Get(proc.ID)
+		_, err := svc.Get(proc.ID)
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
@@ -562,7 +559,7 @@ func TestService_KillPID(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		// Ignore SIGTERM so the test proves KillPID uses a forceful signal.
-		cmd := exec.Command("sh", "-c", "trap '' TERM; while :; do :; done")
+		cmd := commandContext(context.Background(), "sh", "-c", "trap '' TERM; while :; do :; done")
 		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
@@ -586,7 +583,7 @@ func TestService_KillPID(t *testing.T) {
 		select {
 		case err := <-waitCh:
 			requireError(t, err)
-			var exitErr *exec.ExitError
+			var exitErr interface{ Sys() any }
 			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
 			requireTrue(t, ok)
@@ -651,7 +648,7 @@ func TestService_Signal(t *testing.T) {
 	t.Run("signals unmanaged process by pid", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		cmd := exec.Command("sleep", "60")
+		cmd := commandContext(context.Background(), "sleep", "60")
 		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
@@ -675,7 +672,7 @@ func TestService_Signal(t *testing.T) {
 		select {
 		case err := <-waitCh:
 			requireError(t, err)
-			var exitErr *exec.ExitError
+			var exitErr interface{ Sys() any }
 			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
 			requireTrue(t, ok)

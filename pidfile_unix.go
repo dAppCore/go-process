@@ -2,15 +2,17 @@
 
 package process
 
-import "os"
+import "syscall"
 
-// processHandle returns the OS process handle for the given PID.
+import core "dappco.re/go"
+
+// processSignal sends sig to pid.
 //
 // Example:
 //
-//	proc, err := processHandle(1234)
-func processHandle(pid int) (*os.Process, error) {
-	return os.FindProcess(pid)
+//	err := processSignal(1234, syscall.Signal(0))
+func processSignal(pid int, sig syscall.Signal) core.Result {
+	return core.ResultOf(nil, syscall.Kill(pid, sig))
 }
 
 // currentPID returns the PID of the current process.
@@ -19,5 +21,5 @@ func processHandle(pid int) (*os.Process, error) {
 //
 //	pid := currentPID()
 func currentPID() int {
-	return os.Getpid()
+	return syscall.Getpid()
 }

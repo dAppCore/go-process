@@ -1,7 +1,6 @@
 package process
 
 import (
-	"os"
 	"testing"
 
 	"dappco.re/go"
@@ -12,18 +11,19 @@ func TestPIDFile_Acquire_Good(t *testing.T) {
 	pid := NewPIDFile(pidPath)
 	err := pid.Acquire()
 	requireNoError(t, err)
-	data, err := os.ReadFile(pidPath)
-	requireNoError(t, err)
-	assertNotEmpty(t, data)
+	data := core.ReadFile(pidPath)
+	requireTrue(t, data.OK, data.Error())
+	assertNotEmpty(t, data.Value)
 	err = pid.Release()
 	requireNoError(t, err)
-	_, err = os.Stat(pidPath)
-	assertTrue(t, os.IsNotExist(err))
+	stat := core.Stat(pidPath)
+	assertFalse(t, stat.OK)
+	assertTrue(t, core.IsNotExist(stat.Value.(error)))
 }
 
-func TestPIDFile_AcquireStale_Good(t *testing.T) {
+func TestPIDFile_Acquire_Ugly(t *testing.T) {
 	pidPath := core.JoinPath(t.TempDir(), "stale.pid")
-	requireNoError(t, os.WriteFile(pidPath, []byte("999999999"), 0644))
+	requireTrue(t, core.WriteFile(pidPath, []byte("999999999"), 0644).OK)
 	pid := NewPIDFile(pidPath)
 	err := pid.Acquire()
 	requireNoError(t, err)
@@ -31,7 +31,7 @@ func TestPIDFile_AcquireStale_Good(t *testing.T) {
 	requireNoError(t, err)
 }
 
-func TestPIDFile_CreateDirectory_Good(t *testing.T) {
+func TestPIDFile_Acquire_CreatesDirectory(t *testing.T) {
 	pidPath := core.JoinPath(t.TempDir(), "subdir", "nested", "test.pid")
 	pid := NewPIDFile(pidPath)
 	err := pid.Acquire()
@@ -52,23 +52,23 @@ func TestPIDFile_Release_MissingIsNoop(t *testing.T) {
 	requireNoError(t, pid.Release())
 }
 
-func TestReadPID_Missing_Bad(t *testing.T) {
+func TestReadPID_ReadPID_Missing(t *testing.T) {
 	pid, running := ReadPID("/nonexistent/path.pid")
 	assertEqual(t, 0, pid)
 	assertFalse(t, running)
 }
 
-func TestReadPID_Invalid_Bad(t *testing.T) {
+func TestReadPID_ReadPID_Invalid(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "bad.pid")
-	requireNoError(t, os.WriteFile(path, []byte("notanumber"), 0644))
+	requireTrue(t, core.WriteFile(path, []byte("notanumber"), 0644).OK)
 	pid, running := ReadPID(path)
 	assertEqual(t, 0, pid)
 	assertFalse(t, running)
 }
 
-func TestReadPID_Stale_Bad(t *testing.T) {
+func TestReadPID_ReadPID_Stale(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "stale.pid")
-	requireNoError(t, os.WriteFile(path, []byte("999999999"), 0644))
+	requireTrue(t, core.WriteFile(path, []byte("999999999"), 0644).OK)
 	pid, running := ReadPID(path)
 	assertEqual(t, 999999999, pid)
 	assertFalse(t, running)
@@ -105,7 +105,7 @@ func TestPidfile_PIDFile_Acquire_Good(t *testing.T) {
 
 func TestPidfile_PIDFile_Acquire_Bad(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "running.pid")
-	requireNoError(t, os.WriteFile(path, []byte(core.Itoa(os.Getpid())), 0644))
+	requireTrue(t, core.WriteFile(path, []byte(core.Itoa(core.Getpid())), 0644).OK)
 	pid := NewPIDFile(path)
 	err := pid.Acquire()
 	assertError(t, err)
@@ -114,7 +114,7 @@ func TestPidfile_PIDFile_Acquire_Bad(t *testing.T) {
 
 func TestPidfile_PIDFile_Acquire_Ugly(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "stale.pid")
-	requireNoError(t, os.WriteFile(path, []byte("999999999"), 0644))
+	requireTrue(t, core.WriteFile(path, []byte("999999999"), 0644).OK)
 	pid := NewPIDFile(path)
 	err := pid.Acquire()
 	requireNoError(t, err)
@@ -169,9 +169,9 @@ func TestPidfile_PIDFile_Path_Ugly(t *testing.T) {
 
 func TestPidfile_ReadPID_Good(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "current.pid")
-	requireNoError(t, os.WriteFile(path, []byte(core.Itoa(os.Getpid())), 0644))
+	requireTrue(t, core.WriteFile(path, []byte(core.Itoa(core.Getpid())), 0644).OK)
 	pid, running := ReadPID(path)
-	assertEqual(t, os.Getpid(), pid)
+	assertEqual(t, core.Getpid(), pid)
 	assertTrue(t, running)
 }
 
@@ -184,7 +184,7 @@ func TestPidfile_ReadPID_Bad(t *testing.T) {
 
 func TestPidfile_ReadPID_Ugly(t *testing.T) {
 	path := core.JoinPath(t.TempDir(), "invalid.pid")
-	requireNoError(t, os.WriteFile(path, []byte("not-a-pid"), 0644))
+	requireTrue(t, core.WriteFile(path, []byte("not-a-pid"), 0644).OK)
 	pid, running := ReadPID(path)
 	assertEqual(t, 0, pid)
 	assertFalse(t, running)

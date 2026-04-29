@@ -2,11 +2,11 @@ package process
 
 import (
 	"context"
-	"os"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"time"
 
+	core "dappco.re/go"
 	coreerr "dappco.re/go/log"
 )
 
@@ -83,66 +83,67 @@ func NewDaemon(opts DaemonOptions) *Daemon {
 // Example:
 //
 //	if err := daemon.Start(); err != nil { return err }
-func (d *Daemon) Start() error {
+func (d *Daemon) Start() core.Result {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if d.running {
-		return coreerr.E("Daemon.Start", "daemon already running", nil)
+		return core.Fail(coreerr.E("Daemon.Start", "daemon already running", nil))
 	}
 
 	if d.pid != nil {
-		if err := d.pid.Acquire(); err != nil {
-			return err
+		if r := d.pid.Acquire(); !r.OK {
+			return r
 		}
 	}
 
 	if d.health != nil {
-		if err := d.health.Start(); err != nil {
+		if r := d.health.Start(); !r.OK {
 			if d.pid != nil {
-				if releaseErr := d.pid.Release(); releaseErr != nil {
-					return coreerr.Join(err, releaseErr)
+				if release := d.pid.Release(); !release.OK {
+					return core.Fail(coreerr.Join(r.Value.(error), release.Value.(error)))
 				}
 			}
-			return err
+			return r
 		}
 	}
 
 	// Auto-register if registry is set
 	if d.opts.Registry != nil {
 		entry := d.opts.RegistryEntry
-		entry.PID = os.Getpid()
+		entry.PID = core.Getpid()
 		if d.health != nil {
 			entry.Health = d.health.Addr()
 		}
 		if entry.Project == "" {
-			if wd, err := os.Getwd(); err == nil {
-				entry.Project = wd
+			if wd := core.Getwd(); wd.OK {
+				entry.Project = wd.Value.(string)
 			}
 		}
 		if entry.Binary == "" {
-			if binary, err := os.Executable(); err == nil {
-				entry.Binary = binary
+			args := core.Args()
+			if len(args) > 0 {
+				entry.Binary = args[0]
 			}
 		}
-		if err := d.opts.Registry.Register(entry); err != nil {
-			errs := []error{err}
+		if r := d.opts.Registry.Register(entry); !r.OK {
+			errs := []error{r.Value.(error)}
 			if d.health != nil {
-				if stopErr := d.health.Stop(context.Background()); stopErr != nil {
-					errs = append(errs, stopErr)
+				if stop := d.health.Stop(context.Background()); !stop.OK {
+					errs = append(errs, stop.Value.(error))
 				}
 			}
 			if d.pid != nil {
-				if releaseErr := d.pid.Release(); releaseErr != nil {
-					errs = append(errs, releaseErr)
+				if release := d.pid.Release(); !release.OK {
+					errs = append(errs, release.Value.(error))
 				}
 			}
-			return coreerr.E("Daemon.Start", "registry", coreerr.Join(errs...))
+			return core.Fail(coreerr.E("Daemon.Start", "registry", coreerr.Join(errs...)))
 		}
 	}
 
 	d.running = true
-	return nil
+	return core.Ok(nil)
 }
 
 // Run blocks until the context is cancelled.
@@ -150,15 +151,15 @@ func (d *Daemon) Start() error {
 // Example:
 //
 //	if err := daemon.Run(ctx); err != nil { return err }
-func (d *Daemon) Run(ctx context.Context) error {
+func (d *Daemon) Run(ctx context.Context) core.Result {
 	if ctx == nil {
-		return coreerr.E("Daemon.Run", "daemon context is required", ErrDaemonContextRequired)
+		return core.Fail(coreerr.E("Daemon.Run", "daemon context is required", ErrDaemonContextRequired))
 	}
 
 	d.mu.Lock()
 	if !d.running {
 		d.mu.Unlock()
-		return coreerr.E("Daemon.Run", "daemon not started - call Start() first", nil)
+		return core.Fail(coreerr.E("Daemon.Run", "daemon not started - call Start() first", nil))
 	}
 	d.mu.Unlock()
 
@@ -172,12 +173,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 // Example:
 //
 //	_ = daemon.Stop()
-func (d *Daemon) Stop() error {
+func (d *Daemon) Stop() core.Result {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if !d.running {
-		return nil
+		return core.Ok(nil)
 	}
 
 	var errs []error
@@ -191,29 +192,29 @@ func (d *Daemon) Stop() error {
 	}
 
 	if d.opts.Registry != nil {
-		if err := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "registry", err))
+		if r := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); !r.OK {
+			errs = append(errs, coreerr.E("Daemon.Stop", "registry", r.Value.(error)))
 		}
 	}
 
 	if d.pid != nil {
-		if err := d.pid.Release(); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, coreerr.E("Daemon.Stop", "pid file", err))
+		if r := d.pid.Release(); !r.OK && !core.IsNotExist(r.Value.(error)) {
+			errs = append(errs, coreerr.E("Daemon.Stop", "pid file", r.Value.(error)))
 		}
 	}
 
 	if d.health != nil {
-		if err := d.health.Stop(shutdownCtx); err != nil {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", err))
+		if r := d.health.Stop(shutdownCtx); !r.OK {
+			errs = append(errs, coreerr.E("Daemon.Stop", "health server", r.Value.(error)))
 		}
 	}
 
 	d.running = false
 
 	if len(errs) > 0 {
-		return coreerr.Join(errs...)
+		return core.Fail(coreerr.Join(errs...))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // SetReady sets the daemon readiness status for `/ready`.

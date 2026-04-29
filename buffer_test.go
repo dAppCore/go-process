@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestRingBuffer_Basics_Good(t *testing.T) {
+func TestRingBufferBasics(t *testing.T) {
 	t.Run("write and read", func(t *testing.T) {
 		rb := NewRingBuffer(10)
 

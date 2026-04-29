@@ -3,16 +3,17 @@ package process
 import (
 	"context"
 	"net/http"
-	"os"
-	"path/filepath"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+
+	core "dappco.re/go"
 )
 
 func TestDaemon_StartAndStop(t *testing.T) {
-	pidPath := filepath.Join(t.TempDir(), "test.pid")
+	pidPath := core.PathJoin(t.TempDir(), "test.pid")
 
 	d := NewDaemon(DaemonOptions{
 		PIDFile:         pidPath,
@@ -20,8 +21,7 @@ func TestDaemon_StartAndStop(t *testing.T) {
 		ShutdownTimeout: 5 * time.Second,
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 
 	addr := d.HealthAddr()
 	requireNotEmpty(t, addr)
@@ -31,8 +31,7 @@ func TestDaemon_StartAndStop(t *testing.T) {
 	assertEqual(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
 
-	err = d.Stop()
-	requireNoError(t, err)
+	requireNoError(t, d.Stop())
 }
 
 func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
@@ -52,8 +51,7 @@ func TestDaemon_StopMarksNotReadyBeforeShutdownCompletes(t *testing.T) {
 		},
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 
 	addr := d.HealthAddr()
 	requireNotEmpty(t, addr)
@@ -112,7 +110,7 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 	checkEntered := make(chan struct{})
 	var once sync.Once
 	dir := t.TempDir()
-	reg := NewRegistry(filepath.Join(dir, "registry"))
+	reg := NewRegistry(core.PathJoin(dir, "registry"))
 
 	d := NewDaemon(DaemonOptions{
 		HealthAddr:      "127.0.0.1:0",
@@ -131,8 +129,7 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 		},
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 
 	addr := d.HealthAddr()
 	requireNotEmpty(t, addr)
@@ -154,7 +151,7 @@ func TestDaemon_StopUnregistersBeforeHealthShutdownCompletes(t *testing.T) {
 		t.Fatal("/health request did not enter the blocking check")
 	}
 
-	stopDone := make(chan error, 1)
+	stopDone := make(chan core.Result, 1)
 	go func() {
 		stopDone <- d.Stop()
 	}()
@@ -199,13 +196,12 @@ func TestDaemon_DoubleStartFails(t *testing.T) {
 		HealthAddr: "127.0.0.1:0",
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 	defer func() { _ = d.Stop() }()
 
-	err = d.Start()
-	assertError(t, err)
-	assertContains(t, err.Error(), "already running")
+	result := d.Start()
+	assertError(t, result)
+	assertContains(t, result.Error(), "already running")
 }
 
 func TestDaemon_RunWithoutStartFails(t *testing.T) {
@@ -214,17 +210,17 @@ func TestDaemon_RunWithoutStartFails(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := d.Run(ctx)
-	assertError(t, err)
-	assertContains(t, err.Error(), "not started")
+	result := d.Run(ctx)
+	assertError(t, result)
+	assertContains(t, result.Error(), "not started")
 }
 
 func TestDaemon_RunNilContextFails(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 
-	err := d.Run(nil)
-	requireError(t, err)
-	assertErrorIs(t, err, ErrDaemonContextRequired)
+	result := d.Run(nil)
+	requireError(t, result)
+	assertErrorIs(t, result, ErrDaemonContextRequired)
 }
 
 func TestDaemon_SetReady(t *testing.T) {
@@ -232,8 +228,7 @@ func TestDaemon_SetReady(t *testing.T) {
 		HealthAddr: "127.0.0.1:0",
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 	defer func() { _ = d.Stop() }()
 
 	addr := d.HealthAddr()
@@ -277,12 +272,11 @@ func TestDaemon_RunBlocksUntilCancelled(t *testing.T) {
 		HealthAddr: "127.0.0.1:0",
 	})
 
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	done := make(chan error, 1)
+	done := make(chan core.Result, 1)
 	go func() {
 		done <- d.Run(ctx)
 	}()
@@ -309,17 +303,17 @@ func TestDaemon_StopIdempotent(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 
 	// Stop without Start should be a no-op
-	err := d.Stop()
-	assertNoError(t, err)
+	assertNoError(t, d.Stop())
+	assertFalse(t, d.Ready())
 }
 
 func TestDaemon_AutoRegisters(t *testing.T) {
 	dir := t.TempDir()
-	reg := NewRegistry(filepath.Join(dir, "daemons"))
-	wd, err := os.Getwd()
-	requireNoError(t, err)
-	exe, err := os.Executable()
-	requireNoError(t, err)
+	reg := NewRegistry(core.PathJoin(dir, "daemons"))
+	wd := core.Getwd()
+	requireTrue(t, wd.OK)
+	args := core.Args()
+	requireNotEmpty(t, args)
 
 	d := NewDaemon(DaemonOptions{
 		HealthAddr: "127.0.0.1:0",
@@ -330,20 +324,18 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 		},
 	})
 
-	err = d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 
 	// Should be registered
 	entry, ok := reg.Get("test-app", "serve")
 	requireTrue(t, ok)
-	assertEqual(t, os.Getpid(), entry.PID)
+	assertEqual(t, core.Getpid(), entry.PID)
 	assertNotEmpty(t, entry.Health)
-	assertEqual(t, wd, entry.Project)
-	assertEqual(t, exe, entry.Binary)
+	assertEqual(t, wd.Value.(string), entry.Project)
+	assertEqual(t, args[0], entry.Binary)
 
 	// Stop should unregister
-	err = d.Stop()
-	requireNoError(t, err)
+	requireNoError(t, d.Stop())
 
 	_, ok = reg.Get("test-app", "serve")
 	assertFalse(t, ok)
@@ -352,10 +344,10 @@ func TestDaemon_AutoRegisters(t *testing.T) {
 func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
 	dir := t.TempDir()
 
-	pidPath := filepath.Join(dir, "daemon.pid")
-	regDir := filepath.Join(dir, "registry")
-	requireNoError(t, os.MkdirAll(regDir, 0o755))
-	requireNoError(t, os.Chmod(regDir, 0o555))
+	pidPath := core.PathJoin(dir, "daemon.pid")
+	regDir := core.PathJoin(dir, "registry")
+	requireTrue(t, core.MkdirAll(regDir, 0o755).OK)
+	requireNoError(t, syscall.Chmod(regDir, 0o555))
 
 	d := NewDaemon(DaemonOptions{
 		PIDFile:    pidPath,
@@ -367,11 +359,12 @@ func TestDaemon_StartRollsBackOnRegistryFailure(t *testing.T) {
 		},
 	})
 
-	err := d.Start()
-	requireError(t, err)
+	result := d.Start()
+	requireError(t, result)
 
-	_, statErr := os.Stat(pidPath)
-	assertTrue(t, os.IsNotExist(statErr))
+	stat := core.Stat(pidPath)
+	assertFalse(t, stat.OK)
+	assertTrue(t, core.IsNotExist(stat.Value.(error)))
 
 	addr := d.HealthAddr()
 	requireNotEmpty(t, addr)
@@ -401,7 +394,7 @@ func TestDaemon_NewDaemon_Bad(t *testing.T) {
 }
 
 func TestDaemon_NewDaemon_Ugly(t *testing.T) {
-	pidPath := filepath.Join(t.TempDir(), "daemon.pid")
+	pidPath := core.PathJoin(t.TempDir(), "daemon.pid")
 	d := NewDaemon(DaemonOptions{PIDFile: pidPath})
 	assertNotNil(t, d)
 	assertNotNil(t, d.pid)
@@ -410,8 +403,7 @@ func TestDaemon_NewDaemon_Ugly(t *testing.T) {
 
 func TestDaemon_Daemon_Start_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
-	err := d.Start()
-	requireNoError(t, err)
+	requireNoError(t, d.Start())
 	defer func() { requireNoError(t, d.Stop()) }()
 	assertNotEmpty(t, d.HealthAddr())
 }
@@ -420,14 +412,14 @@ func TestDaemon_Daemon_Start_Bad(t *testing.T) {
 	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
 	requireNoError(t, d.Start())
 	defer func() { requireNoError(t, d.Stop()) }()
-	err := d.Start()
-	assertError(t, err)
+	result := d.Start()
+	assertError(t, result)
 }
 
 func TestDaemon_Daemon_Start_Ugly(t *testing.T) {
 	d := NewDaemon(DaemonOptions{HealthAddr: "256.256.256.256:1"})
-	err := d.Start()
-	assertError(t, err)
+	result := d.Start()
+	assertError(t, result)
 	assertFalse(t, d.running)
 }
 
@@ -436,37 +428,34 @@ func TestDaemon_Daemon_Run_Good(t *testing.T) {
 	requireNoError(t, d.Start())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := d.Run(ctx)
-	requireNoError(t, err)
+	requireNoError(t, d.Run(ctx))
 }
 
 func TestDaemon_Daemon_Run_Bad(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	err := d.Run(nil)
-	assertError(t, err)
-	assertErrorIs(t, err, ErrDaemonContextRequired)
+	result := d.Run(nil)
+	assertError(t, result)
+	assertErrorIs(t, result, ErrDaemonContextRequired)
 }
 
 func TestDaemon_Daemon_Run_Ugly(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := d.Run(ctx)
-	assertError(t, err)
+	result := d.Run(ctx)
+	assertError(t, result)
 }
 
 func TestDaemon_Daemon_Stop_Good(t *testing.T) {
 	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
 	requireNoError(t, d.Start())
-	err := d.Stop()
-	requireNoError(t, err)
+	requireNoError(t, d.Stop())
 	assertFalse(t, d.running)
 }
 
 func TestDaemon_Daemon_Stop_Bad(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	err := d.Stop()
-	requireNoError(t, err)
+	requireNoError(t, d.Stop())
 	assertFalse(t, d.running)
 }
 
@@ -474,8 +463,7 @@ func TestDaemon_Daemon_Stop_Ugly(t *testing.T) {
 	d := NewDaemon(DaemonOptions{HealthAddr: "127.0.0.1:0"})
 	requireNoError(t, d.Start())
 	requireNoError(t, d.Stop())
-	err := d.Stop()
-	requireNoError(t, err)
+	requireNoError(t, d.Stop())
 }
 
 func TestDaemon_Daemon_SetReady_Good(t *testing.T) {

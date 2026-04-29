@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -253,7 +252,7 @@ func TestProcess_Signal(t *testing.T) {
 		proc, err := svc.Start(ctx, "sleep", "60")
 		requireNoError(t, err)
 
-		err = proc.Signal(os.Interrupt)
+		err = proc.Signal(syscall.SIGINT)
 		assertNoError(t, err)
 
 		select {
@@ -273,7 +272,7 @@ func TestProcess_Signal(t *testing.T) {
 		requireNoError(t, err)
 		<-proc.Done()
 
-		err = proc.Signal(os.Interrupt)
+		err = proc.Signal(syscall.SIGINT)
 		assertErrorIs(t, err, ErrProcessNotRunning)
 	})
 
@@ -288,7 +287,7 @@ func TestProcess_Signal(t *testing.T) {
 		})
 		requireNoError(t, err)
 
-		err = proc.Signal(os.Interrupt)
+		err = proc.Signal(syscall.SIGINT)
 		assertNoError(t, err)
 
 		select {
