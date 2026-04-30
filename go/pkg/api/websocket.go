@@ -20,12 +20,6 @@ type messageType string
 const (
 	// typeEvent indicates a generic event.
 	typeEvent messageType = "event"
-	// typeError indicates an error message.
-	typeError messageType = "error"
-	// typeSubscribe requests subscription to a channel.
-	typeSubscribe messageType = "subscribe"
-	// typeUnsubscribe requests unsubscription from a channel.
-	typeUnsubscribe messageType = "unsubscribe"
 )
 
 // hubMessage is the standard WebSocket event payload emitted by the provider.

@@ -43,7 +43,7 @@ func (s *Service) coreApp() *core.Core {
 	if s == nil || s.ServiceRuntime == nil {
 		return nil
 	}
-	return s.ServiceRuntime.Core()
+	return s.Core()
 }
 
 // Options configures the process service.
@@ -822,22 +822,12 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		}
 		proc := result.Value.(*Process)
 		return core.Ok(proc.Info())
-	case TaskProcessRun:
-		result := s.RunWithOptions(c.Context(), RunOptions{
-			Command:        m.Command,
-			Args:           m.Args,
-			Dir:            m.Dir,
-			Env:            m.Env,
-			DisableCapture: m.DisableCapture,
-			Detach:         m.Detach,
-			Timeout:        m.Timeout,
-			GracePeriod:    m.GracePeriod,
-			KillGroup:      m.KillGroup,
-		})
-		if !result.OK {
-			return result
-		}
-		return core.Ok(result.Value)
+		case TaskProcessRun:
+			result := s.RunWithOptions(c.Context(), RunOptions(m))
+			if !result.OK {
+				return result
+			}
+			return core.Ok(result.Value)
 	case TaskProcessKill:
 		switch {
 		case m.ID != "":

@@ -4,7 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`dappco.re/go/core/process` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events broadcast via Core IPC actions.
+`dappco.re/go/process` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events are broadcast via Core IPC actions.
+
+## Repo Layout
+
+```text
+core/go-process/
+├── go/                   ← primary Go module root (dappco.re/go/process)
+│   ├── go.mod            ← kept at module root to preserve import path
+│   ├── go.sum
+│   ├── *.go
+│   ├── exec/
+│   ├── pkg/
+│   ├── tests/
+│   ├── README.md         ← symlink to repo root README.md
+│   ├── CLAUDE.md         ← symlink to repo root CLAUDE.md
+│   ├── AGENTS.md         ← symlink to repo root AGENTS.md
+│   └── docs/             ← symlink to repo root docs/
+├── ui/                   ← TypeScript frontend UI (not part of Go module)
+├── docs/                 ← shared process docs/spec references
+├── specs/                ← process specs YAML (cross-language)
+├── .woodpecker.yml
+├── sonar-project.properties
+└── other cross-language repository files
+```
+
+## Go Resolution Modes
+
+| Mode | When | What runs |
+|------|------|-----------|
+| **CI module mode** | CI and scripted verification | `cd go && GOWORK=off` with pinned module cache and short mode test/vet runs. This is the reproducible dependency mode. |
+| **Local contributor mode** | day-to-day development | `cd go && go test ./...` from the Go module root. No `go.work` is present in this repo. |
+
+Prefer running module tooling from `go/` so commands resolve module paths consistently.
 
 ## Commands
 

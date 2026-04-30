@@ -1,4 +1,20 @@
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+
 # go-process
+
+> Process orchestration — daemons, runners, registry, pidfiles, IPC bus
+
+[![CI](https://github.com/dappcore/go-process/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/dappcore/go-process/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=alert_status)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Coverage](https://codecov.io/gh/dappcore/go-process/branch/dev/graph/badge.svg)](https://codecov.io/gh/dappcore/go-process)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=security_rating)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=reliability_rating)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=code_smells)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=dappcore_go-process&metric=ncloc)](https://sonarcloud.io/dashboard?id=dappcore_go-process)
+[![Go Reference](https://pkg.go.dev/badge/dappco.re/go/go-process.svg)](https://pkg.go.dev/dappco.re/go/go-process)
+[![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](https://eupl.eu/1.2/en/)
+
 
 `go-process` is the process-management service for Core applications. It wraps
 external command execution, lifecycle tracking, output capture, daemon PID files,
