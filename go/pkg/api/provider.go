@@ -308,17 +308,7 @@ func (p *ProcessProvider) runProcess(c *gin.Context) {
 		return
 	}
 
-	result := p.service.RunWithOptions(c.Request.Context(), process.RunOptions{
-		Command:        req.Command,
-		Args:           req.Args,
-		Dir:            req.Dir,
-		Env:            req.Env,
-		DisableCapture: req.DisableCapture,
-		Detach:         req.Detach,
-		Timeout:        req.Timeout,
-		GracePeriod:    req.GracePeriod,
-		KillGroup:      req.KillGroup,
-	})
+	result := p.service.RunWithOptions(c.Request.Context(), process.RunOptions(req))
 	if !result.OK {
 		c.JSON(http.StatusInternalServerError, failWithDetails("run_failed", result.Error(), map[string]any{
 			"output": "",
@@ -660,11 +650,6 @@ func PIDAlive(pid int) bool {
 }
 
 // intParam parses a URL param as int, returning 0 on failure.
-func intParam(c *gin.Context, name string) int {
-	v, _ := strconv.Atoi(c.Param(name))
-	return v
-}
-
 func pidFromString(value string) (int, bool) {
 	pid, err := strconv.Atoi(core.Trim(value))
 	if err != nil || pid <= 0 {
