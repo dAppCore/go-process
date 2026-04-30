@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -13,8 +12,7 @@ var _ *Process = (*ManagedProcess)(nil)
 func TestProcess_Info(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	proc, err := svc.Start(context.Background(), "echo", "hello")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "hello"))
 
 	<-proc.Done()
 
@@ -46,8 +44,7 @@ func TestProcess_Info_RunningDuration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proc, err := svc.Start(ctx, "sleep", "10")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "10"))
 
 	time.Sleep(10 * time.Millisecond)
 	info := proc.Info()
@@ -62,8 +59,7 @@ func TestProcess_Info_RunningDuration(t *testing.T) {
 func TestProcess_InfoSnapshot(t *testing.T) {
 	svc, _ := newTestService(t)
 
-	proc, err := svc.Start(context.Background(), "echo", "snapshot")
-	requireNoError(t, err)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "snapshot"))
 
 	<-proc.Done()
 
@@ -80,8 +76,7 @@ func TestProcess_Output(t *testing.T) {
 	t.Run("captures stdout", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "hello world")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "hello world"))
 
 		<-proc.Done()
 
@@ -92,8 +87,7 @@ func TestProcess_Output(t *testing.T) {
 	t.Run("OutputBytes returns copy", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "test")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "test"))
 
 		<-proc.Done()
 
@@ -110,8 +104,7 @@ func TestProcess_IsRunning(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "10")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "10"))
 
 		assertTrue(t, proc.IsRunning())
 		assertTrue(t, proc.Info().Running)
@@ -126,8 +119,7 @@ func TestProcess_IsRunning(t *testing.T) {
 	t.Run("false after completion", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "done"))
 
 		<-proc.Done()
 
@@ -139,21 +131,17 @@ func TestProcess_Wait(t *testing.T) {
 	t.Run("returns nil on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "ok")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "ok"))
 
-		err = proc.Wait()
-		assertNoError(t, err)
+		assertNoError(t, proc.Wait())
 	})
 
 	t.Run("returns error on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 1")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "sh", "-c", "exit 1"))
 
-		err = proc.Wait()
-		assertError(t, err)
+		assertError(t, proc.Wait())
 	})
 }
 
@@ -161,8 +149,7 @@ func TestProcess_Done(t *testing.T) {
 	t.Run("channel closes on completion", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "test")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "test"))
 
 		select {
 		case <-proc.Done():
@@ -180,12 +167,11 @@ func TestProcess_Kill(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "60"))
 
 		assertTrue(t, proc.IsRunning())
 
-		err = proc.Kill()
+		err := proc.Kill()
 		assertNoError(t, err)
 
 		select {
@@ -201,13 +187,11 @@ func TestProcess_Kill(t *testing.T) {
 	t.Run("noop on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "done"))
 
 		<-proc.Done()
 
-		err = proc.Kill()
-		assertNoError(t, err)
+		assertNoError(t, proc.Kill())
 	})
 }
 
@@ -216,10 +200,9 @@ func TestProcess_SendInput(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		// Use cat to echo back stdin
-		proc, err := svc.Start(context.Background(), "cat")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "cat"))
 
-		err = proc.SendInput("hello\n")
+		err := proc.SendInput("hello\n")
 		assertNoError(t, err)
 
 		err = proc.CloseStdin()
@@ -233,12 +216,11 @@ func TestProcess_SendInput(t *testing.T) {
 	t.Run("error on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "done"))
 
 		<-proc.Done()
 
-		err = proc.SendInput("test")
+		err := proc.SendInput("test")
 		assertErrorIs(t, err, ErrProcessNotRunning)
 	})
 }
@@ -250,10 +232,9 @@ func TestProcess_Signal(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "60"))
 
-		err = proc.Signal(os.Interrupt)
+		err := proc.Signal(syscall.SIGINT)
 		assertNoError(t, err)
 
 		select {
@@ -269,26 +250,24 @@ func TestProcess_Signal(t *testing.T) {
 	t.Run("error on completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "done")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "done"))
 		<-proc.Done()
 
-		err = proc.Signal(os.Interrupt)
+		err := proc.Signal(syscall.SIGINT)
 		assertErrorIs(t, err, ErrProcessNotRunning)
 	})
 
 	t.Run("signals process group when kill group is enabled", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
 			Args:      []string{"-c", "trap '' INT; sh -c 'trap - INT; sleep 60' & wait"},
 			Detach:    true,
 			KillGroup: true,
-		})
-		requireNoError(t, err)
+		}))
 
-		err = proc.Signal(os.Interrupt)
+		err := proc.Signal(syscall.SIGINT)
 		assertNoError(t, err)
 
 		select {
@@ -302,22 +281,20 @@ func TestProcess_Signal(t *testing.T) {
 	t.Run("signal zero only probes process group liveness", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
 			Args:      []string{"-c", "sleep 60 & wait"},
 			Detach:    true,
 			KillGroup: true,
-		})
-		requireNoError(t, err)
+		}))
 
-		err = proc.Signal(syscall.Signal(0))
+		err := proc.Signal(syscall.Signal(0))
 		assertNoError(t, err)
 
 		time.Sleep(300 * time.Millisecond)
 		assertTrue(t, proc.IsRunning())
 
-		err = proc.Kill()
-		assertNoError(t, err)
+		assertNoError(t, proc.Kill())
 
 		select {
 		case <-proc.Done():
@@ -331,10 +308,9 @@ func TestProcess_CloseStdin(t *testing.T) {
 	t.Run("closes stdin pipe", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "cat")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "cat"))
 
-		err = proc.CloseStdin()
+		err := proc.CloseStdin()
 		assertNoError(t, err)
 
 		// Process should exit now that stdin is closed
@@ -349,18 +325,16 @@ func TestProcess_CloseStdin(t *testing.T) {
 	t.Run("double close is safe", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "cat")
-		requireNoError(t, err)
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "cat"))
 
 		// First close
-		err = proc.CloseStdin()
+		err := proc.CloseStdin()
 		assertNoError(t, err)
 
 		<-proc.Done()
 
 		// Second close should be safe (stdin already nil)
-		err = proc.CloseStdin()
-		assertNoError(t, err)
+		assertNoError(t, proc.CloseStdin())
 	})
 }
 
@@ -368,12 +342,11 @@ func TestProcess_Timeout(t *testing.T) {
 	t.Run("kills process after timeout", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sleep",
 			Args:    []string{"60"},
 			Timeout: 200 * time.Millisecond,
-		})
-		requireNoError(t, err)
+		}))
 
 		select {
 		case <-proc.Done():
@@ -389,12 +362,11 @@ func TestProcess_Timeout(t *testing.T) {
 	t.Run("no timeout when zero", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "echo",
 			Args:    []string{"fast"},
 			Timeout: 0,
-		})
-		requireNoError(t, err)
+		}))
 
 		<-proc.Done()
 		assertEqual(t, 0, proc.ExitCode)
@@ -406,16 +378,15 @@ func TestProcess_Shutdown(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		// Use a process that traps SIGTERM
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command:     "sleep",
 			Args:        []string{"60"},
 			GracePeriod: 100 * time.Millisecond,
-		})
-		requireNoError(t, err)
+		}))
 
 		assertTrue(t, proc.IsRunning())
 
-		err = proc.Shutdown()
+		err := proc.Shutdown()
 		assertNoError(t, err)
 
 		select {
@@ -431,13 +402,12 @@ func TestProcess_Shutdown(t *testing.T) {
 	t.Run("immediate kill without grace period", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sleep",
 			Args:    []string{"60"},
-		})
-		requireNoError(t, err)
+		}))
 
-		err = proc.Shutdown()
+		err := proc.Shutdown()
 		assertNoError(t, err)
 
 		select {
@@ -454,18 +424,17 @@ func TestProcess_KillGroup(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		// Spawn a parent that spawns a child — KillGroup should kill both
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
 			Args:      []string{"-c", "sleep 60 & wait"},
 			Detach:    true,
 			KillGroup: true,
-		})
-		requireNoError(t, err)
+		}))
 
 		// Give child time to spawn
 		time.Sleep(100 * time.Millisecond)
 
-		err = proc.Kill()
+		err := proc.Kill()
 		assertNoError(t, err)
 
 		select {
@@ -483,13 +452,12 @@ func TestProcess_TimeoutWithGrace(t *testing.T) {
 	t.Run("timeout triggers graceful shutdown", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{
 			Command:     "sleep",
 			Args:        []string{"60"},
 			Timeout:     200 * time.Millisecond,
 			GracePeriod: 100 * time.Millisecond,
-		})
-		requireNoError(t, err)
+		}))
 
 		select {
 		case <-proc.Done():
@@ -500,4 +468,244 @@ func TestProcess_TimeoutWithGrace(t *testing.T) {
 
 		assertEqual(t, StatusKilled, proc.Status)
 	})
+}
+
+func TestProcess_ManagedProcess_Info_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "hello\n")
+	info := proc.Info()
+	assertEqual(t, proc.ID, info.ID)
+	assertEqual(t, StatusExited, info.Status)
+	assertFalse(t, info.Running)
+}
+
+func TestProcess_ManagedProcess_Info_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusFailed, -1, "")
+	info := proc.Info()
+	assertEqual(t, StatusFailed, info.Status)
+	assertEqual(t, -1, info.ExitCode)
+	assertFalse(t, info.Running)
+}
+
+func TestProcess_ManagedProcess_Info_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	info := proc.Info()
+	assertTrue(t, info.Running)
+	assertEqual(t, StatusRunning, info.Status)
+	assertGreaterOrEqual(t, info.Duration, time.Duration(0))
+}
+
+func TestProcess_ManagedProcess_Output_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "hello\n")
+	got := proc.Output()
+	assertEqual(t, "hello\n", got)
+	assertEqual(t, 6, proc.output.Len())
+}
+
+func TestProcess_ManagedProcess_Output_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	proc.output = nil
+	got := proc.Output()
+	assertEqual(t, "", got)
+}
+
+func TestProcess_ManagedProcess_Output_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	got := proc.Output()
+	assertEqual(t, "", got)
+	assertEqual(t, 0, proc.output.Len())
+}
+
+func TestProcess_ManagedProcess_OutputBytes_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "hello")
+	got := proc.OutputBytes()
+	assertEqual(t, []byte("hello"), got)
+	assertEqual(t, 5, len(got))
+}
+
+func TestProcess_ManagedProcess_OutputBytes_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	proc.output = nil
+	got := proc.OutputBytes()
+	assertNil(t, got)
+}
+
+func TestProcess_ManagedProcess_OutputBytes_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	got := proc.OutputBytes()
+	assertNil(t, got)
+	assertEqual(t, "", proc.Output())
+}
+
+func TestProcess_ManagedProcess_IsRunning_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	got := proc.IsRunning()
+	assertTrue(t, got)
+	assertEqual(t, StatusRunning, proc.Status)
+}
+
+func TestProcess_ManagedProcess_IsRunning_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	got := proc.IsRunning()
+	assertFalse(t, got)
+	assertEqual(t, StatusExited, proc.Status)
+}
+
+func TestProcess_ManagedProcess_IsRunning_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusKilled, -1, "")
+	got := proc.IsRunning()
+	assertFalse(t, got)
+	assertEqual(t, StatusKilled, proc.Status)
+}
+
+func TestProcess_ManagedProcess_Wait_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	requireNoError(t, proc.Wait())
+	assertEqual(t, 0, proc.ExitCode)
+}
+
+func TestProcess_ManagedProcess_Wait_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 7, "")
+	result := proc.Wait()
+	assertError(t, result)
+	assertContains(t, result.Error(), "code 7")
+}
+
+func TestProcess_ManagedProcess_Wait_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusKilled, -1, "")
+	result := proc.Wait()
+	assertError(t, result)
+	assertContains(t, result.Error(), "killed")
+}
+
+func TestProcess_ManagedProcess_Done_Good(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	done := proc.Done()
+	_, ok := <-done
+	assertFalse(t, ok)
+}
+
+func TestProcess_ManagedProcess_Done_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	done := proc.Done()
+	assertNotNil(t, done)
+	assertTrue(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Done_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusFailed, -1, "")
+	done := proc.Done()
+	_, ok := <-done
+	assertFalse(t, ok)
+}
+
+func TestProcess_ManagedProcess_Kill_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, proc.Kill())
+	<-proc.Done()
+}
+
+func TestProcess_ManagedProcess_Kill_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	err := proc.Kill()
+	requireNoError(t, err)
+	assertFalse(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Kill_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	proc.cmd = nil
+	err := proc.Kill()
+	requireNoError(t, err)
+	assertTrue(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Shutdown_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc := requireResultValue[*Process](t, svc.StartWithOptions(context.Background(), RunOptions{Command: "sleep", Args: []string{"5"}, GracePeriod: 10 * time.Millisecond}))
+	requireNoError(t, proc.Shutdown())
+	<-proc.Done()
+}
+
+func TestProcess_ManagedProcess_Shutdown_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	err := proc.Shutdown()
+	requireNoError(t, err)
+	assertFalse(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Shutdown_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	proc.cmd = nil
+	err := proc.Shutdown()
+	requireNoError(t, err)
+	assertTrue(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Signal_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, proc.Signal(syscall.SIGTERM))
+	<-proc.Done()
+}
+
+func TestProcess_ManagedProcess_Signal_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	err := proc.Signal(syscall.SIGTERM)
+	assertErrorIs(t, err, ErrProcessNotRunning)
+	assertFalse(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_Signal_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	proc.cmd = nil
+	err := proc.Signal(syscall.Signal(0))
+	requireNoError(t, err)
+	assertTrue(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_SendInput_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "cat"))
+	requireNoError(t, proc.SendInput("hello\n"))
+	requireNoError(t, proc.CloseStdin())
+	<-proc.Done()
+	assertContains(t, proc.Output(), "hello")
+}
+
+func TestProcess_ManagedProcess_SendInput_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	err := proc.SendInput("hello")
+	assertErrorIs(t, err, ErrProcessNotRunning)
+	assertFalse(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_SendInput_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	proc.stdin = nil
+	err := proc.SendInput("")
+	assertErrorIs(t, err, ErrStdinNotAvailable)
+	assertTrue(t, proc.IsRunning())
+}
+
+func TestProcess_ManagedProcess_CloseStdin_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc := requireResultValue[*Process](t, svc.Start(context.Background(), "cat"))
+	requireNoError(t, proc.CloseStdin())
+	<-proc.Done()
+}
+
+func TestProcess_ManagedProcess_CloseStdin_Bad(t *testing.T) {
+	proc := newProcessForTest(t, StatusExited, 0, "")
+	err := proc.CloseStdin()
+	requireNoError(t, err)
+	assertNil(t, proc.stdin)
+}
+
+func TestProcess_ManagedProcess_CloseStdin_Ugly(t *testing.T) {
+	proc := newProcessForTest(t, StatusRunning, 0, "")
+	proc.stdin = nil
+	err := proc.CloseStdin()
+	requireNoError(t, err)
+	assertTrue(t, proc.IsRunning())
 }

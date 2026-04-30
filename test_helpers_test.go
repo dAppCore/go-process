@@ -1,14 +1,11 @@
 package process
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 )
 
 var errSentinel = core.E("", "sentinel error", nil)
@@ -69,51 +66,58 @@ func requireNotNil(t *testing.T, value any, msgAndArgs ...any) {
 	}
 }
 
-func assertNoError(t *testing.T, err error, msgAndArgs ...any) {
+func assertNoError(t *testing.T, value any, msgAndArgs ...any) {
 	t.Helper()
+	err, _ := testError(value)
 	if err != nil {
 		t.Errorf("unexpected error: %v%s", err, helperMessage(msgAndArgs...))
 	}
 }
 
-func requireNoError(t *testing.T, err error, msgAndArgs ...any) {
+func requireNoError(t *testing.T, value any, msgAndArgs ...any) {
 	t.Helper()
+	err, _ := testError(value)
 	if err != nil {
 		t.Fatalf("unexpected error: %v%s", err, helperMessage(msgAndArgs...))
 	}
 }
 
-func assertError(t *testing.T, err error, msgAndArgs ...any) {
+func assertError(t *testing.T, value any, msgAndArgs ...any) {
 	t.Helper()
+	err, _ := testError(value)
 	if err == nil {
 		t.Errorf("expected error%s", helperMessage(msgAndArgs...))
 	}
 }
 
-func requireError(t *testing.T, err error, msgAndArgs ...any) {
+func requireError(t *testing.T, value any, msgAndArgs ...any) {
 	t.Helper()
+	err, _ := testError(value)
 	if err == nil {
 		t.Fatalf("expected error%s", helperMessage(msgAndArgs...))
 	}
 }
 
-func assertErrorIs(t *testing.T, err, target error, msgAndArgs ...any) {
+func assertErrorIs(t *testing.T, value any, target error, msgAndArgs ...any) {
 	t.Helper()
-	if !errors.Is(err, target) {
+	err, _ := testError(value)
+	if !core.Is(err, target) {
 		t.Errorf("expected error %v to match %v%s", err, target, helperMessage(msgAndArgs...))
 	}
 }
 
-func requireErrorIs(t *testing.T, err, target error, msgAndArgs ...any) {
+func requireErrorIs(t *testing.T, value any, target error, msgAndArgs ...any) {
 	t.Helper()
-	if !errors.Is(err, target) {
+	err, _ := testError(value)
+	if !core.Is(err, target) {
 		t.Fatalf("expected error %v to match %v%s", err, target, helperMessage(msgAndArgs...))
 	}
 }
 
-func requireErrorAs(t *testing.T, err error, target any, msgAndArgs ...any) {
+func requireErrorAs(t *testing.T, value any, target any, msgAndArgs ...any) {
 	t.Helper()
-	if !errors.As(err, target) {
+	err, _ := testError(value)
+	if !core.As(err, target) {
 		t.Fatalf("expected error %v to assign to %T%s", err, target, helperMessage(msgAndArgs...))
 	}
 }
@@ -203,18 +207,84 @@ func requireEventually(t *testing.T, condition func() bool, timeout, interval ti
 	}
 }
 
+func newProcessForTest(t *testing.T, status Status, exitCode int, output string) *Process {
+	t.Helper()
+	done := make(chan struct{})
+	if status != StatusRunning {
+		close(done)
+	}
+	buf := NewRingBuffer(1024)
+	if output != "" {
+		requireNoError(t, buf.Write([]byte(output)))
+	}
+	return &Process{
+		ID:        "proc-test",
+		Command:   "echo",
+		Args:      []string{"hello"},
+		StartedAt: time.Now().Add(-10 * time.Millisecond),
+		Status:    status,
+		ExitCode:  exitCode,
+		Duration:  10 * time.Millisecond,
+		output:    buf,
+		done:      done,
+	}
+}
+
+func fileExists(path string) bool {
+	return core.Stat(path).OK
+}
+
+func resultValue[T any](r core.Result) (T, error) {
+	var zero T
+	err, _ := testError(r)
+	if err != nil {
+		return zero, err
+	}
+	value, ok := r.Value.(T)
+	if !ok {
+		return zero, core.NewError(core.Sprintf("unexpected result value %T", r.Value))
+	}
+	return value, nil
+}
+
+func requireResultValue[T any](t *testing.T, r core.Result) T {
+	t.Helper()
+	value, err := resultValue[T](r)
+	requireNoError(t, err)
+	return value
+}
+
+func testError(value any) (error, bool) {
+	switch v := value.(type) {
+	case nil:
+		return nil, true
+	case core.Result:
+		if v.OK {
+			return nil, true
+		}
+		if err, ok := v.Value.(error); ok {
+			return err, true
+		}
+		return core.NewError(v.Error()), true
+	case error:
+		return v, true
+	default:
+		return nil, false
+	}
+}
+
 func helperMessage(args ...any) string {
 	if len(args) == 0 {
 		return ""
 	}
 	format, ok := args[0].(string)
 	if !ok {
-		return ": " + fmt.Sprint(args...)
+		return ": " + core.Sprint(args...)
 	}
 	if len(args) == 1 {
 		return ": " + format
 	}
-	return ": " + fmt.Sprintf(format, args[1:]...)
+	return ": " + core.Sprintf(format, args[1:]...)
 }
 
 func isNil(value any) bool {
@@ -259,7 +329,7 @@ func valueLen(value any) (int, bool) {
 func containsValue(container, item any) bool {
 	if s, ok := container.(string); ok {
 		sub, ok := item.(string)
-		return ok && strings.Contains(s, sub)
+		return ok && core.Contains(s, sub)
 	}
 	if isNil(container) {
 		return false

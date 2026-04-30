@@ -3,6 +3,8 @@ package process
 import (
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
+
+	core "dappco.re/go"
 )
 
 // RingBuffer is a fixed-size circular buffer that overwrites old data.
@@ -28,12 +30,12 @@ func NewRingBuffer(size int) *RingBuffer {
 }
 
 // Write appends data to the buffer, overwriting oldest data if full.
-func (rb *RingBuffer) Write(p []byte) (n int, err error) {
+func (rb *RingBuffer) Write(p []byte) core.Result {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
 	if rb.size == 0 {
-		return len(p), nil
+		return core.Ok(len(p))
 	}
 
 	for _, b := range p {
@@ -46,7 +48,7 @@ func (rb *RingBuffer) Write(p []byte) (n int, err error) {
 			rb.full = true
 		}
 	}
-	return len(p), nil
+	return core.Ok(len(p))
 }
 
 // String returns the buffer contents as a string.

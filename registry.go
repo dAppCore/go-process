@@ -1,22 +1,18 @@
 package process
 
 import (
-	"os"
-	"path/filepath"
 	"sort"
 	"syscall"
 	"time"
 
-	"dappco.re/go/core"
-	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
+	"dappco.re/go"
 )
 
 // DaemonEntry records a running daemon in the registry.
 //
 // Example:
 //
-//	entry := process.DaemonEntry{Code: "app", Daemon: "serve", PID: os.Getpid()}
+//	entry := process.DaemonEntry{Code: "app", Daemon: "serve", PID: core.Getpid()}
 type DaemonEntry struct {
 	Code    string    `json:"code"`
 	Daemon  string    `json:"daemon"`
@@ -47,11 +43,12 @@ func NewRegistry(dir string) *Registry {
 //
 //	reg := process.DefaultRegistry()
 func DefaultRegistry() *Registry {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir()
+	homeResult := core.UserHomeDir()
+	home := core.TempDir()
+	if homeResult.OK {
+		home = homeResult.Value.(string)
 	}
-	return NewRegistry(filepath.Join(home, ".core", "daemons"))
+	return NewRegistry(core.PathJoin(home, ".core", "daemons"))
 }
 
 // Register writes a daemon entry to the registry directory.
@@ -61,26 +58,28 @@ func DefaultRegistry() *Registry {
 // Example:
 //
 //	_ = reg.Register(entry)
-func (r *Registry) Register(entry DaemonEntry) error {
+func (r *Registry) Register(entry DaemonEntry) core.Result {
 	if entry.Started.IsZero() {
 		entry.Started = time.Now()
 	}
 
-	if err := coreio.Local.EnsureDir(r.dir); err != nil {
-		return coreerr.E("Registry.Register", "failed to create registry directory", err)
+	if mkdir := core.MkdirAll(r.dir, 0755); !mkdir.OK {
+		err, _ := mkdir.Value.(error)
+		return core.Fail(core.E("Registry.Register", "failed to create registry directory", err))
 	}
 
 	jsonResult := core.JSONMarshal(entry)
 	if !jsonResult.OK {
 		err, _ := jsonResult.Value.(error)
-		return coreerr.E("Registry.Register", "failed to marshal entry", err)
+		return core.Fail(core.E("Registry.Register", "failed to marshal entry", err))
 	}
 
 	data := jsonResult.Value.([]byte)
-	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data)); err != nil {
-		return coreerr.E("Registry.Register", "failed to write entry file", err)
+	if write := core.WriteFile(r.entryPath(entry.Code, entry.Daemon), data, 0644); !write.OK {
+		err, _ := write.Value.(error)
+		return core.Fail(core.E("Registry.Register", "failed to write entry file", err))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // Unregister removes a daemon entry from the registry.
@@ -88,15 +87,16 @@ func (r *Registry) Register(entry DaemonEntry) error {
 // Example:
 //
 //	_ = reg.Unregister("app", "serve")
-func (r *Registry) Unregister(code, daemon string) error {
+func (r *Registry) Unregister(code, daemon string) core.Result {
 	path := r.entryPath(code, daemon)
-	if err := os.Remove(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+	if result := core.Remove(path); !result.OK {
+		err, _ := result.Value.(error)
+		if core.IsNotExist(err) {
+			return core.Ok(nil)
 		}
-		return coreerr.E("Registry.Unregister", "failed to delete entry file", err)
+		return core.Fail(core.E("Registry.Unregister", "failed to delete entry file", err))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // Get reads a single daemon entry and checks whether its process is alive.
@@ -108,19 +108,24 @@ func (r *Registry) Unregister(code, daemon string) error {
 func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	path := r.entryPath(code, daemon)
 
-	data, err := coreio.Local.Read(path)
-	if err != nil {
+	read := core.ReadFile(path)
+	if !read.OK {
 		return nil, false
 	}
+	data := string(read.Value.([]byte))
 
 	var entry DaemonEntry
 	if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-		_ = coreio.Local.Delete(path)
+		if remove := core.Remove(path); !remove.OK {
+			return nil, false
+		}
 		return nil, false
 	}
 
 	if !isAlive(entry.PID) {
-		_ = coreio.Local.Delete(path)
+		if remove := core.Remove(path); !remove.OK {
+			return nil, false
+		}
 		return nil, false
 	}
 
@@ -131,28 +136,30 @@ func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 //
 // Example:
 //
-//	entries, err := reg.List()
-func (r *Registry) List() ([]DaemonEntry, error) {
-	matches, err := filepath.Glob(filepath.Join(r.dir, "*.json"))
-	if err != nil {
-		return nil, err
-	}
+//	result := reg.List()
+func (r *Registry) List() core.Result {
+	matches := core.PathGlob(core.PathJoin(r.dir, "*.json"))
 
 	var alive []DaemonEntry
 	for _, path := range matches {
-		data, err := coreio.Local.Read(path)
-		if err != nil {
+		read := core.ReadFile(path)
+		if !read.OK {
 			continue
 		}
+		data := string(read.Value.([]byte))
 
 		var entry DaemonEntry
 		if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-			_ = coreio.Local.Delete(path)
+			if remove := core.Remove(path); !remove.OK {
+				continue
+			}
 			continue
 		}
 
 		if !isAlive(entry.PID) {
-			_ = coreio.Local.Delete(path)
+			if remove := core.Remove(path); !remove.OK {
+				continue
+			}
 			continue
 		}
 
@@ -169,13 +176,13 @@ func (r *Registry) List() ([]DaemonEntry, error) {
 		return alive[i].Started.Before(alive[j].Started)
 	})
 
-	return alive, nil
+	return core.Ok(alive)
 }
 
 // entryPath returns the filesystem path for a daemon entry.
 func (r *Registry) entryPath(code, daemon string) string {
 	name := core.Concat(core.Replace(code, "/", "-"), "-", core.Replace(daemon, "/", "-"), ".json")
-	return filepath.Join(r.dir, name)
+	return core.PathJoin(r.dir, name)
 }
 
 // isAlive checks whether a process with the given PID is running.
@@ -183,9 +190,5 @@ func isAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return processSignal(pid, syscall.Signal(0)).OK
 }

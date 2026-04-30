@@ -2,20 +2,19 @@ package process
 
 import (
 	"context"
-	"os"
 	// Note: AX-6 — internal concurrency primitives; structural per RFC §2
 	"sync"
 	"sync/atomic"
+	"syscall"
 
-	"dappco.re/go/core"
-	coreerr "dappco.re/go/log"
+	"dappco.re/go"
 )
 
 // Global default service used by package-level helpers.
 var (
 	defaultService atomic.Pointer[Service]
 	defaultOnce    sync.Once
-	defaultErr     error
+	defaultResult  core.Result
 )
 
 // Default returns the global process service.
@@ -34,12 +33,12 @@ func Default() *Service {
 // Example:
 //
 //	_ = process.SetDefault(svc)
-func SetDefault(s *Service) error {
+func SetDefault(s *Service) core.Result {
 	if s == nil {
-		return ErrSetDefaultNil
+		return core.Fail(ErrSetDefaultNil)
 	}
 	defaultService.Store(s)
-	return nil
+	return core.Ok(nil)
 }
 
 // Init initializes the default global service with a Core instance.
@@ -48,17 +47,18 @@ func SetDefault(s *Service) error {
 // Example:
 //
 //	_ = process.Init(coreInstance)
-func Init(c *core.Core) error {
+func Init(c *core.Core) core.Result {
 	defaultOnce.Do(func() {
 		factory := NewService(Options{})
-		svc, err := factory(c)
-		if err != nil {
-			defaultErr = err
+		result := factory(c)
+		if !result.OK {
+			defaultResult = result
 			return
 		}
-		defaultService.Store(svc.(*Service))
+		defaultService.Store(result.Value.(*Service))
+		defaultResult = core.Ok(nil)
 	})
-	return defaultErr
+	return defaultResult
 }
 
 // Register creates a process service for Core registration.
@@ -68,11 +68,11 @@ func Init(c *core.Core) error {
 //	result := process.Register(coreInstance)
 func Register(c *core.Core) core.Result {
 	factory := NewService(Options{})
-	svc, err := factory(c)
-	if err != nil {
-		return core.Result{Value: err, OK: false}
+	result := factory(c)
+	if !result.OK {
+		return result
 	}
-	return core.Result{Value: svc, OK: true}
+	return core.Ok(result.Value)
 }
 
 // --- Global convenience functions ---
@@ -81,11 +81,11 @@ func Register(c *core.Core) core.Result {
 //
 // Example:
 //
-//	proc, err := process.Start(ctx, "echo", "hello")
-func Start(ctx context.Context, command string, args ...string) (*Process, error) {
+//	result := process.Start(ctx, "echo", "hello")
+func Start(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Start(ctx, command, args...)
 }
@@ -94,11 +94,11 @@ func Start(ctx context.Context, command string, args ...string) (*Process, error
 //
 // Example:
 //
-//	out, err := process.Run(ctx, "echo", "hello")
-func Run(ctx context.Context, command string, args ...string) (string, error) {
+//	result := process.Run(ctx, "echo", "hello")
+func Run(ctx context.Context, command string, args ...string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Run(ctx, command, args...)
 }
@@ -107,11 +107,11 @@ func Run(ctx context.Context, command string, args ...string) (string, error) {
 //
 // Example:
 //
-//	proc, err := process.Get("proc-1")
-func Get(id string) (*Process, error) {
+//	result := process.Get("proc-1")
+func Get(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Get(id)
 }
@@ -120,11 +120,11 @@ func Get(id string) (*Process, error) {
 //
 // Example:
 //
-//	out, err := process.Output("proc-1")
-func Output(id string) (string, error) {
+//	result := process.Output("proc-1")
+func Output(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Output(id)
 }
@@ -134,10 +134,10 @@ func Output(id string) (string, error) {
 // Example:
 //
 //	_ = process.Input("proc-1", "hello\n")
-func Input(id string, input string) error {
+func Input(id string, input string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Input(id, input)
 }
@@ -147,10 +147,10 @@ func Input(id string, input string) error {
 // Example:
 //
 //	_ = process.CloseStdin("proc-1")
-func CloseStdin(id string) error {
+func CloseStdin(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.CloseStdin(id)
 }
@@ -159,11 +159,11 @@ func CloseStdin(id string) error {
 //
 // Example:
 //
-//	info, err := process.Wait("proc-1")
-func Wait(id string) (Info, error) {
+//	result := process.Wait("proc-1")
+func Wait(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return Info{}, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Wait(id)
 }
@@ -186,10 +186,10 @@ func List() []*Process {
 // Example:
 //
 //	_ = process.Kill("proc-1")
-func Kill(id string) error {
+func Kill(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Kill(id)
 }
@@ -199,10 +199,10 @@ func Kill(id string) error {
 // Example:
 //
 //	_ = process.KillPID(1234)
-func KillPID(pid int) error {
+func KillPID(pid int) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.KillPID(pid)
 }
@@ -212,10 +212,10 @@ func KillPID(pid int) error {
 // Example:
 //
 //	_ = process.Signal("proc-1", syscall.SIGTERM)
-func Signal(id string, sig os.Signal) error {
+func Signal(id string, sig syscall.Signal) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Signal(id, sig)
 }
@@ -225,10 +225,10 @@ func Signal(id string, sig os.Signal) error {
 // Example:
 //
 //	_ = process.SignalPID(1234, syscall.SIGTERM)
-func SignalPID(pid int, sig os.Signal) error {
+func SignalPID(pid int, sig syscall.Signal) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.SignalPID(pid, sig)
 }
@@ -237,11 +237,11 @@ func SignalPID(pid int, sig os.Signal) error {
 //
 // Example:
 //
-//	proc, err := process.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
-func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
+//	result := process.StartWithOptions(ctx, process.RunOptions{Command: "pwd", Dir: "/tmp"})
+func StartWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return nil, ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.StartWithOptions(ctx, opts)
 }
@@ -250,11 +250,11 @@ func StartWithOptions(ctx context.Context, opts RunOptions) (*Process, error) {
 //
 // Example:
 //
-//	out, err := process.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
-func RunWithOptions(ctx context.Context, opts RunOptions) (string, error) {
+//	result := process.RunWithOptions(ctx, process.RunOptions{Command: "echo", Args: []string{"hello"}})
+func RunWithOptions(ctx context.Context, opts RunOptions) core.Result {
 	svc := Default()
 	if svc == nil {
-		return "", ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.RunWithOptions(ctx, opts)
 }
@@ -277,10 +277,10 @@ func Running() []*Process {
 // Example:
 //
 //	_ = process.Remove("proc-1")
-func Remove(id string) error {
+func Remove(id string) core.Result {
 	svc := Default()
 	if svc == nil {
-		return ErrServiceNotInitialized
+		return core.Fail(ErrServiceNotInitialized)
 	}
 	return svc.Remove(id)
 }
@@ -301,7 +301,7 @@ func Clear() {
 // Errors
 var (
 	// ErrServiceNotInitialized is returned when the service is not initialised.
-	ErrServiceNotInitialized = coreerr.E("", "process: service not initialized; call process.Init(core) first", nil)
+	ErrServiceNotInitialized = core.E("", "process: service not initialized; call process.Init(core) first", nil)
 	// ErrSetDefaultNil is returned when SetDefault is called with nil.
-	ErrSetDefaultNil = coreerr.E("", "process: SetDefault called with nil service", nil)
+	ErrSetDefaultNil = core.E("", "process: SetDefault called with nil service", nil)
 )

@@ -12,12 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"dappco.re/go/core"
-	corelog "dappco.re/go/log"
+	"dappco.re/go"
 )
 
-// HealthCheck is a function that returns nil when the service is healthy.
-type HealthCheck func() error
+// HealthCheck is a function that returns a successful Result when the service is healthy.
+type HealthCheck func() core.Result
 
 // HealthServer provides HTTP `/health` and `/ready` endpoints for process monitoring.
 type HealthServer struct {
@@ -45,7 +44,7 @@ func NewHealthServer(addr string) *HealthServer {
 //
 // Example:
 //
-//	server.AddCheck(func() error { return nil })
+//	server.AddCheck(func() core.Result { return core.Ok(nil) })
 func (h *HealthServer) AddCheck(check HealthCheck) {
 	h.mu.Lock()
 	h.checks = append(h.checks, check)
@@ -80,8 +79,8 @@ func (h *HealthServer) Ready() bool {
 //
 // Example:
 //
-//	if err := server.Start(); err != nil { return err }
-func (h *HealthServer) Start() error {
+//	if r := server.Start(); !r.OK { return r }
+func (h *HealthServer) Start() core.Result {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -91,9 +90,9 @@ func (h *HealthServer) Start() error {
 			if check == nil {
 				continue
 			}
-			if err := check(); err != nil {
+			if r := check(); !r.OK {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				core.Print(w, "unhealthy: %v", err)
+				core.Print(w, "unhealthy: %s", r.Error())
 				return
 			}
 		}
@@ -119,7 +118,7 @@ func (h *HealthServer) Start() error {
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return corelog.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err)
+		return core.Fail(core.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err))
 	}
 
 	server := &http.Server{Handler: mux}
@@ -129,10 +128,17 @@ func (h *HealthServer) Start() error {
 	h.mu.Unlock()
 
 	go func() {
-		_ = server.Serve(listener)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			h.mu.Lock()
+			if h.server == server {
+				h.server = nil
+				h.listener = nil
+			}
+			h.mu.Unlock()
+		}
 	}()
 
-	return nil
+	return core.Ok(nil)
 }
 
 // checksSnapshot returns a stable copy of the registered health checks.
@@ -154,7 +160,7 @@ func (h *HealthServer) checksSnapshot() []HealthCheck {
 // Example:
 //
 //	_ = server.Stop(context.Background())
-func (h *HealthServer) Stop(ctx context.Context) error {
+func (h *HealthServer) Stop(ctx context.Context) core.Result {
 	h.mu.Lock()
 	server := h.server
 	h.server = nil
@@ -163,9 +169,9 @@ func (h *HealthServer) Stop(ctx context.Context) error {
 	h.mu.Unlock()
 
 	if server == nil {
-		return nil
+		return core.Ok(nil)
 	}
-	return server.Shutdown(ctx)
+	return core.ResultOf(nil, server.Shutdown(ctx))
 }
 
 // Addr returns the actual address the server is listening on.
@@ -210,8 +216,18 @@ func ProbeHealth(addr string, timeoutMs int) (bool, string) {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				lastReason = readErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
+			if closeErr != nil {
+				lastReason = closeErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}
@@ -259,8 +275,18 @@ func ProbeReady(addr string, timeoutMs int) (bool, string) {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			body, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil {
+				lastReason = readErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
+			if closeErr != nil {
+				lastReason = closeErr.Error()
+				time.Sleep(200 * time.Millisecond)
+				continue
+			}
 			if resp.StatusCode == http.StatusOK {
 				return true, ""
 			}

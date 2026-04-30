@@ -6,8 +6,7 @@ import (
 	"sync"
 	"syscall"
 
-	"dappco.re/go/core"
-	coreio "dappco.re/go/io"
+	"dappco.re/go"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.
@@ -35,34 +34,38 @@ func NewPIDFile(path string) *PIDFile {
 // Example:
 //
 //	if err := pidFile.Acquire(); err != nil { return err }
-func (p *PIDFile) Acquire() error {
+func (p *PIDFile) Acquire() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if data, err := coreio.Local.Read(p.path); err == nil {
+	if read := core.ReadFile(p.path); read.OK {
+		data := string(read.Value.([]byte))
 		pid, err := strconv.Atoi(core.Trim(data))
 		if err == nil && pid > 0 {
-			if proc, err := processHandle(pid); err == nil {
-				if err := proc.Signal(syscall.Signal(0)); err == nil {
-					return core.E("pidfile.acquire", core.Concat("another instance is running (PID ", strconv.Itoa(pid), ")"), nil)
-				}
+			if r := processSignal(pid, syscall.Signal(0)); r.OK {
+				return core.Fail(core.E("pidfile.acquire", core.Concat("another instance is running (PID ", strconv.Itoa(pid), ")"), nil))
 			}
 		}
-		_ = coreio.Local.Delete(p.path)
+		if remove := core.Remove(p.path); !remove.OK {
+			err, _ := remove.Value.(error)
+			return core.Fail(core.E("pidfile.acquire", "failed to remove stale PID file", err))
+		}
 	}
 
 	if dir := core.PathDir(p.path); dir != "." {
-		if err := coreio.Local.EnsureDir(dir); err != nil {
-			return core.E("pidfile.acquire", "failed to create PID directory", err)
+		if mkdir := core.MkdirAll(dir, 0755); !mkdir.OK {
+			err, _ := mkdir.Value.(error)
+			return core.Fail(core.E("pidfile.acquire", "failed to create PID directory", err))
 		}
 	}
 
 	pid := currentPID()
-	if err := coreio.Local.Write(p.path, strconv.Itoa(pid)); err != nil {
-		return core.E("pidfile.acquire", "failed to write PID file", err)
+	if write := core.WriteFile(p.path, []byte(strconv.Itoa(pid)), 0644); !write.OK {
+		err, _ := write.Value.(error)
+		return core.Fail(core.E("pidfile.acquire", "failed to write PID file", err))
 	}
 
-	return nil
+	return core.Ok(nil)
 }
 
 // Release removes the PID file.
@@ -71,16 +74,17 @@ func (p *PIDFile) Acquire() error {
 // Example:
 //
 //	_ = pidFile.Release()
-func (p *PIDFile) Release() error {
+func (p *PIDFile) Release() core.Result {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !coreio.Local.Exists(p.path) {
-		return nil
+	if !core.Stat(p.path).OK {
+		return core.Ok(nil)
 	}
-	if err := coreio.Local.Delete(p.path); err != nil {
-		return core.E("pidfile.release", "failed to remove PID file", err)
+	if remove := core.Remove(p.path); !remove.OK {
+		err, _ := remove.Value.(error)
+		return core.Fail(core.E("pidfile.release", "failed to remove PID file", err))
 	}
-	return nil
+	return core.Ok(nil)
 }
 
 // Path returns the PID file path.
@@ -100,22 +104,18 @@ func (p *PIDFile) Path() string {
 //
 //	pid, running := process.ReadPID("/var/run/myapp.pid")
 func ReadPID(path string) (int, bool) {
-	data, err := coreio.Local.Read(path)
-	if err != nil {
+	read := core.ReadFile(path)
+	if !read.OK {
 		return 0, false
 	}
 
+	data := string(read.Value.([]byte))
 	pid, err := strconv.Atoi(core.Trim(data))
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
 
-	proc, err := processHandle(pid)
-	if err != nil {
-		return pid, false
-	}
-
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
+	if r := processSignal(pid, syscall.Signal(0)); !r.OK {
 		return pid, false
 	}
 

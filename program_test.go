@@ -2,12 +2,10 @@ package process_test
 
 import (
 	"context"
-	"errors"
-	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
+	core "dappco.re/go"
 	process "dappco.re/go/process"
 )
 
@@ -18,9 +16,30 @@ func testCtx(t *testing.T) context.Context {
 	return ctx
 }
 
+func programResultError(r core.Result) (err error) {
+	if r.OK {
+		return nil
+	}
+	if err, ok := r.Value.(error); ok {
+		return err
+	}
+	return core.NewError(r.Error())
+}
+
+func programResultString(r core.Result) (string, error) {
+	if err := programResultError(r); err != nil {
+		return "", err
+	}
+	out, ok := r.Value.(string)
+	if !ok {
+		return "", core.NewError(core.Sprintf("unexpected program output %T", r.Value))
+	}
+	return out, nil
+}
+
 func TestProgram_Find_KnownBinary(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if p.Path == "" {
@@ -30,23 +49,24 @@ func TestProgram_Find_KnownBinary(t *testing.T) {
 
 func TestProgram_Find_UnknownBinary(t *testing.T) {
 	p := &process.Program{Name: "no-such-binary-xyzzy-42"}
-	err := p.Find()
+	err := programResultError(p.Find())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.Is(err, process.ErrProgramNotFound) {
+	if !core.Is(err, process.ErrProgramNotFound) {
 		t.Fatalf("expected ErrProgramNotFound, got %v", err)
 	}
 }
 
 func TestProgram_Find_UsesExistingPath(t *testing.T) {
-	path, err := exec.LookPath("echo")
-	if err != nil {
+	found := &process.Program{Name: "echo"}
+	if err := programResultError(found.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	path := found.Path
 
 	p := &process.Program{Path: path}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if p.Path != path {
@@ -55,17 +75,18 @@ func TestProgram_Find_UsesExistingPath(t *testing.T) {
 }
 
 func TestProgram_Find_PrefersExistingPathOverName(t *testing.T) {
-	path, err := exec.LookPath("echo")
-	if err != nil {
+	found := &process.Program{Name: "echo"}
+	if err := programResultError(found.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	path := found.Path
 
 	p := &process.Program{
 		Name: "no-such-binary-xyzzy-42",
 		Path: path,
 	}
 
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if p.Path != path {
@@ -75,18 +96,18 @@ func TestProgram_Find_PrefersExistingPathOverName(t *testing.T) {
 
 func TestProgram_Find_EmptyName(t *testing.T) {
 	p := &process.Program{}
-	if err := p.Find(); err == nil {
+	if err := programResultError(p.Find()); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
 func TestProgram_Run_ReturnsOutput(t *testing.T) {
 	p := &process.Program{Name: "echo"}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	out, err := p.Run(testCtx(t), "hello")
+	out, err := programResultString(p.Run(testCtx(t), "hello"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,11 +118,11 @@ func TestProgram_Run_ReturnsOutput(t *testing.T) {
 
 func TestProgram_Run_PreservesLeadingWhitespace(t *testing.T) {
 	p := &process.Program{Name: "sh"}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	out, err := p.Run(testCtx(t), "-c", "printf '  hello  \n'")
+	out, err := programResultString(p.Run(testCtx(t), "-c", "printf '  hello  \n'"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +135,7 @@ func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 	// Path is empty; RunDir should fall back to Name for OS PATH resolution.
 	p := &process.Program{Name: "echo"}
 
-	out, err := p.Run(testCtx(t), "fallback")
+	out, err := programResultString(p.Run(testCtx(t), "fallback"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,25 +146,27 @@ func TestProgram_Run_WithoutFind_FallsBackToName(t *testing.T) {
 
 func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 	p := &process.Program{Name: "pwd"}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	dir := t.TempDir()
 
-	out, err := p.RunDir(testCtx(t), dir)
+	out, err := programResultString(p.RunDir(testCtx(t), dir))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Resolve symlinks on both sides for portability (macOS uses /private/ prefix).
-	canonicalDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	canonicalDirResult := core.PathEvalSymlinks(dir)
+	if !canonicalDirResult.OK {
+		t.Fatalf("unexpected error: %v", canonicalDirResult.Value)
 	}
-	canonicalOut, err := filepath.EvalSymlinks(out)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	canonicalOutResult := core.PathEvalSymlinks(out)
+	if !canonicalOutResult.OK {
+		t.Fatalf("unexpected error: %v", canonicalOutResult.Value)
 	}
+	canonicalDir := canonicalDirResult.Value.(string)
+	canonicalOut := canonicalOutResult.Value.(string)
 	if canonicalDir != canonicalOut {
 		t.Fatalf("want %q, got %q", canonicalDir, canonicalOut)
 	}
@@ -151,11 +174,11 @@ func TestProgram_RunDir_UsesDirectory(t *testing.T) {
 
 func TestProgram_Run_FailingCommand(t *testing.T) {
 	p := &process.Program{Name: "false"}
-	if err := p.Find(); err != nil {
+	if err := programResultError(p.Find()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err := p.Run(testCtx(t))
+	err := programResultError(p.Run(testCtx(t)))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -164,11 +187,11 @@ func TestProgram_Run_FailingCommand(t *testing.T) {
 func TestProgram_Run_NilContextRejected(t *testing.T) {
 	p := &process.Program{Name: "echo"}
 
-	_, err := p.Run(nil, "test")
+	err := programResultError(p.Run(nil, "test"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.Is(err, process.ErrProgramContextRequired) {
+	if !core.Is(err, process.ErrProgramContextRequired) {
 		t.Fatalf("expected ErrProgramContextRequired, got %v", err)
 	}
 }
@@ -176,11 +199,110 @@ func TestProgram_Run_NilContextRejected(t *testing.T) {
 func TestProgram_RunDir_EmptyNameRejected(t *testing.T) {
 	p := &process.Program{}
 
-	_, err := p.RunDir(testCtx(t), "", "test")
+	err := programResultError(p.RunDir(testCtx(t), "", "test"))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !errors.Is(err, process.ErrProgramNameRequired) {
+	if !core.Is(err, process.ErrProgramNameRequired) {
 		t.Fatalf("expected ErrProgramNameRequired, got %v", err)
+	}
+}
+
+func TestProgram_Program_Find_Good(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	err := programResultError(p.Find())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.Path == "" {
+		t.Fatal("expected non-empty path")
+	}
+}
+
+func TestProgram_Program_Find_Bad(t *testing.T) {
+	p := &process.Program{Name: "definitely-not-a-real-process-binary"}
+	err := programResultError(p.Find())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !core.Is(err, process.ErrProgramNotFound) {
+		t.Fatalf("expected ErrProgramNotFound, got %v", err)
+	}
+}
+
+func TestProgram_Program_Find_Ugly(t *testing.T) {
+	p := &process.Program{}
+	err := programResultError(p.Find())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if p.Path != "" {
+		t.Fatalf("expected empty path, got %q", p.Path)
+	}
+}
+
+func TestProgram_Program_Run_Good(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	out, err := programResultString(p.Run(testCtx(t), "hello"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("want hello, got %q", out)
+	}
+}
+
+func TestProgram_Program_Run_Bad(t *testing.T) {
+	p := &process.Program{Name: "false"}
+	out, err := programResultString(p.Run(testCtx(t)))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_Run_Ugly(t *testing.T) {
+	p := &process.Program{Name: "echo"}
+	out, err := programResultString(p.Run(nil, "hello"))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Good(t *testing.T) {
+	p := &process.Program{Name: "pwd"}
+	out, err := programResultString(p.RunDir(testCtx(t), "/tmp"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "/tmp" && out != "/private/tmp" {
+		t.Fatalf("expected /tmp or /private/tmp, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Bad(t *testing.T) {
+	p := &process.Program{}
+	out, err := programResultString(p.RunDir(testCtx(t), t.TempDir()))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if out != "" {
+		t.Fatalf("expected empty output, got %q", out)
+	}
+}
+
+func TestProgram_Program_RunDir_Ugly(t *testing.T) {
+	p := &process.Program{Name: "printf"}
+	out, err := programResultString(p.RunDir(testCtx(t), "", "hello\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("want hello, got %q", out)
 	}
 }

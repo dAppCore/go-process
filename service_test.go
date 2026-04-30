@@ -2,16 +2,14 @@ package process
 
 import (
 	"context"
-	"os/exec"
 	"strconv"
-	"strings"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
-	framework "dappco.re/go/core"
+	framework "dappco.re/go"
 )
 
 func newTestService(t *testing.T) (*Service, *framework.Core) {
@@ -19,16 +17,14 @@ func newTestService(t *testing.T) (*Service, *framework.Core) {
 
 	c := framework.New()
 	factory := NewService(Options{BufferSize: 1024})
-	raw, err := factory(c)
-	requireNoError(t, err)
+	raw := requireResultValue[*Service](t, factory(c))
 
-	svc := raw.(*Service)
-	return svc, c
+	return raw, c
 }
 
 // resultErr converts a core.Result returned from Startable/Stoppable hooks
 // into the (error) shape the test suite was originally written against.
-func resultErr(r framework.Result) error {
+func resultErr(r framework.Result) (err error) {
 	if r.OK {
 		return nil
 	}
@@ -55,7 +51,7 @@ func TestService_Start(t *testing.T) {
 	t.Run("echo command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "hello")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
 		requireNoError(t, err)
 		requireNotNil(t, proc)
 
@@ -77,7 +73,7 @@ func TestService_Start(t *testing.T) {
 			bufSize:   1024,
 		}
 
-		proc, err := svc.Start(context.Background(), "echo", "standalone")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "standalone"))
 		requireNoError(t, err)
 		requireNotNil(t, proc)
 
@@ -91,7 +87,7 @@ func TestService_Start(t *testing.T) {
 	t.Run("failing command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 42")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sh", "-c", "exit 42"))
 		requireNoError(t, err)
 
 		<-proc.Done()
@@ -103,24 +99,15 @@ func TestService_Start(t *testing.T) {
 	t.Run("non-existent command", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "nonexistent_command_xyz")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "nonexistent_command_xyz"))
 		assertError(t, err)
-		requireNotNil(t, proc)
-		assertEqual(t, StatusFailed, proc.Status)
-		assertEqual(t, -1, proc.ExitCode)
-		assertNotNil(t, proc.Done())
-		<-proc.Done()
-
-		got, getErr := svc.Get(proc.ID)
-		requireNoError(t, getErr)
-		assertEqual(t, proc.ID, got.ID)
-		assertEqual(t, StatusFailed, got.Status)
+		assertNil(t, proc)
 	})
 
 	t.Run("empty command is rejected", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.StartWithOptions(context.Background(), RunOptions{})
+		_, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{}))
 		requireError(t, err)
 		assertContains(t, err.Error(), "command is required")
 	})
@@ -128,9 +115,9 @@ func TestService_Start(t *testing.T) {
 	t.Run("nil context is rejected", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.StartWithOptions(nil, RunOptions{
+		_, err := resultValue[*Process](svc.StartWithOptions(nil, RunOptions{
 			Command: "echo",
-		})
+		}))
 		requireError(t, err)
 		assertErrorIs(t, err, ErrContextRequired)
 	})
@@ -138,16 +125,16 @@ func TestService_Start(t *testing.T) {
 	t.Run("with working directory", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "pwd",
 			Dir:     "/tmp",
-		})
+		}))
 		requireNoError(t, err)
 
 		<-proc.Done()
 
 		// On macOS /tmp is a symlink to /private/tmp
-		output := strings.TrimSpace(proc.Output())
+		output := framework.Trim(proc.Output())
 		assertTrue(t, output == "/tmp" || output == "/private/tmp", "got: "+output)
 	})
 
@@ -155,7 +142,7 @@ func TestService_Start(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		proc, err := svc.Start(ctx, "sleep", "10")
+		proc, err := resultValue[*Process](svc.Start(ctx, "sleep", "10"))
 		requireNoError(t, err)
 
 		// Cancel immediately
@@ -172,11 +159,11 @@ func TestService_Start(t *testing.T) {
 	t.Run("disable capture", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command:        "echo",
 			Args:           []string{"no-capture"},
 			DisableCapture: true,
-		})
+		}))
 		requireNoError(t, err)
 		<-proc.Done()
 
@@ -187,11 +174,11 @@ func TestService_Start(t *testing.T) {
 	t.Run("with environment variables", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command: "sh",
 			Args:    []string{"-c", "echo $MY_TEST_VAR"},
 			Env:     []string{"MY_TEST_VAR=hello_env"},
-		})
+		}))
 		requireNoError(t, err)
 		<-proc.Done()
 
@@ -203,11 +190,11 @@ func TestService_Start(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		proc, err := svc.StartWithOptions(ctx, RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(ctx, RunOptions{
 			Command: "sh",
 			Args:    []string{"-c", "sleep 0.2; echo detached"},
 			Detach:  true,
-		})
+		}))
 		requireNoError(t, err)
 
 		// Cancel the parent context
@@ -234,11 +221,11 @@ func TestService_Start(t *testing.T) {
 	t.Run("kill group requires detach", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.StartWithOptions(context.Background(), RunOptions{
+		_, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sleep",
 			Args:      []string{"1"},
 			KillGroup: true,
-		})
+		}))
 		requireError(t, err)
 		assertContains(t, err.Error(), "KillGroup requires Detach")
 	})
@@ -248,7 +235,7 @@ func TestService_Run(t *testing.T) {
 	t.Run("returns output", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		output, err := svc.Run(context.Background(), "echo", "hello world")
+		output, err := resultValue[string](svc.Run(context.Background(), "echo", "hello world"))
 		requireNoError(t, err)
 		assertContains(t, output, "hello world")
 	})
@@ -256,7 +243,7 @@ func TestService_Run(t *testing.T) {
 	t.Run("returns error on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Run(context.Background(), "sh", "-c", "exit 1")
+		_, err := resultValue[string](svc.Run(context.Background(), "sh", "-c", "exit 1"))
 		assertError(t, err)
 		assertContains(t, err.Error(), "exited with code 1")
 	})
@@ -268,9 +255,7 @@ func TestService_Actions(t *testing.T) {
 
 		// Register process service on Core
 		factory := NewService(Options{})
-		raw, err := factory(c)
-		requireNoError(t, err)
-		svc := raw.(*Service)
+		svc := requireResultValue[*Service](t, factory(c))
 
 		var started []ActionProcessStarted
 		var outputs []ActionProcessOutput
@@ -290,7 +275,7 @@ func TestService_Actions(t *testing.T) {
 			}
 			return framework.Result{OK: true}
 		})
-		proc, err := svc.Start(context.Background(), "echo", "test")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "test"))
 		requireNoError(t, err)
 
 		<-proc.Done()
@@ -308,7 +293,7 @@ func TestService_Actions(t *testing.T) {
 		assertNotEmpty(t, outputs)
 		foundTest := false
 		for _, o := range outputs {
-			if strings.Contains(o.Line, "test") {
+			if framework.Contains(o.Line, "test") {
 				foundTest = true
 				break
 			}
@@ -324,9 +309,7 @@ func TestService_Actions(t *testing.T) {
 		c := framework.New()
 
 		factory := NewService(Options{})
-		raw, err := factory(c)
-		requireNoError(t, err)
-		svc := raw.(*Service)
+		svc := requireResultValue[*Service](t, factory(c))
 
 		var killed []ActionProcessKilled
 		var exited []ActionProcessExited
@@ -344,7 +327,7 @@ func TestService_Actions(t *testing.T) {
 			return framework.Result{OK: true}
 		})
 
-		proc, err := svc.Start(context.Background(), "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "60"))
 		requireNoError(t, err)
 
 		err = svc.Kill(proc.ID)
@@ -379,9 +362,7 @@ func TestService_Actions(t *testing.T) {
 		c := framework.New()
 
 		factory := NewService(Options{})
-		raw, err := factory(c)
-		requireNoError(t, err)
-		svc := raw.(*Service)
+		svc := requireResultValue[*Service](t, factory(c))
 
 		var exited []ActionProcessExited
 		var mu sync.Mutex
@@ -395,7 +376,7 @@ func TestService_Actions(t *testing.T) {
 			return framework.Result{OK: true}
 		})
 
-		_, err = svc.Start(context.Background(), "definitely-not-a-real-binary-xyz")
+		err := resultErr(svc.Start(context.Background(), "definitely-not-a-real-binary-xyz"))
 		requireError(t, err)
 
 		time.Sleep(10 * time.Millisecond)
@@ -412,9 +393,7 @@ func TestService_Actions(t *testing.T) {
 		c := framework.New()
 
 		factory := NewService(Options{})
-		raw, err := factory(c)
-		requireNoError(t, err)
-		svc := raw.(*Service)
+		svc := requireResultValue[*Service](t, factory(c))
 
 		var exited []ActionProcessExited
 		var mu sync.Mutex
@@ -428,7 +407,7 @@ func TestService_Actions(t *testing.T) {
 			return framework.Result{OK: true}
 		})
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sh", "-c", "exit 7"))
 		requireNoError(t, err)
 
 		<-proc.Done()
@@ -447,8 +426,8 @@ func TestService_List(t *testing.T) {
 	t.Run("tracks processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc1, _ := svc.Start(context.Background(), "echo", "1")
-		proc2, _ := svc.Start(context.Background(), "echo", "2")
+		proc1 := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "1"))
+		proc2 := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "2"))
 
 		<-proc1.Done()
 		<-proc2.Done()
@@ -462,10 +441,10 @@ func TestService_List(t *testing.T) {
 	t.Run("get by id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, _ := svc.Start(context.Background(), "echo", "test")
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "test"))
 		<-proc.Done()
 
-		got, err := svc.Get(proc.ID)
+		got, err := resultValue[*Process](svc.Get(proc.ID))
 		requireNoError(t, err)
 		assertEqual(t, proc.ID, got.ID)
 	})
@@ -473,7 +452,7 @@ func TestService_List(t *testing.T) {
 	t.Run("get not found", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Get("nonexistent")
+		_, err := resultValue[*Process](svc.Get("nonexistent"))
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
@@ -482,13 +461,12 @@ func TestService_Remove(t *testing.T) {
 	t.Run("removes completed process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, _ := svc.Start(context.Background(), "echo", "test")
+		proc := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "test"))
 		<-proc.Done()
 
-		err := svc.Remove(proc.ID)
-		requireNoError(t, err)
+		requireNoError(t, svc.Remove(proc.ID))
 
-		_, err = svc.Get(proc.ID)
+		_, err := resultValue[*Process](svc.Get(proc.ID))
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
@@ -498,7 +476,7 @@ func TestService_Remove(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, _ := svc.Start(ctx, "sleep", "10")
+		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "10"))
 
 		err := svc.Remove(proc.ID)
 		assertError(t, err)
@@ -512,8 +490,8 @@ func TestService_Clear(t *testing.T) {
 	t.Run("clears completed processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc1, _ := svc.Start(context.Background(), "echo", "1")
-		proc2, _ := svc.Start(context.Background(), "echo", "2")
+		proc1 := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "1"))
+		proc2 := requireResultValue[*Process](t, svc.Start(context.Background(), "echo", "2"))
 
 		<-proc1.Done()
 		<-proc2.Done()
@@ -533,7 +511,7 @@ func TestService_Kill(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
 		err = svc.Kill(proc.ID)
@@ -562,7 +540,7 @@ func TestService_KillPID(t *testing.T) {
 		svc, _ := newTestService(t)
 
 		// Ignore SIGTERM so the test proves KillPID uses a forceful signal.
-		cmd := exec.Command("sh", "-c", "trap '' TERM; while :; do :; done")
+		cmd := commandContext(context.Background(), "sh", "-c", "trap '' TERM; while :; do :; done")
 		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
@@ -586,7 +564,7 @@ func TestService_KillPID(t *testing.T) {
 		select {
 		case err := <-waitCh:
 			requireError(t, err)
-			var exitErr *exec.ExitError
+			var exitErr interface{ Sys() any }
 			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
 			requireTrue(t, ok)
@@ -633,7 +611,7 @@ func TestService_Signal(t *testing.T) {
 	t.Run("signals running process by id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "60"))
 		requireNoError(t, err)
 
 		err = svc.Signal(proc.ID, syscall.SIGTERM)
@@ -651,7 +629,7 @@ func TestService_Signal(t *testing.T) {
 	t.Run("signals unmanaged process by pid", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		cmd := exec.Command("sleep", "60")
+		cmd := commandContext(context.Background(), "sleep", "60")
 		requireNoError(t, cmd.Start())
 
 		waitCh := make(chan error, 1)
@@ -675,7 +653,7 @@ func TestService_Signal(t *testing.T) {
 		select {
 		case err := <-waitCh:
 			requireError(t, err)
-			var exitErr *exec.ExitError
+			var exitErr interface{ Sys() any }
 			requireErrorAs(t, err, &exitErr)
 			ws, ok := exitErr.Sys().(syscall.WaitStatus)
 			requireTrue(t, ok)
@@ -691,11 +669,11 @@ func TestService_Output(t *testing.T) {
 	t.Run("returns captured output", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "captured")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "captured"))
 		requireNoError(t, err)
 		<-proc.Done()
 
-		output, err := svc.Output(proc.ID)
+		output, err := resultValue[string](svc.Output(proc.ID))
 		requireNoError(t, err)
 		assertContains(t, output, "captured")
 	})
@@ -703,7 +681,7 @@ func TestService_Output(t *testing.T) {
 	t.Run("error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Output("nonexistent")
+		_, err := resultValue[string](svc.Output("nonexistent"))
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 }
@@ -712,7 +690,7 @@ func TestService_Input(t *testing.T) {
 	t.Run("writes to stdin", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "cat")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
 		requireNoError(t, err)
 
 		err = svc.Input(proc.ID, "service-input\n")
@@ -738,7 +716,7 @@ func TestService_CloseStdin(t *testing.T) {
 	t.Run("closes stdin pipe", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "cat")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
 		requireNoError(t, err)
 
 		err = svc.CloseStdin(proc.ID)
@@ -763,10 +741,10 @@ func TestService_Wait(t *testing.T) {
 	t.Run("returns final info on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "echo", "waited")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "waited"))
 		requireNoError(t, err)
 
-		info, err := svc.Wait(proc.ID)
+		info, err := resultValue[Info](svc.Wait(proc.ID))
 		requireNoError(t, err)
 		assertEqual(t, proc.ID, info.ID)
 		assertEqual(t, StatusExited, info.Status)
@@ -776,21 +754,23 @@ func TestService_Wait(t *testing.T) {
 	t.Run("returns error on unknown id", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.Wait("nonexistent")
+		_, err := resultValue[Info](svc.Wait("nonexistent"))
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
 	t.Run("returns info alongside failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sh", "-c", "exit 7"))
 		requireNoError(t, err)
 
-		info, err := svc.Wait(proc.ID)
-		requireError(t, err)
-		assertEqual(t, proc.ID, info.ID)
-		assertEqual(t, StatusExited, info.Status)
-		assertEqual(t, 7, info.ExitCode)
+		waitResult := svc.Wait(proc.ID)
+		requireError(t, waitResult)
+		var waitErr *TaskProcessWaitError
+		requireErrorAs(t, waitResult, &waitErr)
+		assertEqual(t, proc.ID, waitErr.Info.ID)
+		assertEqual(t, StatusExited, waitErr.Info.Status)
+		assertEqual(t, 7, waitErr.Info.ExitCode)
 	})
 }
 
@@ -801,9 +781,9 @@ func TestService_OnShutdown(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc1, err := svc.Start(ctx, "sleep", "60")
+		proc1, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
-		proc2, err := svc.Start(ctx, "sleep", "60")
+		proc2, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
 		assertTrue(t, proc1.IsRunning())
@@ -826,11 +806,11 @@ func TestService_OnShutdown(t *testing.T) {
 	t.Run("does not wait for process grace period", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command:     "sh",
 			Args:        []string{"-c", "trap '' TERM; sleep 60"},
 			GracePeriod: 5 * time.Second,
-		})
+		}))
 		requireNoError(t, err)
 		requireTrue(t, proc.IsRunning())
 
@@ -863,7 +843,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		id, ok := result.Value.(string)
 		requireTrue(t, ok)
-		proc, err := svc.Get(id)
+		proc, err := resultValue[*Process](svc.Get(id))
 		requireNoError(t, err)
 
 		cancel()
@@ -896,7 +876,7 @@ func TestService_OnStartup(t *testing.T) {
 		assertEqual(t, StatusRunning, info.Status)
 		assertTrue(t, info.Running)
 
-		proc, err := svc.Get(info.ID)
+		proc, err := resultValue[*Process](svc.Get(info.ID))
 		requireNoError(t, err)
 		assertTrue(t, proc.IsRunning())
 
@@ -939,7 +919,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "60"))
 		requireNoError(t, err)
 		requireTrue(t, proc.IsRunning())
 
@@ -971,7 +951,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "60"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
@@ -997,7 +977,7 @@ func TestService_OnStartup(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
@@ -1017,12 +997,12 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.StartWithOptions(context.Background(), RunOptions{
+		proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{
 			Command:   "sh",
 			Args:      []string{"-c", "sleep 60 & wait"},
 			Detach:    true,
 			KillGroup: true,
-		})
+		}))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessSignal{
@@ -1044,7 +1024,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "echo", "action-wait")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "action-wait"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessWait{ID: proc.ID})
@@ -1062,7 +1042,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "sh", "-c", "exit 7")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "sh", "-c", "exit 7"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessWait{ID: proc.ID})
@@ -1086,7 +1066,7 @@ func TestService_OnStartup(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc, err := svc.Start(ctx, "sleep", "60")
+		proc, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessList{RunningOnly: true})
@@ -1107,7 +1087,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "echo", "snapshot")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "snapshot"))
 		requireNoError(t, err)
 		<-proc.Done()
 
@@ -1129,14 +1109,14 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "echo", "remove-through-core")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "remove-through-core"))
 		requireNoError(t, err)
 		<-proc.Done()
 
 		result := performTask(svc, c, TaskProcessRemove{ID: proc.ID})
 		requireTrue(t, result.OK)
 
-		_, err = svc.Get(proc.ID)
+		err = resultErr(svc.Get(proc.ID))
 		assertErrorIs(t, err, ErrProcessNotFound)
 	})
 
@@ -1145,9 +1125,9 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		first, err := svc.Start(context.Background(), "echo", "clear-through-core-1")
+		first, err := resultValue[*Process](svc.Start(context.Background(), "echo", "clear-through-core-1"))
 		requireNoError(t, err)
-		second, err := svc.Start(context.Background(), "echo", "clear-through-core-2")
+		second, err := resultValue[*Process](svc.Start(context.Background(), "echo", "clear-through-core-2"))
 		requireNoError(t, err)
 		<-first.Done()
 		<-second.Done()
@@ -1164,7 +1144,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "echo", "snapshot-output")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "snapshot-output"))
 		requireNoError(t, err)
 		<-proc.Done()
 
@@ -1181,7 +1161,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "cat")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessInput{
@@ -1203,7 +1183,7 @@ func TestService_OnStartup(t *testing.T) {
 
 		requireNoError(t, resultErr(svc.OnStartup(context.Background())))
 
-		proc, err := svc.Start(context.Background(), "cat")
+		proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
 		requireNoError(t, err)
 
 		result := performTask(svc, c, TaskProcessInput{
@@ -1229,10 +1209,10 @@ func TestService_RunWithOptions(t *testing.T) {
 	t.Run("returns output on success", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		output, err := svc.RunWithOptions(context.Background(), RunOptions{
+		output, err := resultValue[string](svc.RunWithOptions(context.Background(), RunOptions{
 			Command: "echo",
 			Args:    []string{"opts-test"},
-		})
+		}))
 		requireNoError(t, err)
 		assertContains(t, output, "opts-test")
 	})
@@ -1240,10 +1220,10 @@ func TestService_RunWithOptions(t *testing.T) {
 	t.Run("returns error on failure", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.RunWithOptions(context.Background(), RunOptions{
+		_, err := resultValue[string](svc.RunWithOptions(context.Background(), RunOptions{
 			Command: "sh",
 			Args:    []string{"-c", "exit 2"},
-		})
+		}))
 		assertError(t, err)
 		assertContains(t, err.Error(), "exited with code 2")
 	})
@@ -1251,9 +1231,9 @@ func TestService_RunWithOptions(t *testing.T) {
 	t.Run("rejects nil context", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		_, err := svc.RunWithOptions(nil, RunOptions{
+		_, err := resultValue[string](svc.RunWithOptions(nil, RunOptions{
 			Command: "echo",
-		})
+		}))
 		requireError(t, err)
 		assertErrorIs(t, err, ErrContextRequired)
 	})
@@ -1266,10 +1246,10 @@ func TestService_Running(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		proc1, err := svc.Start(ctx, "sleep", "60")
+		proc1, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
-		doneProc, err := svc.Start(context.Background(), "echo", "done")
+		doneProc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "done"))
 		requireNoError(t, err)
 		<-doneProc.Done()
 
@@ -1277,7 +1257,7 @@ func TestService_Running(t *testing.T) {
 		assertLen(t, running, 1)
 		assertEqual(t, proc1.ID, running[0].ID)
 
-		proc2, err := svc.Start(ctx, "sleep", "60")
+		proc2, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
 
 		running = svc.Running()
@@ -1289,4 +1269,471 @@ func TestService_Running(t *testing.T) {
 		<-proc1.Done()
 		<-proc2.Done()
 	})
+}
+
+func TestService_NewService_Good(t *testing.T) {
+	factory := NewService(Options{BufferSize: 64})
+	svc := requireResultValue[*Service](t, factory(framework.New()))
+	assertEqual(t, 64, svc.bufSize)
+}
+
+func TestService_NewService_Bad(t *testing.T) {
+	factory := NewService(Options{})
+	svc := requireResultValue[*Service](t, factory(nil))
+	assertEqual(t, DefaultBufferSize, svc.bufSize)
+}
+
+func TestService_NewService_Ugly(t *testing.T) {
+	factory := NewService(Options{BufferSize: -1})
+	svc := requireResultValue[*Service](t, factory(framework.New()))
+	assertEqual(t, -1, svc.bufSize)
+}
+
+func TestService_Service_OnStartup_Good(t *testing.T) {
+	svc, c := newTestService(t)
+	r := svc.OnStartup(context.Background())
+	requireTrue(t, r.OK)
+	assertTrue(t, c.Action("process.run").Exists())
+}
+
+func TestService_Service_OnStartup_Bad(t *testing.T) {
+	factory := NewService(Options{})
+	svc := requireResultValue[*Service](t, factory(nil))
+	r := svc.OnStartup(context.Background())
+	assertTrue(t, r.OK)
+}
+
+func TestService_Service_OnStartup_Ugly(t *testing.T) {
+	svc, c := newTestService(t)
+	requireTrue(t, svc.OnStartup(context.Background()).OK)
+	requireTrue(t, svc.OnStartup(context.Background()).OK)
+	assertTrue(t, c.Action("process.start").Exists())
+}
+
+func TestService_Service_OnShutdown_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	r := svc.OnShutdown(context.Background())
+	requireTrue(t, r.OK)
+	<-proc.Done()
+}
+
+func TestService_Service_OnShutdown_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	r := svc.OnShutdown(context.Background())
+	assertTrue(t, r.OK)
+	assertEmpty(t, svc.Running())
+}
+
+func TestService_Service_OnShutdown_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	r := svc.OnShutdown(nil)
+	assertTrue(t, r.OK)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Start_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	<-proc.Done()
+	assertEqual(t, StatusExited, proc.Status)
+}
+
+func TestService_Service_Start_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), ""))
+	assertNil(t, proc)
+	assertError(t, err)
+}
+
+func TestService_Service_Start_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(nil, "echo"))
+	assertNil(t, proc)
+	assertErrorIs(t, err, ErrContextRequired)
+}
+
+func TestService_Service_StartWithOptions_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}}))
+	requireNoError(t, err)
+	<-proc.Done()
+	assertEqual(t, StatusExited, proc.Status)
+}
+
+func TestService_Service_StartWithOptions_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{}))
+	assertNil(t, proc)
+	assertError(t, err)
+}
+
+func TestService_Service_StartWithOptions_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{Command: "sleep", Args: []string{"1"}, KillGroup: true}))
+	assertNil(t, proc)
+	assertError(t, err)
+}
+
+func TestService_Service_Get_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	got, err := resultValue[*Process](svc.Get(proc.ID))
+	requireNoError(t, err)
+	assertEqual(t, proc, got)
+}
+
+func TestService_Service_Get_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	got, err := resultValue[*Process](svc.Get("missing"))
+	assertNil(t, got)
+	assertErrorIs(t, err, ErrProcessNotFound)
+}
+
+func TestService_Service_Get_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	got, err := resultValue[*Process](svc.Get(""))
+	assertNil(t, got)
+	assertErrorIs(t, err, ErrProcessNotFound)
+}
+
+func TestService_Service_List_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	<-proc.Done()
+	assertLen(t, svc.List(), 1)
+}
+
+func TestService_Service_List_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	procs := svc.List()
+	assertEmpty(t, procs)
+	assertEqual(t, 0, len(procs))
+}
+
+func TestService_Service_List_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	procs := svc.List()
+	procs = append(procs, &Process{ID: "mutated"})
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Running_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	running := svc.Running()
+	requireLen(t, running, 1)
+	assertEqual(t, proc.ID, running[0].ID)
+	requireNoError(t, svc.Kill(proc.ID))
+}
+
+func TestService_Service_Running_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	running := svc.Running()
+	assertEmpty(t, running)
+	assertEqual(t, 0, len(running))
+}
+
+func TestService_Service_Running_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "done"))
+	requireNoError(t, err)
+	<-proc.Done()
+	assertEmpty(t, svc.Running())
+}
+
+func TestService_Service_Kill_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	err = svc.Kill(proc.ID)
+	requireNoError(t, err)
+	<-proc.Done()
+}
+
+func TestService_Service_Kill_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.Kill("missing")
+	assertErrorIs(t, err, ErrProcessNotFound)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Kill_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "done"))
+	requireNoError(t, err)
+	<-proc.Done()
+	err = svc.Kill(proc.ID)
+	requireNoError(t, err)
+}
+
+func TestService_Service_KillPID_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	err = svc.KillPID(proc.Info().PID)
+	requireNoError(t, err)
+	<-proc.Done()
+}
+
+func TestService_Service_KillPID_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.KillPID(0)
+	assertError(t, err)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_KillPID_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.KillPID(-1)
+	assertError(t, err)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Signal_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	err = svc.Signal(proc.ID, syscall.SIGTERM)
+	requireNoError(t, err)
+	<-proc.Done()
+}
+
+func TestService_Service_Signal_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.Signal("missing", syscall.SIGTERM)
+	assertErrorIs(t, err, ErrProcessNotFound)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Signal_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.Signal("missing", syscall.SIGKILL)
+	assertErrorIs(t, err, ErrUncatchableSignal)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_SignalPID_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	err = svc.SignalPID(proc.Info().PID, syscall.SIGTERM)
+	requireNoError(t, err)
+	<-proc.Done()
+}
+
+func TestService_Service_SignalPID_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.SignalPID(0, syscall.SIGTERM)
+	assertError(t, err)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_SignalPID_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.SignalPID(1, syscall.SIGKILL)
+	assertErrorIs(t, err, ErrUncatchableSignal)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Remove_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "remove"))
+	requireNoError(t, err)
+	<-proc.Done()
+	err = svc.Remove(proc.ID)
+	requireNoError(t, err)
+}
+
+func TestService_Service_Remove_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.Remove("missing")
+	assertErrorIs(t, err, ErrProcessNotFound)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Remove_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	err = svc.Remove(proc.ID)
+	assertError(t, err)
+	requireNoError(t, svc.Kill(proc.ID))
+}
+
+func TestService_Service_Clear_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "clear"))
+	requireNoError(t, err)
+	<-proc.Done()
+	svc.Clear()
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Clear_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.Clear()
+	assertEmpty(t, svc.List())
+	assertEmpty(t, svc.Running())
+}
+
+func TestService_Service_Clear_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "sleep", "5"))
+	requireNoError(t, err)
+	svc.Clear()
+	assertLen(t, svc.Running(), 1)
+	requireNoError(t, svc.Kill(proc.ID))
+}
+
+func TestService_Service_Output_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	<-proc.Done()
+	out, err := resultValue[string](svc.Output(proc.ID))
+	requireNoError(t, err)
+	assertContains(t, out, "hello")
+}
+
+func TestService_Service_Output_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.Output("missing"))
+	assertEqual(t, "", out)
+	assertErrorIs(t, err, ErrProcessNotFound)
+}
+
+func TestService_Service_Output_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.StartWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}, DisableCapture: true}))
+	requireNoError(t, err)
+	<-proc.Done()
+	out, err := resultValue[string](svc.Output(proc.ID))
+	requireNoError(t, err)
+	assertEqual(t, "", out)
+}
+
+func TestService_Service_Input_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
+	requireNoError(t, err)
+	requireNoError(t, svc.Input(proc.ID, "hello\n"))
+	requireNoError(t, svc.CloseStdin(proc.ID))
+	<-proc.Done()
+	assertContains(t, proc.Output(), "hello")
+}
+
+func TestService_Service_Input_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.Input("missing", "hello")
+	assertErrorIs(t, err, ErrProcessNotFound)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_Input_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "done"))
+	requireNoError(t, err)
+	<-proc.Done()
+	err = svc.Input(proc.ID, "late")
+	assertErrorIs(t, err, ErrProcessNotRunning)
+}
+
+func TestService_Service_CloseStdin_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
+	requireNoError(t, err)
+	err = svc.CloseStdin(proc.ID)
+	requireNoError(t, err)
+	<-proc.Done()
+}
+
+func TestService_Service_CloseStdin_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	err := svc.CloseStdin("missing")
+	assertErrorIs(t, err, ErrProcessNotFound)
+	assertEmpty(t, svc.List())
+}
+
+func TestService_Service_CloseStdin_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "cat"))
+	requireNoError(t, err)
+	requireNoError(t, svc.CloseStdin(proc.ID))
+	err = svc.CloseStdin(proc.ID)
+	requireNoError(t, err)
+}
+
+func TestService_Service_Wait_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	info, err := resultValue[Info](svc.Wait(proc.ID))
+	requireNoError(t, err)
+	assertEqual(t, proc.ID, info.ID)
+}
+
+func TestService_Service_Wait_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	info, err := resultValue[Info](svc.Wait("missing"))
+	assertEqual(t, Info{}, info)
+	assertErrorIs(t, err, ErrProcessNotFound)
+}
+
+func TestService_Service_Wait_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "false"))
+	requireNoError(t, err)
+	waitResult := svc.Wait(proc.ID)
+	var waitErr *TaskProcessWaitError
+	requireErrorAs(t, waitResult, &waitErr)
+	assertEqual(t, proc.ID, waitErr.Info.ID)
+	assertError(t, waitResult)
+}
+
+func TestService_Service_Run_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.Run(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	assertContains(t, out, "hello")
+}
+
+func TestService_Service_Run_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.Run(context.Background(), "false"))
+	assertEqual(t, "", out)
+	assertError(t, err)
+}
+
+func TestService_Service_Run_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.Run(nil, "echo", "hello"))
+	assertEqual(t, "", out)
+	assertErrorIs(t, err, ErrContextRequired)
+}
+
+func TestService_Service_RunWithOptions_Good(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.RunWithOptions(context.Background(), RunOptions{Command: "echo", Args: []string{"hello"}}))
+	requireNoError(t, err)
+	assertContains(t, out, "hello")
+}
+
+func TestService_Service_RunWithOptions_Bad(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.RunWithOptions(context.Background(), RunOptions{Command: "false"}))
+	assertEqual(t, "", out)
+	assertError(t, err)
+}
+
+func TestService_Service_RunWithOptions_Ugly(t *testing.T) {
+	svc, _ := newTestService(t)
+	out, err := resultValue[string](svc.RunWithOptions(nil, RunOptions{Command: "echo"}))
+	assertEqual(t, "", out)
+	assertErrorIs(t, err, ErrContextRequired)
 }

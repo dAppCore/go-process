@@ -76,9 +76,9 @@ Exported fields:
 - None.
 
 ### `HealthCheck`
-`type HealthCheck func() error`
+`type HealthCheck func() core.Result`
 
-Named function type used by `HealthServer` and `DaemonOptions`. Returning `nil` marks the check healthy; returning an error makes `/health` respond with `503`.
+Named function type used by `HealthServer` and `DaemonOptions`. Returning a successful `Result` marks the check healthy; returning a failed `Result` makes `/health` respond with `503`.
 
 ### `HealthServer`
 `struct`
