@@ -720,7 +720,7 @@ func (p *ProcessProvider) registerProcessEvents() {
 	p.actions.Do(func() {
 		coreApp.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
 			p.forwardProcessEvent(msg)
-			return core.Result{OK: true}
+			return core.Ok(nil)
 		})
 	})
 }

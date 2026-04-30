@@ -96,7 +96,7 @@ func (s *Service) OnStartup(context.Context) core.Result {
 			c.RegisterAction(s.handleTask)
 		}
 	})
-	return core.Result{OK: true}
+	return core.Ok(nil)
 }
 
 // OnShutdown implements core.Stoppable.
@@ -822,12 +822,12 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		}
 		proc := result.Value.(*Process)
 		return core.Ok(proc.Info())
-		case TaskProcessRun:
-			result := s.RunWithOptions(c.Context(), RunOptions(m))
-			if !result.OK {
-				return result
-			}
-			return core.Ok(result.Value)
+	case TaskProcessRun:
+		result := s.RunWithOptions(c.Context(), RunOptions(m))
+		if !result.OK {
+			return result
+		}
+		return core.Ok(result.Value)
 	case TaskProcessKill:
 		switch {
 		case m.ID != "":
