@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"dappco.re/go"
-	coreerr "dappco.re/go/log"
 	// Note: AX-6 intrinsic — Reader/Writer interfaces are structural process-pipe contracts; core types do not replace stdlib stream boundaries.
 	goio "io"
 )
@@ -22,11 +21,11 @@ const DefaultBufferSize = 1024 * 1024
 
 // Errors
 var (
-	ErrProcessNotFound   = coreerr.E("", "process not found", nil)
-	ErrProcessNotRunning = coreerr.E("", "process is not running", nil)
-	ErrStdinNotAvailable = coreerr.E("", "stdin not available", nil)
-	ErrContextRequired   = coreerr.E("", "context is required", nil)
-	ErrUncatchableSignal = coreerr.E("", "signal cannot be caught", nil)
+	ErrProcessNotFound   = core.E("", "process not found", nil)
+	ErrProcessNotRunning = core.E("", "process is not running", nil)
+	ErrStdinNotAvailable = core.E("", "stdin not available", nil)
+	ErrContextRequired   = core.E("", "context is required", nil)
+	ErrUncatchableSignal = core.E("", "signal cannot be caught", nil)
 )
 
 // Service manages process execution with Core IPC integration.
@@ -154,7 +153,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 	startedAt := time.Now()
 
 	if opts.KillGroup && !opts.Detach {
-		return core.Fail(coreerr.E("Service.StartWithOptions", "KillGroup requires Detach", nil))
+		return core.Fail(core.E("Service.StartWithOptions", "KillGroup requires Detach", nil))
 	}
 
 	// Detached processes use Background context so they survive parent death
@@ -180,19 +179,19 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return core.Fail(coreerr.E("Service.StartWithOptions", "failed to create stdout pipe", err))
+		return core.Fail(core.E("Service.StartWithOptions", "failed to create stdout pipe", err))
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		cancel()
-		return core.Fail(coreerr.E("Service.StartWithOptions", "failed to create stderr pipe", err))
+		return core.Fail(core.E("Service.StartWithOptions", "failed to create stderr pipe", err))
 	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
-		return core.Fail(coreerr.E("Service.StartWithOptions", "failed to create stdin pipe", err))
+		return core.Fail(core.E("Service.StartWithOptions", "failed to create stdin pipe", err))
 	}
 
 	// Create output buffer (enabled by default)
@@ -221,7 +220,7 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
-		startErr := coreerr.E("Service.StartWithOptions", "failed to start process", err)
+		startErr := core.E("Service.StartWithOptions", "failed to start process", err)
 		proc.mu.Lock()
 		proc.Status = StatusFailed
 		proc.ExitCode = -1
@@ -469,7 +468,7 @@ func (s *Service) KillPID(pid int) core.Result {
 	}
 
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		return core.Fail(coreerr.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err))
+		return core.Fail(core.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err))
 	}
 
 	return core.Ok(nil)
@@ -512,7 +511,7 @@ func (s *Service) SignalPID(pid int, sig syscall.Signal) core.Result {
 	}
 
 	if err := syscall.Kill(pid, sig); err != nil {
-		return core.Fail(coreerr.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err))
+		return core.Fail(core.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err))
 	}
 
 	return core.Ok(nil)
@@ -521,7 +520,7 @@ func (s *Service) SignalPID(pid int, sig syscall.Signal) core.Result {
 func validateCatchableSignals(sig syscall.Signal) core.Result {
 	switch sig {
 	case syscall.SIGKILL, syscall.SIGSTOP:
-		return core.Fail(coreerr.E(
+		return core.Fail(core.E(
 			"Service.validateCatchableSignals",
 			core.Sprintf("signal %d cannot be caught", int(sig)),
 			ErrUncatchableSignal,
@@ -546,7 +545,7 @@ func (s *Service) Remove(id string) core.Result {
 	}
 
 	if proc.IsRunning() {
-		return core.Fail(coreerr.E("Service.Remove", "cannot remove running process", nil))
+		return core.Fail(core.E("Service.Remove", "cannot remove running process", nil))
 	}
 
 	delete(s.processes, id)
@@ -666,10 +665,10 @@ func (s *Service) Run(ctx context.Context, command string, args ...string) core.
 
 	output := proc.Output()
 	if proc.Status == StatusKilled {
-		return core.Fail(coreerr.E("Service.Run", "process was killed", nil))
+		return core.Fail(core.E("Service.Run", "process was killed", nil))
 	}
 	if proc.ExitCode != 0 {
-		return core.Fail(coreerr.E("Service.Run", core.Sprintf("process exited with code %d", proc.ExitCode), nil))
+		return core.Fail(core.E("Service.Run", core.Sprintf("process exited with code %d", proc.ExitCode), nil))
 	}
 	return core.Ok(output)
 }
@@ -690,10 +689,10 @@ func (s *Service) RunWithOptions(ctx context.Context, opts RunOptions) core.Resu
 
 	output := proc.Output()
 	if proc.Status == StatusKilled {
-		return core.Fail(coreerr.E("Service.RunWithOptions", "process was killed", nil))
+		return core.Fail(core.E("Service.RunWithOptions", "process was killed", nil))
 	}
 	if proc.ExitCode != 0 {
-		return core.Fail(coreerr.E("Service.RunWithOptions", core.Sprintf("process exited with code %d", proc.ExitCode), nil))
+		return core.Fail(core.E("Service.RunWithOptions", core.Sprintf("process exited with code %d", proc.ExitCode), nil))
 	}
 	return core.Ok(output)
 }
@@ -769,7 +768,7 @@ func (s *Service) handleGet(ctx context.Context, opts core.Options) core.Result 
 	_ = ctx
 	id := core.Trim(opts.String("id"))
 	if id == "" {
-		return core.Fail(coreerr.E("Service.handleGet", "id is required", nil))
+		return core.Fail(core.E("Service.handleGet", "id is required", nil))
 	}
 
 	result := s.Get(id)
@@ -852,7 +851,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 			}
 			return core.Ok(nil)
 		default:
-			return core.Fail(coreerr.E("Service.handleTask", "task process kill requires an id or pid", nil))
+			return core.Fail(core.E("Service.handleTask", "task process kill requires an id or pid", nil))
 		}
 	case TaskProcessSignal:
 		switch {
@@ -867,11 +866,11 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 			}
 			return core.Ok(nil)
 		default:
-			return core.Fail(coreerr.E("Service.handleTask", "task process signal requires an id or pid", nil))
+			return core.Fail(core.E("Service.handleTask", "task process signal requires an id or pid", nil))
 		}
 	case TaskProcessGet:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process get requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process get requires an id", nil))
 		}
 
 		result := s.Get(m.ID)
@@ -883,7 +882,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		return core.Ok(proc.Info())
 	case TaskProcessWait:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process wait requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process wait requires an id", nil))
 		}
 
 		result := s.Wait(m.ID)
@@ -897,7 +896,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		return core.Ok(result.Value)
 	case TaskProcessOutput:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process output requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process output requires an id", nil))
 		}
 
 		result := s.Output(m.ID)
@@ -908,7 +907,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		return core.Ok(result.Value)
 	case TaskProcessInput:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process input requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process input requires an id", nil))
 		}
 
 		result := s.Get(m.ID)
@@ -924,7 +923,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		return core.Ok(nil)
 	case TaskProcessCloseStdin:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process close stdin requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process close stdin requires an id", nil))
 		}
 
 		result := s.Get(m.ID)
@@ -952,7 +951,7 @@ func (s *Service) handleTask(c *core.Core, task core.Message) core.Result {
 		return core.Ok(infos)
 	case TaskProcessRemove:
 		if m.ID == "" {
-			return core.Fail(coreerr.E("Service.handleTask", "task process remove requires an id", nil))
+			return core.Fail(core.E("Service.handleTask", "task process remove requires an id", nil))
 		}
 
 		if r := s.Remove(m.ID); !r.OK {
@@ -995,14 +994,14 @@ func classifyProcessExit(err error) processExit {
 				status:     StatusKilled,
 				exitCode:   -1,
 				signalName: signalName,
-				err:        coreerr.E("Service.StartWithOptions", "process was killed", nil),
+				err:        core.E("Service.StartWithOptions", "process was killed", nil),
 			}
 		}
 		exitCode := exitErr.ExitCode()
 		return processExit{
 			status:   StatusExited,
 			exitCode: exitCode,
-			err:      coreerr.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil),
+			err:      core.E("Service.StartWithOptions", core.Sprintf("process exited with code %d", exitCode), nil),
 		}
 	}
 

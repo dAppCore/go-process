@@ -7,7 +7,6 @@ import (
 	"time"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // Runner orchestrates multiple processes with dependencies.
@@ -16,16 +15,16 @@ type Runner struct {
 }
 
 // ErrRunnerNoService is returned when a runner was created without a service.
-var ErrRunnerNoService = coreerr.E("", "runner service is nil", nil)
+var ErrRunnerNoService = core.E("", "runner service is nil", nil)
 
 // ErrRunnerInvalidSpecName is returned when a RunSpec name is empty or duplicated.
-var ErrRunnerInvalidSpecName = coreerr.E("", "runner spec names must be non-empty and unique", nil)
+var ErrRunnerInvalidSpecName = core.E("", "runner spec names must be non-empty and unique", nil)
 
 // ErrRunnerInvalidDependencyName is returned when a RunSpec dependency name is empty, duplicated, or self-referential.
-var ErrRunnerInvalidDependencyName = coreerr.E("", "runner dependency names must be non-empty, unique, and not self-referential", nil)
+var ErrRunnerInvalidDependencyName = core.E("", "runner dependency names must be non-empty, unique, and not self-referential", nil)
 
 // ErrRunnerContextRequired is returned when a runner method is called without a context.
-var ErrRunnerContextRequired = coreerr.E("", "runner context is required", nil)
+var ErrRunnerContextRequired = core.E("", "runner context is required", nil)
 
 // NewRunner creates a runner for the given service.
 //
@@ -159,7 +158,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) core.Result {
 					Name:    name,
 					Spec:    remaining[name],
 					Skipped: true,
-					Error:   coreerr.E("Runner.RunAll", "circular dependency or missing dependency", nil),
+					Error:   core.E("Runner.RunAll", "circular dependency or missing dependency", nil),
 				}
 			}
 			break
@@ -191,7 +190,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) core.Result {
 						Name:    spec.Name,
 						Spec:    spec,
 						Skipped: true,
-						Error:   coreerr.E("Runner.RunAll", "skipped due to dependency failure", nil),
+						Error:   core.E("Runner.RunAll", "skipped due to dependency failure", nil),
 					}
 				} else {
 					result = r.runSpec(ctx, spec)
@@ -273,12 +272,12 @@ func (r *Runner) runSpec(ctx context.Context, spec RunSpec) RunResult {
 	var runErr error
 	switch proc.Status {
 	case StatusKilled:
-		runErr = coreerr.E("Runner.runSpec", "process was killed", nil)
+		runErr = core.E("Runner.runSpec", "process was killed", nil)
 	case StatusExited:
 		// Non-zero exits are surfaced through ExitCode; Error remains nil so
 		// callers can distinguish execution failure from orchestration failure.
 	case StatusFailed:
-		runErr = coreerr.E("Runner.runSpec", "process failed to start", nil)
+		runErr = core.E("Runner.runSpec", "process failed to start", nil)
 	}
 
 	return RunResult{
@@ -399,23 +398,23 @@ func validateSpecs(specs []RunSpec) core.Result {
 	seen := make(map[string]struct{}, len(specs))
 	for _, spec := range specs {
 		if spec.Name == "" {
-			return core.Fail(coreerr.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName))
+			return core.Fail(core.E("Runner.validateSpecs", "runner spec name is required", ErrRunnerInvalidSpecName))
 		}
 		if _, ok := seen[spec.Name]; ok {
-			return core.Fail(coreerr.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName))
+			return core.Fail(core.E("Runner.validateSpecs", "runner spec name is duplicated", ErrRunnerInvalidSpecName))
 		}
 		seen[spec.Name] = struct{}{}
 
 		deps := make(map[string]struct{}, len(spec.After))
 		for _, dep := range spec.After {
 			if dep == "" {
-				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName))
+				return core.Fail(core.E("Runner.validateSpecs", "runner dependency name is required", ErrRunnerInvalidDependencyName))
 			}
 			if dep == spec.Name {
-				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName))
+				return core.Fail(core.E("Runner.validateSpecs", "runner dependency cannot reference itself", ErrRunnerInvalidDependencyName))
 			}
 			if _, ok := deps[dep]; ok {
-				return core.Fail(coreerr.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName))
+				return core.Fail(core.E("Runner.validateSpecs", "runner dependency name is duplicated", ErrRunnerInvalidDependencyName))
 			}
 			deps[dep] = struct{}{}
 		}
@@ -425,7 +424,7 @@ func validateSpecs(specs []RunSpec) core.Result {
 
 func ensureRunnerContext(ctx context.Context) core.Result {
 	if ctx == nil {
-		return core.Fail(coreerr.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired))
+		return core.Fail(core.E("Runner.ensureRunnerContext", "runner context is required", ErrRunnerContextRequired))
 	}
 	return core.Ok(nil)
 }
@@ -438,7 +437,7 @@ func skippedRunResult(op string, spec RunSpec, err error) RunResult {
 	}
 	if err != nil {
 		result.ExitCode = 1
-		result.Error = coreerr.E(op, "skipped", err)
+		result.Error = core.E(op, "skipped", err)
 	}
 	return result
 }
@@ -447,7 +446,7 @@ func cancelledRunResult(op string, spec RunSpec, err error) RunResult {
 	result := skippedRunResult(op, spec, err)
 	if result.Error == nil {
 		result.ExitCode = 1
-		result.Error = coreerr.E(op, "context cancelled", err)
+		result.Error = core.E(op, "context cancelled", err)
 	}
 	return result
 }

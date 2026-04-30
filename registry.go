@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"dappco.re/go"
-	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // DaemonEntry records a running daemon in the registry.
@@ -65,19 +63,21 @@ func (r *Registry) Register(entry DaemonEntry) core.Result {
 		entry.Started = time.Now()
 	}
 
-	if err := coreio.Local.EnsureDir(r.dir); err != nil {
-		return core.Fail(coreerr.E("Registry.Register", "failed to create registry directory", err))
+	if mkdir := core.MkdirAll(r.dir, 0755); !mkdir.OK {
+		err, _ := mkdir.Value.(error)
+		return core.Fail(core.E("Registry.Register", "failed to create registry directory", err))
 	}
 
 	jsonResult := core.JSONMarshal(entry)
 	if !jsonResult.OK {
 		err, _ := jsonResult.Value.(error)
-		return core.Fail(coreerr.E("Registry.Register", "failed to marshal entry", err))
+		return core.Fail(core.E("Registry.Register", "failed to marshal entry", err))
 	}
 
 	data := jsonResult.Value.([]byte)
-	if err := coreio.Local.Write(r.entryPath(entry.Code, entry.Daemon), string(data)); err != nil {
-		return core.Fail(coreerr.E("Registry.Register", "failed to write entry file", err))
+	if write := core.WriteFile(r.entryPath(entry.Code, entry.Daemon), data, 0644); !write.OK {
+		err, _ := write.Value.(error)
+		return core.Fail(core.E("Registry.Register", "failed to write entry file", err))
 	}
 	return core.Ok(nil)
 }
@@ -94,7 +94,7 @@ func (r *Registry) Unregister(code, daemon string) core.Result {
 		if core.IsNotExist(err) {
 			return core.Ok(nil)
 		}
-		return core.Fail(coreerr.E("Registry.Unregister", "failed to delete entry file", err))
+		return core.Fail(core.E("Registry.Unregister", "failed to delete entry file", err))
 	}
 	return core.Ok(nil)
 }
@@ -108,21 +108,22 @@ func (r *Registry) Unregister(code, daemon string) core.Result {
 func (r *Registry) Get(code, daemon string) (*DaemonEntry, bool) {
 	path := r.entryPath(code, daemon)
 
-	data, err := coreio.Local.Read(path)
-	if err != nil {
+	read := core.ReadFile(path)
+	if !read.OK {
 		return nil, false
 	}
+	data := string(read.Value.([]byte))
 
 	var entry DaemonEntry
 	if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-		if err := coreio.Local.Delete(path); err != nil {
+		if remove := core.Remove(path); !remove.OK {
 			return nil, false
 		}
 		return nil, false
 	}
 
 	if !isAlive(entry.PID) {
-		if err := coreio.Local.Delete(path); err != nil {
+		if remove := core.Remove(path); !remove.OK {
 			return nil, false
 		}
 		return nil, false
@@ -141,21 +142,22 @@ func (r *Registry) List() core.Result {
 
 	var alive []DaemonEntry
 	for _, path := range matches {
-		data, err := coreio.Local.Read(path)
-		if err != nil {
+		read := core.ReadFile(path)
+		if !read.OK {
 			continue
 		}
+		data := string(read.Value.([]byte))
 
 		var entry DaemonEntry
 		if result := core.JSONUnmarshalString(data, &entry); !result.OK {
-			if err := coreio.Local.Delete(path); err != nil {
+			if remove := core.Remove(path); !remove.OK {
 				continue
 			}
 			continue
 		}
 
 		if !isAlive(entry.PID) {
-			if err := coreio.Local.Delete(path); err != nil {
+			if remove := core.Remove(path); !remove.OK {
 				continue
 			}
 			continue

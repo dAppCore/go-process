@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // Global default service used by package-level helpers.
@@ -302,7 +301,7 @@ func Clear() {
 // Errors
 var (
 	// ErrServiceNotInitialized is returned when the service is not initialised.
-	ErrServiceNotInitialized = coreerr.E("", "process: service not initialized; call process.Init(core) first", nil)
+	ErrServiceNotInitialized = core.E("", "process: service not initialized; call process.Init(core) first", nil)
 	// ErrSetDefaultNil is returned when SetDefault is called with nil.
-	ErrSetDefaultNil = coreerr.E("", "process: SetDefault called with nil service", nil)
+	ErrSetDefaultNil = core.E("", "process: SetDefault called with nil service", nil)
 )

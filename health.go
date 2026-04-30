@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"dappco.re/go"
-	corelog "dappco.re/go/log"
 )
 
 // HealthCheck is a function that returns a successful Result when the service is healthy.
@@ -119,7 +118,7 @@ func (h *HealthServer) Start() core.Result {
 
 	listener, err := net.Listen("tcp", h.addr)
 	if err != nil {
-		return core.Fail(corelog.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err))
+		return core.Fail(core.E("HealthServer.Start", core.Sprintf("failed to listen on %s", h.addr), err))
 	}
 
 	server := &http.Server{Handler: mux}

@@ -1,6 +1,6 @@
 // SPDX-Licence-Identifier: EUPL-1.2
 
-package api_test
+package api
 
 import (
 	"reflect"
@@ -9,6 +9,11 @@ import (
 
 	core "dappco.re/go"
 )
+
+type resultEnvelope[T any] struct {
+	Value T    `json:"Value"`
+	OK    bool `json:"OK"`
+}
 
 func assertEqual(t *testing.T, want, got any, msgAndArgs ...any) {
 	t.Helper()

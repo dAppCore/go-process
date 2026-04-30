@@ -14,39 +14,25 @@ import (
 	"time"
 
 	"dappco.re/go"
-	"dappco.re/go/api"
-	"dappco.re/go/api/pkg/provider"
-	corelog "dappco.re/go/log"
 	process "dappco.re/go/process"
-	"dappco.re/go/ws"
 	"github.com/gin-gonic/gin"
 )
 
 // ProcessProvider wraps the go-process daemon Registry as a service provider.
-// It implements provider.Provider, provider.Streamable, provider.Describable,
-// and provider.Renderable.
 type ProcessProvider struct {
 	registry *process.Registry
 	service  *process.Service
 	runner   *process.Runner
-	hub      *ws.Hub
+	hub      any
 	actions  sync.Once
 }
-
-// compile-time interface checks
-var (
-	_ provider.Provider    = (*ProcessProvider)(nil)
-	_ provider.Streamable  = (*ProcessProvider)(nil)
-	_ provider.Describable = (*ProcessProvider)(nil)
-	_ provider.Renderable  = (*ProcessProvider)(nil)
-)
 
 // NewProvider creates a process provider backed by the given daemon registry
 // and optional process service for pipeline execution.
 //
 // The WS hub is used to emit daemon state change events. Pass nil for hub
 // if WebSocket streaming is not needed.
-func NewProvider(registry *process.Registry, service *process.Service, hub *ws.Hub) *ProcessProvider {
+func NewProvider(registry *process.Registry, service *process.Service, hub any) *ProcessProvider {
 	if registry == nil {
 		registry = process.DefaultRegistry()
 	}
@@ -62,10 +48,10 @@ func NewProvider(registry *process.Registry, service *process.Service, hub *ws.H
 	return p
 }
 
-// Name implements api.RouteGroup.
+// Name identifies the provider for structural route registration.
 func (p *ProcessProvider) Name() string { return "process" }
 
-// BasePath implements api.RouteGroup.
+// BasePath returns the mount point for structural route registration.
 func (p *ProcessProvider) BasePath() string { return "/api/process" }
 
 // Register mounts the provider on a Gin router using the provider base path.
@@ -76,9 +62,9 @@ func (p *ProcessProvider) Register(r gin.IRouter) {
 	p.RegisterRoutes(r.Group(p.BasePath()))
 }
 
-// Element implements provider.Renderable.
-func (p *ProcessProvider) Element() provider.ElementSpec {
-	return provider.ElementSpec{
+// Element declares the custom element used by GUI consumers.
+func (p *ProcessProvider) Element() elementSpec {
+	return elementSpec{
 		Tag:    "core-process-panel",
 		Source: "/assets/core-process.js",
 	}
@@ -97,7 +83,7 @@ func (p *ProcessProvider) Channels() []string {
 	}
 }
 
-// RegisterRoutes implements api.RouteGroup.
+// RegisterRoutes mounts all process routes under rg.
 func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/daemons", p.listDaemons)
 	rg.GET("/daemons/:code/:daemon", p.getDaemon)
@@ -129,384 +115,12 @@ func (p *ProcessProvider) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/pipelines/run", p.runPipeline)
 }
 
-// Describe implements api.DescribableGroup.
-func (p *ProcessProvider) Describe() []api.RouteDescription {
-	return []api.RouteDescription{
-		{
-			Method:      "GET",
-			Path:        "/daemons",
-			Summary:     "List running daemons",
-			Description: "Returns all alive daemon entries from the registry, pruning any with dead PIDs.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "array",
-				"items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"code":    map[string]any{"type": "string"},
-						"daemon":  map[string]any{"type": "string"},
-						"pid":     map[string]any{"type": "integer"},
-						"health":  map[string]any{"type": "string"},
-						"project": map[string]any{"type": "string"},
-						"binary":  map[string]any{"type": "string"},
-						"started": map[string]any{"type": "string", "format": "date-time"},
-					},
-				},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/daemons/:code/:daemon",
-			Summary:     "Get daemon status",
-			Description: "Returns a single daemon entry if its process is alive.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"code":    map[string]any{"type": "string"},
-					"daemon":  map[string]any{"type": "string"},
-					"pid":     map[string]any{"type": "integer"},
-					"health":  map[string]any{"type": "string"},
-					"started": map[string]any{"type": "string", "format": "date-time"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/daemons/:code/:daemon/stop",
-			Summary:     "Stop a daemon",
-			Description: "Sends SIGTERM to the daemon process and removes it from the registry.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"stopped": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/daemons/:code/:daemon/health",
-			Summary:     "Check daemon health",
-			Description: "Probes the daemon's health endpoint and returns the result, including a failure reason when unhealthy.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"healthy": map[string]any{"type": "boolean"},
-					"address": map[string]any{"type": "string"},
-					"reason":  map[string]any{"type": "string"},
-				},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/processes",
-			Summary:     "List managed processes",
-			Description: "Returns the current process service snapshot as serialisable process info entries. Pass runningOnly=true to limit results to active processes.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "array",
-				"items": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"id":        map[string]any{"type": "string"},
-						"command":   map[string]any{"type": "string"},
-						"args":      map[string]any{"type": "array"},
-						"dir":       map[string]any{"type": "string"},
-						"startedAt": map[string]any{"type": "string", "format": "date-time"},
-						"running":   map[string]any{"type": "boolean"},
-						"status":    map[string]any{"type": "string"},
-						"exitCode":  map[string]any{"type": "integer"},
-						"duration":  map[string]any{"type": "integer"},
-						"pid":       map[string]any{"type": "integer"},
-					},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes",
-			Summary:     "Start a managed process",
-			Description: "Starts a process asynchronously and returns its initial snapshot immediately.",
-			Tags:        []string{"process"},
-			RequestBody: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"command":        map[string]any{"type": "string"},
-					"args":           map[string]any{"type": "array"},
-					"dir":            map[string]any{"type": "string"},
-					"env":            map[string]any{"type": "array"},
-					"disableCapture": map[string]any{"type": "boolean"},
-					"detach":         map[string]any{"type": "boolean"},
-					"timeout":        map[string]any{"type": "integer"},
-					"gracePeriod":    map[string]any{"type": "integer"},
-					"killGroup":      map[string]any{"type": "boolean"},
-				},
-				"required": []string{"command"},
-			},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id":        map[string]any{"type": "string"},
-					"command":   map[string]any{"type": "string"},
-					"args":      map[string]any{"type": "array"},
-					"dir":       map[string]any{"type": "string"},
-					"startedAt": map[string]any{"type": "string", "format": "date-time"},
-					"running":   map[string]any{"type": "boolean"},
-					"status":    map[string]any{"type": "string"},
-					"exitCode":  map[string]any{"type": "integer"},
-					"duration":  map[string]any{"type": "integer"},
-					"pid":       map[string]any{"type": "integer"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/run",
-			Summary:     "Run a managed process",
-			Description: "Runs a process synchronously and returns its combined output on success.",
-			Tags:        []string{"process"},
-			RequestBody: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"command":        map[string]any{"type": "string"},
-					"args":           map[string]any{"type": "array"},
-					"dir":            map[string]any{"type": "string"},
-					"env":            map[string]any{"type": "array"},
-					"disableCapture": map[string]any{"type": "boolean"},
-					"detach":         map[string]any{"type": "boolean"},
-					"timeout":        map[string]any{"type": "integer"},
-					"gracePeriod":    map[string]any{"type": "integer"},
-					"killGroup":      map[string]any{"type": "boolean"},
-				},
-				"required": []string{"command"},
-			},
-			Response: map[string]any{
-				"type": "string",
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/processes/:id",
-			Summary:     "Get a managed process",
-			Description: "Returns a single managed process by ID as a process info snapshot.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id":        map[string]any{"type": "string"},
-					"command":   map[string]any{"type": "string"},
-					"args":      map[string]any{"type": "array"},
-					"dir":       map[string]any{"type": "string"},
-					"startedAt": map[string]any{"type": "string", "format": "date-time"},
-					"running":   map[string]any{"type": "boolean"},
-					"status":    map[string]any{"type": "string"},
-					"exitCode":  map[string]any{"type": "integer"},
-					"duration":  map[string]any{"type": "integer"},
-					"pid":       map[string]any{"type": "integer"},
-				},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/processes/:id/output",
-			Summary:     "Get process output",
-			Description: "Returns the captured stdout and stderr for a managed process.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "string",
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/:id/wait",
-			Summary:     "Wait for a managed process",
-			Description: "Blocks until the process exits and returns the final process snapshot. Non-zero exits include the snapshot in the error details payload.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id":        map[string]any{"type": "string"},
-					"command":   map[string]any{"type": "string"},
-					"args":      map[string]any{"type": "array"},
-					"dir":       map[string]any{"type": "string"},
-					"startedAt": map[string]any{"type": "string", "format": "date-time"},
-					"running":   map[string]any{"type": "boolean"},
-					"status":    map[string]any{"type": "string"},
-					"exitCode":  map[string]any{"type": "integer"},
-					"duration":  map[string]any{"type": "integer"},
-					"pid":       map[string]any{"type": "integer"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/:id/input",
-			Summary:     "Write process input",
-			Description: "Writes the provided input string to a managed process stdin pipe.",
-			Tags:        []string{"process"},
-			RequestBody: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"input": map[string]any{"type": "string"},
-				},
-				"required": []string{"input"},
-			},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"written": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/:id/close-stdin",
-			Summary:     "Close process stdin",
-			Description: "Closes the stdin pipe of a managed process so it can exit cleanly.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"closed": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/:id/kill",
-			Summary:     "Kill a managed process",
-			Description: "Sends SIGKILL to the managed process identified by ID, or to a raw OS PID when the path value is numeric.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"killed": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/processes/:id/signal",
-			Summary:     "Signal a managed process",
-			Description: "Sends a Unix signal to the managed process identified by ID, or to a raw OS PID when the path value is numeric.",
-			Tags:        []string{"process"},
-			RequestBody: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"signal": map[string]any{"type": "string"},
-				},
-				"required": []string{"signal"},
-			},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"signalled": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/pipelines/run",
-			Summary:     "Run a process pipeline",
-			Description: "Executes a list of process specs using the configured runner in sequential, parallel, or dependency-aware mode.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"results": map[string]any{
-						"type": "array",
-					},
-					"duration": map[string]any{"type": "integer"},
-					"passed":   map[string]any{"type": "integer"},
-					"failed":   map[string]any{"type": "integer"},
-					"skipped":  map[string]any{"type": "integer"},
-				},
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/process/list",
-			Summary:     "List managed processes",
-			Description: "RFC-compatible alias for listing managed process IDs.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "array",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/process/start",
-			Summary:     "Start a managed process",
-			Description: "RFC-compatible alias for starting a process in detached mode and returning its managed ID.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "string",
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/process/run",
-			Summary:     "Run a managed process",
-			Description: "RFC-compatible alias for running a process synchronously.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "string",
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/process/:id",
-			Summary:     "Get managed process",
-			Description: "RFC-compatible alias for process lookup.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "object",
-			},
-		},
-		{
-			Method:      "GET",
-			Path:        "/process/:id/output",
-			Summary:     "Get managed process output",
-			Description: "RFC-compatible alias for process output.",
-			Tags:        []string{"process"},
-			Response: map[string]any{
-				"type": "string",
-			},
-		},
-		{
-			Method:      "POST",
-			Path:        "/process/kill",
-			Summary:     "Kill a managed process",
-			Description: "RFC-compatible alias that accepts id or pid in JSON body.",
-			Tags:        []string{"process"},
-			RequestBody: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id":  map[string]any{"type": "string"},
-					"pid": map[string]any{"type": "integer"},
-				},
-			},
-			Response: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"killed": map[string]any{"type": "boolean"},
-				},
-			},
-		},
-	}
-}
-
 // -- Handlers -----------------------------------------------------------------
 
 func (p *ProcessProvider) listDaemons(c *gin.Context) {
 	result := p.registry.List()
 	if !result.OK {
-		c.JSON(http.StatusInternalServerError, api.Fail("list_failed", result.Error()))
+		c.JSON(http.StatusInternalServerError, fail("list_failed", result.Error()))
 		return
 	}
 	entries := result.Value.([]process.DaemonEntry)
@@ -516,7 +130,7 @@ func (p *ProcessProvider) listDaemons(c *gin.Context) {
 	for _, entry := range entries {
 		p.emitEvent("process.daemon.started", daemonEventPayload(entry))
 	}
-	c.JSON(http.StatusOK, api.OK(entries))
+	c.JSON(http.StatusOK, core.Ok(entries))
 }
 
 func (p *ProcessProvider) getDaemon(c *gin.Context) {
@@ -525,11 +139,11 @@ func (p *ProcessProvider) getDaemon(c *gin.Context) {
 
 	entry, ok := p.registry.Get(code, daemon)
 	if !ok {
-		c.JSON(http.StatusNotFound, api.Fail("not_found", "daemon not found or not running"))
+		c.JSON(http.StatusNotFound, fail("not_found", "daemon not found or not running"))
 		return
 	}
 	p.emitEvent("process.daemon.started", daemonEventPayload(*entry))
-	c.JSON(http.StatusOK, api.OK(entry))
+	c.JSON(http.StatusOK, core.Ok(entry))
 }
 
 func (p *ProcessProvider) stopDaemon(c *gin.Context) {
@@ -538,19 +152,19 @@ func (p *ProcessProvider) stopDaemon(c *gin.Context) {
 
 	entry, ok := p.registry.Get(code, daemon)
 	if !ok {
-		c.JSON(http.StatusNotFound, api.Fail("not_found", "daemon not found or not running"))
+		c.JSON(http.StatusNotFound, fail("not_found", "daemon not found or not running"))
 		return
 	}
 
 	// Send SIGTERM to the process.
 	if err := syscall.Kill(entry.PID, syscall.SIGTERM); err != nil {
-		c.JSON(http.StatusInternalServerError, api.Fail("signal_failed", err.Error()))
+		c.JSON(http.StatusInternalServerError, fail("signal_failed", err.Error()))
 		return
 	}
 
 	// Remove from registry
 	if result := p.registry.Unregister(code, daemon); !result.OK {
-		c.JSON(http.StatusInternalServerError, api.Fail("unregister_failed", result.Error()))
+		c.JSON(http.StatusInternalServerError, fail("unregister_failed", result.Error()))
 		return
 	}
 
@@ -561,7 +175,7 @@ func (p *ProcessProvider) stopDaemon(c *gin.Context) {
 		"pid":    entry.PID,
 	})
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"stopped": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"stopped": true}))
 }
 
 func (p *ProcessProvider) healthCheck(c *gin.Context) {
@@ -570,12 +184,12 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 
 	entry, ok := p.registry.Get(code, daemon)
 	if !ok {
-		c.JSON(http.StatusNotFound, api.Fail("not_found", "daemon not found or not running"))
+		c.JSON(http.StatusNotFound, fail("not_found", "daemon not found or not running"))
 		return
 	}
 
 	if entry.Health == "" {
-		c.JSON(http.StatusOK, api.OK(map[string]any{
+		c.JSON(http.StatusOK, core.Ok(map[string]any{
 			"healthy": false,
 			"address": "",
 			"reason":  "no health endpoint configured",
@@ -605,12 +219,12 @@ func (p *ProcessProvider) healthCheck(c *gin.Context) {
 	if !healthy {
 		statusCode = http.StatusServiceUnavailable
 	}
-	c.JSON(statusCode, api.OK(result))
+	c.JSON(statusCode, core.Ok(result))
 }
 
 func (p *ProcessProvider) listProcesses(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -623,74 +237,74 @@ func (p *ProcessProvider) listProcesses(c *gin.Context) {
 		infos = append(infos, proc.Info())
 	}
 
-	c.JSON(http.StatusOK, api.OK(infos))
+	c.JSON(http.StatusOK, core.Ok(infos))
 }
 
 func (p *ProcessProvider) startProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req process.TaskProcessStart
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 	if core.Trim(req.Command) == "" {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", "command is required"))
 		return
 	}
 
 	result := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
 	if !result.OK {
-		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", result.Error()))
+		c.JSON(http.StatusInternalServerError, fail("start_failed", result.Error()))
 		return
 	}
 	proc := result.Value.(*process.Process)
 
-	c.JSON(http.StatusOK, api.OK(proc.Info()))
+	c.JSON(http.StatusOK, core.Ok(proc.Info()))
 }
 
 func (p *ProcessProvider) startProcessRFC(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req process.TaskProcessStart
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 	if core.Trim(req.Command) == "" {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", "command is required"))
 		return
 	}
 
 	result := p.service.StartWithOptions(c.Request.Context(), startRunOptions(req))
 	if !result.OK {
-		c.JSON(http.StatusInternalServerError, api.Fail("start_failed", result.Error()))
+		c.JSON(http.StatusInternalServerError, fail("start_failed", result.Error()))
 		return
 	}
 	proc := result.Value.(*process.Process)
 
-	c.JSON(http.StatusOK, api.OK(proc.ID))
+	c.JSON(http.StatusOK, core.Ok(proc.ID))
 }
 
 func (p *ProcessProvider) runProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req process.TaskProcessRun
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 	if core.Trim(req.Command) == "" {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "command is required"))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", "command is required"))
 		return
 	}
 
@@ -706,34 +320,34 @@ func (p *ProcessProvider) runProcess(c *gin.Context) {
 		KillGroup:      req.KillGroup,
 	})
 	if !result.OK {
-		c.JSON(http.StatusInternalServerError, api.FailWithDetails("run_failed", result.Error(), map[string]any{
+		c.JSON(http.StatusInternalServerError, failWithDetails("run_failed", result.Error(), map[string]any{
 			"output": "",
 		}))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(result.Value.(string)))
+	c.JSON(http.StatusOK, core.Ok(result.Value.(string)))
 }
 
 func (p *ProcessProvider) getProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	result := p.service.Get(c.Param("id"))
 	if !result.OK {
-		c.JSON(http.StatusNotFound, api.Fail("not_found", result.Error()))
+		c.JSON(http.StatusNotFound, fail("not_found", result.Error()))
 		return
 	}
 	proc := result.Value.(*process.Process)
 
-	c.JSON(http.StatusOK, api.OK(proc.Info()))
+	c.JSON(http.StatusOK, core.Ok(proc.Info()))
 }
 
 func (p *ProcessProvider) listProcessIDs(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -747,12 +361,12 @@ func (p *ProcessProvider) listProcessIDs(c *gin.Context) {
 		ids = append(ids, proc.ID)
 	}
 
-	c.JSON(http.StatusOK, api.OK(ids))
+	c.JSON(http.StatusOK, core.Ok(ids))
 }
 
 func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -762,16 +376,16 @@ func (p *ProcessProvider) getProcessOutput(c *gin.Context) {
 		if result.Value == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("not_found", result.Error()))
+		c.JSON(status, fail("not_found", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(result.Value.(string)))
+	c.JSON(http.StatusOK, core.Ok(result.Value.(string)))
 }
 
 func (p *ProcessProvider) waitProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -788,11 +402,11 @@ func (p *ProcessProvider) waitProcess(c *gin.Context) {
 		case info.Status == process.StatusExited || info.Status == process.StatusKilled:
 			status = http.StatusConflict
 		}
-		c.JSON(status, api.FailWithDetails("wait_failed", result.Error(), info))
+		c.JSON(status, failWithDetails("wait_failed", result.Error(), info))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(result.Value.(process.Info)))
+	c.JSON(http.StatusOK, core.Ok(result.Value.(process.Info)))
 }
 
 type processInputRequest struct {
@@ -801,13 +415,13 @@ type processInputRequest struct {
 
 func (p *ProcessProvider) inputProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req processInputRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 
@@ -817,16 +431,16 @@ func (p *ProcessProvider) inputProcess(c *gin.Context) {
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("input_failed", result.Error()))
+		c.JSON(status, fail("input_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"written": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"written": true}))
 }
 
 func (p *ProcessProvider) closeProcessStdin(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -836,16 +450,16 @@ func (p *ProcessProvider) closeProcessStdin(c *gin.Context) {
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("close_stdin_failed", result.Error()))
+		c.JSON(status, fail("close_stdin_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"closed": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"closed": true}))
 }
 
 func (p *ProcessProvider) killProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
@@ -857,11 +471,11 @@ func (p *ProcessProvider) killProcess(c *gin.Context) {
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("kill_failed", result.Error()))
+		c.JSON(status, fail("kill_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"killed": true}))
 }
 
 type processKillRequest struct {
@@ -871,17 +485,17 @@ type processKillRequest struct {
 
 func (p *ProcessProvider) killProcessJSON(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req processKillRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 	if req.ID == "" && req.PID <= 0 {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", "id or pid is required"))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", "id or pid is required"))
 		return
 	}
 	if req.PID <= 0 {
@@ -896,11 +510,11 @@ func (p *ProcessProvider) killProcessJSON(c *gin.Context) {
 		if err == process.ErrProcessNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("kill_failed", result.Error()))
+		c.JSON(status, fail("kill_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"killed": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"killed": true}))
 }
 
 func (p *ProcessProvider) killProcessByTarget(id string, pid int) core.Result {
@@ -927,19 +541,19 @@ type processSignalRequest struct {
 
 func (p *ProcessProvider) signalProcess(c *gin.Context) {
 	if p.service == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("service_unavailable", "process service is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("service_unavailable", "process service is not configured"))
 		return
 	}
 
 	var req processSignalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 
 	sigResult := parseSignal(req.Signal)
 	if !sigResult.OK {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_signal", sigResult.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_signal", sigResult.Error()))
 		return
 	}
 	sig := sigResult.Value.(syscall.Signal)
@@ -950,7 +564,7 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 		if pid, ok := pidFromString(id); ok {
 			pidResult := p.service.SignalPID(pid, sig)
 			if pidResult.OK {
-				c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
+				c.JSON(http.StatusOK, core.Ok(map[string]any{"signalled": true}))
 				return
 			}
 			result = pidResult
@@ -960,11 +574,11 @@ func (p *ProcessProvider) signalProcess(c *gin.Context) {
 		if err == process.ErrProcessNotFound || err == process.ErrProcessNotRunning {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, api.Fail("signal_failed", result.Error()))
+		c.JSON(status, fail("signal_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(map[string]any{"signalled": true}))
+	c.JSON(http.StatusOK, core.Ok(map[string]any{"signalled": true}))
 }
 
 type pipelineRunRequest struct {
@@ -974,13 +588,13 @@ type pipelineRunRequest struct {
 
 func (p *ProcessProvider) runPipeline(c *gin.Context) {
 	if p.runner == nil {
-		c.JSON(http.StatusServiceUnavailable, api.Fail("runner_unavailable", "pipeline runner is not configured"))
+		c.JSON(http.StatusServiceUnavailable, fail("runner_unavailable", "pipeline runner is not configured"))
 		return
 	}
 
 	var req pipelineRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_request", err.Error()))
+		c.JSON(http.StatusBadRequest, fail("invalid_request", err.Error()))
 		return
 	}
 
@@ -1004,15 +618,15 @@ func (p *ProcessProvider) runPipeline(c *gin.Context) {
 	case "parallel":
 		result = p.runner.RunParallel(ctx, req.Specs)
 	default:
-		c.JSON(http.StatusBadRequest, api.Fail("invalid_mode", "mode must be one of: all, sequential, parallel"))
+		c.JSON(http.StatusBadRequest, fail("invalid_mode", "mode must be one of: all, sequential, parallel"))
 		return
 	}
 	if !result.OK {
-		c.JSON(http.StatusBadRequest, api.Fail("pipeline_failed", result.Error()))
+		c.JSON(http.StatusBadRequest, fail("pipeline_failed", result.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, api.OK(result.Value.(*process.RunAllResult)))
+	c.JSON(http.StatusOK, core.Ok(result.Value.(*process.RunAllResult)))
 }
 
 // emitEvent sends a WS event if the hub is available.
@@ -1020,20 +634,7 @@ func (p *ProcessProvider) emitEvent(channel string, data any) {
 	if p.hub == nil {
 		return
 	}
-	msg := ws.Message{
-		Type: ws.TypeEvent,
-		Data: data,
-	}
-	if err := p.hub.Broadcast(ws.Message{
-		Type:    msg.Type,
-		Channel: channel,
-		Data:    data,
-	}); err != nil {
-		return
-	}
-	if err := p.hub.SendToChannel(channel, msg); err != nil {
-		return
-	}
+	emitHubEvent(p.hub, channel, data)
 }
 
 func daemonEventPayload(entry process.DaemonEntry) map[string]any {
@@ -1090,7 +691,7 @@ func startRunOptions(req process.TaskProcessStart) process.RunOptions {
 func parseSignal(value string) core.Result {
 	trimmed := core.Trim(core.Upper(value))
 	if trimmed == "" {
-		return core.Fail(corelog.E("ProcessProvider.parseSignal", "signal is required", nil))
+		return core.Fail(core.E("ProcessProvider.parseSignal", "signal is required", nil))
 	}
 
 	if n, err := strconv.Atoi(trimmed); err == nil {
@@ -1117,7 +718,7 @@ func parseSignal(value string) core.Result {
 	case "SIGUSR2", "USR2":
 		return core.Ok(syscall.SIGUSR2)
 	default:
-		return core.Fail(corelog.E("ProcessProvider.parseSignal", "unsupported signal", nil))
+		return core.Fail(core.E("ProcessProvider.parseSignal", "unsupported signal", nil))
 	}
 }
 

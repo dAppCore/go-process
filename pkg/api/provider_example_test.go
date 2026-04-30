@@ -1,17 +1,16 @@
-package api_test
+package api
 
 import (
 	. "dappco.re/go"
 	process "dappco.re/go/process"
-	processapi "dappco.re/go/process/pkg/api"
 	"github.com/gin-gonic/gin"
 )
 
-func exampleProvider() *processapi.ProcessProvider {
+func exampleProvider() *ProcessProvider {
 	result := process.NewService(process.Options{})(New())
 	svc := result.Value.(*process.Service)
 	reg := process.NewRegistry(PathJoin(TempDir(), "go-process-provider-"+ID()))
-	return processapi.NewProvider(reg, svc, nil)
+	return NewProvider(reg, svc, nil)
 }
 
 func ExampleNewProvider() {
@@ -63,13 +62,7 @@ func ExampleProcessProvider_RegisterRoutes() {
 	// Output: true
 }
 
-func ExampleProcessProvider_Describe() {
-	provider := exampleProvider()
-	Println(len(provider.Describe()) > 0)
-	// Output: true
-}
-
 func ExamplePIDAlive() {
-	Println(processapi.PIDAlive(Getpid()))
+	Println(PIDAlive(Getpid()))
 	// Output: true
 }

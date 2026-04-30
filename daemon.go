@@ -7,7 +7,6 @@ import (
 	"time"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // DaemonOptions configures daemon mode execution.
@@ -88,7 +87,7 @@ func (d *Daemon) Start() core.Result {
 	defer d.mu.Unlock()
 
 	if d.running {
-		return core.Fail(coreerr.E("Daemon.Start", "daemon already running", nil))
+		return core.Fail(core.E("Daemon.Start", "daemon already running", nil))
 	}
 
 	if d.pid != nil {
@@ -101,7 +100,7 @@ func (d *Daemon) Start() core.Result {
 		if r := d.health.Start(); !r.OK {
 			if d.pid != nil {
 				if release := d.pid.Release(); !release.OK {
-					return core.Fail(coreerr.Join(r.Value.(error), release.Value.(error)))
+					return core.Fail(core.ErrorJoin(r.Value.(error), release.Value.(error)))
 				}
 			}
 			return r
@@ -138,7 +137,7 @@ func (d *Daemon) Start() core.Result {
 					errs = append(errs, release.Value.(error))
 				}
 			}
-			return core.Fail(coreerr.E("Daemon.Start", "registry", coreerr.Join(errs...)))
+			return core.Fail(core.E("Daemon.Start", "registry", core.ErrorJoin(errs...)))
 		}
 	}
 
@@ -153,13 +152,13 @@ func (d *Daemon) Start() core.Result {
 //	if err := daemon.Run(ctx); err != nil { return err }
 func (d *Daemon) Run(ctx context.Context) core.Result {
 	if ctx == nil {
-		return core.Fail(coreerr.E("Daemon.Run", "daemon context is required", ErrDaemonContextRequired))
+		return core.Fail(core.E("Daemon.Run", "daemon context is required", ErrDaemonContextRequired))
 	}
 
 	d.mu.Lock()
 	if !d.running {
 		d.mu.Unlock()
-		return core.Fail(coreerr.E("Daemon.Run", "daemon not started - call Start() first", nil))
+		return core.Fail(core.E("Daemon.Run", "daemon not started - call Start() first", nil))
 	}
 	d.mu.Unlock()
 
@@ -193,26 +192,26 @@ func (d *Daemon) Stop() core.Result {
 
 	if d.opts.Registry != nil {
 		if r := d.opts.Registry.Unregister(d.opts.RegistryEntry.Code, d.opts.RegistryEntry.Daemon); !r.OK {
-			errs = append(errs, coreerr.E("Daemon.Stop", "registry", r.Value.(error)))
+			errs = append(errs, core.E("Daemon.Stop", "registry", r.Value.(error)))
 		}
 	}
 
 	if d.pid != nil {
 		if r := d.pid.Release(); !r.OK && !core.IsNotExist(r.Value.(error)) {
-			errs = append(errs, coreerr.E("Daemon.Stop", "pid file", r.Value.(error)))
+			errs = append(errs, core.E("Daemon.Stop", "pid file", r.Value.(error)))
 		}
 	}
 
 	if d.health != nil {
 		if r := d.health.Stop(shutdownCtx); !r.OK {
-			errs = append(errs, coreerr.E("Daemon.Stop", "health server", r.Value.(error)))
+			errs = append(errs, core.E("Daemon.Stop", "health server", r.Value.(error)))
 		}
 	}
 
 	d.running = false
 
 	if len(errs) > 0 {
-		return core.Fail(coreerr.Join(errs...))
+		return core.Fail(core.ErrorJoin(errs...))
 	}
 	return core.Ok(nil)
 }
@@ -255,4 +254,4 @@ func (d *Daemon) HealthAddr() string {
 }
 
 // ErrDaemonContextRequired is returned when Run is called without a context.
-var ErrDaemonContextRequired = coreerr.E("", "daemon context is required", nil)
+var ErrDaemonContextRequired = core.E("", "daemon context is required", nil)

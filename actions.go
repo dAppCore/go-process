@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---
@@ -209,7 +208,7 @@ func parseProcessActionInput(opts core.Options, requireCommand bool) core.Result
 	parsed.PID = parseIntOption(opts, "pid")
 
 	if requireCommand && parsed.Command == "" {
-		return core.Fail(coreerr.E("process action", "command is required", nil))
+		return core.Fail(core.E("process action", "command is required", nil))
 	}
 
 	return core.Ok(parsed)
@@ -219,7 +218,7 @@ func parseProcessActionTarget(opts core.Options) core.Result {
 	id := core.Trim(opts.String("id"))
 	pid := parseIntOption(opts, "pid")
 	if id == "" && pid <= 0 {
-		return core.Fail(coreerr.E("process action", "id or pid is required", nil))
+		return core.Fail(core.E("process action", "id or pid is required", nil))
 	}
 	return core.Ok(processActionInput{ID: id, PID: pid})
 }
@@ -326,7 +325,7 @@ func parseStringSliceOption(opts core.Options, key string) core.Result {
 		if alt, ok := r.Value.([]interface{}); ok {
 			anyList = alt
 		} else {
-			return core.Fail(coreerr.E("process action", core.Sprintf("%s must be an array", key), nil))
+			return core.Fail(core.E("process action", core.Sprintf("%s must be an array", key), nil))
 		}
 	}
 
@@ -334,7 +333,7 @@ func parseStringSliceOption(opts core.Options, key string) core.Result {
 	for _, item := range anyList {
 		value, ok := item.(string)
 		if !ok {
-			return core.Fail(coreerr.E("process action", core.Sprintf("%s entries must be strings", key), nil))
+			return core.Fail(core.E("process action", core.Sprintf("%s entries must be strings", key), nil))
 		}
 		items = append(items, value)
 	}

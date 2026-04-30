@@ -5,18 +5,17 @@ import (
 	"unicode"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.
 // Callers may use errors.Is to detect this condition.
-var ErrProgramNotFound = coreerr.E("", "program: binary not found in PATH", nil)
+var ErrProgramNotFound = core.E("", "program: binary not found in PATH", nil)
 
 // ErrProgramContextRequired is returned when Run or RunDir is called without a context.
-var ErrProgramContextRequired = coreerr.E("", "program: command context is required", nil)
+var ErrProgramContextRequired = core.E("", "program: command context is required", nil)
 
 // ErrProgramNameRequired is returned when Run or RunDir is called without a program name.
-var ErrProgramNameRequired = coreerr.E("", "program: program name is empty", nil)
+var ErrProgramNameRequired = core.E("", "program: program name is empty", nil)
 
 // Program represents a named executable located on the system PATH.
 //
@@ -46,11 +45,11 @@ func (p *Program) Find() core.Result {
 		target = p.Name
 	}
 	if target == "" {
-		return core.Fail(coreerr.E("Program.Find", "program name is empty", nil))
+		return core.Fail(core.E("Program.Find", "program name is empty", nil))
 	}
 	result := lookPath(target)
 	if !result.OK {
-		return core.Fail(coreerr.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound))
+		return core.Fail(core.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound))
 	}
 	p.Path = result.Value.(string)
 	return core.Ok(nil)
@@ -75,7 +74,7 @@ func (p *Program) Run(ctx context.Context, args ...string) core.Result {
 //	result := p.RunDir(ctx, "/tmp", "pwd")
 func (p *Program) RunDir(ctx context.Context, dir string, args ...string) core.Result {
 	if ctx == nil {
-		return core.Fail(coreerr.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired))
+		return core.Fail(core.E("Program.RunDir", "program: command context is required", ErrProgramContextRequired))
 	}
 
 	binary := p.Path
@@ -84,7 +83,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) core.R
 	}
 
 	if binary == "" {
-		return core.Fail(coreerr.E("Program.RunDir", "program name is empty", ErrProgramNameRequired))
+		return core.Fail(core.E("Program.RunDir", "program name is empty", ErrProgramNameRequired))
 	}
 
 	out := core.NewBuffer()
@@ -96,7 +95,7 @@ func (p *Program) RunDir(ctx context.Context, dir string, args ...string) core.R
 	}
 
 	if err := cmd.Run(); err != nil {
-		return core.Fail(coreerr.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err))
+		return core.Fail(core.E("Program.RunDir", core.Sprintf("%q: command failed", binary), err))
 	}
 	return core.Ok(trimRightSpace(out.String()))
 }

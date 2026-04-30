@@ -4,12 +4,11 @@ import (
 	"context"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 	goio "io"
 )
 
 // ErrCommandContextRequired is returned when a command is created without a context.
-var ErrCommandContextRequired = coreerr.E("", "exec: command context is required", nil)
+var ErrCommandContextRequired = core.E("", "exec: command context is required", nil)
 
 // Options configures command execution.
 type Options struct {
@@ -174,7 +173,7 @@ func (c *Cmd) Run() core.Result {
 //	result := cmd.Output()
 func (c *Cmd) Output() core.Result {
 	if c.opts.Background {
-		return core.Fail(coreerr.E("Cmd.Output", "background execution is incompatible with Output", nil))
+		return core.Fail(core.E("Cmd.Output", "background execution is incompatible with Output", nil))
 	}
 
 	if r := c.prepare(); !r.OK {
@@ -198,7 +197,7 @@ func (c *Cmd) Output() core.Result {
 //	result := cmd.CombinedOutput()
 func (c *Cmd) CombinedOutput() core.Result {
 	if c.opts.Background {
-		return core.Fail(coreerr.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil))
+		return core.Fail(core.E("Cmd.CombinedOutput", "background execution is incompatible with CombinedOutput", nil))
 	}
 
 	if r := c.prepare(); !r.OK {
@@ -217,7 +216,7 @@ func (c *Cmd) CombinedOutput() core.Result {
 
 func (c *Cmd) prepare() core.Result {
 	if c.ctx == nil {
-		return core.Fail(coreerr.E("Cmd.prepare", "exec: command context is required", ErrCommandContextRequired))
+		return core.Fail(core.E("Cmd.prepare", "exec: command context is required", ErrCommandContextRequired))
 	}
 
 	c.cmd = commandContext(c.ctx, c.name, c.args...)
@@ -258,7 +257,7 @@ func RunQuiet(ctx context.Context, name string, args ...string) core.Result {
 	cmd := Command(ctx, name, args...).WithStderr(stderr)
 	if r := cmd.Run(); !r.OK {
 		// Include stderr in error message
-		return core.Fail(coreerr.E("RunQuiet", core.Trim(stderr.String()), r.Value.(error)))
+		return core.Fail(core.E("RunQuiet", core.Trim(stderr.String()), r.Value.(error)))
 	}
 	return core.Ok(nil)
 }
@@ -266,9 +265,9 @@ func RunQuiet(ctx context.Context, name string, args ...string) core.Result {
 func wrapError(caller string, err error, name string, args []string) core.Result {
 	cmdStr := core.Join(" ", append([]string{name}, args...)...)
 	if exitErr, ok := err.(interface{ ExitCode() int }); ok {
-		return core.Fail(coreerr.E(caller, core.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err))
+		return core.Fail(core.E(caller, core.Sprintf("command %q failed with exit code %d", cmdStr, exitErr.ExitCode()), err))
 	}
-	return core.Fail(coreerr.E(caller, core.Sprintf("failed to execute %q", cmdStr), err))
+	return core.Fail(core.E(caller, core.Sprintf("failed to execute %q", cmdStr), err))
 }
 
 func (c *Cmd) getLogger() Logger {
@@ -301,13 +300,13 @@ func commandContext(ctx context.Context, name string, arg ...string) *core.Cmd {
 
 func lookPath(file string) core.Result {
 	if file == "" {
-		return core.Fail(coreerr.E("lookPath", "executable file not found in PATH", nil))
+		return core.Fail(core.E("lookPath", "executable file not found in PATH", nil))
 	}
 	if core.Contains(file, string(core.PathSeparator)) {
 		if isExecutable(file) {
 			return core.Ok(file)
 		}
-		return core.Fail(coreerr.E("lookPath", core.Sprintf("executable file %q not found", file), nil))
+		return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found", file), nil))
 	}
 
 	for _, dir := range core.Split(core.Getenv("PATH"), string(core.PathListSeparator)) {
@@ -319,7 +318,7 @@ func lookPath(file string) core.Result {
 			return core.Ok(path)
 		}
 	}
-	return core.Fail(coreerr.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil))
+	return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil))
 }
 
 func isExecutable(path string) bool {

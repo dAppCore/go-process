@@ -8,7 +8,6 @@ import (
 	"time"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 	goio "io"
 )
 
@@ -122,13 +121,13 @@ func (p *ManagedProcess) Wait() core.Result {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if p.Status == StatusFailed {
-		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process failed to start: %s", p.ID), nil))
+		return core.Fail(core.E("Process.Wait", core.Sprintf("process failed to start: %s", p.ID), nil))
 	}
 	if p.Status == StatusKilled {
-		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process was killed: %s", p.ID), nil))
+		return core.Fail(core.E("Process.Wait", core.Sprintf("process was killed: %s", p.ID), nil))
 	}
 	if p.ExitCode != 0 {
-		return core.Fail(coreerr.E("Process.Wait", core.Sprintf("process exited with code %d", p.ExitCode), nil))
+		return core.Fail(core.E("Process.Wait", core.Sprintf("process exited with code %d", p.ExitCode), nil))
 	}
 	return core.Ok(nil)
 }

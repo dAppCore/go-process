@@ -4,7 +4,6 @@ import (
 	"context"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 func commandContext(ctx context.Context, name string, arg ...string) *core.Cmd {
@@ -22,13 +21,13 @@ func commandContext(ctx context.Context, name string, arg ...string) *core.Cmd {
 
 func lookPath(file string) core.Result {
 	if file == "" {
-		return core.Fail(coreerr.E("lookPath", "executable file not found in PATH", nil))
+		return core.Fail(core.E("lookPath", "executable file not found in PATH", nil))
 	}
 	if core.Contains(file, string(core.PathSeparator)) {
 		if isExecutable(file) {
 			return core.Ok(file)
 		}
-		return core.Fail(coreerr.E("lookPath", core.Sprintf("executable file %q not found", file), nil))
+		return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found", file), nil))
 	}
 
 	for _, dir := range core.Split(core.Getenv("PATH"), string(core.PathListSeparator)) {
@@ -40,7 +39,7 @@ func lookPath(file string) core.Result {
 			return core.Ok(path)
 		}
 	}
-	return core.Fail(coreerr.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil))
+	return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil))
 }
 
 func isExecutable(path string) bool {
