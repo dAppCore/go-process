@@ -23,7 +23,7 @@ func programResultError(r core.Result) (err error) {
 	if err, ok := r.Value.(error); ok {
 		return err
 	}
-	return core.NewError(r.Error())
+	return core.E("programResultError", r.Error(), nil)
 }
 
 func programResultString(r core.Result) (string, error) {

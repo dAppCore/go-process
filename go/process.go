@@ -169,8 +169,10 @@ func (p *ManagedProcess) kill() core.Result {
 	}
 
 	if p.killGroup {
-		// Kill entire process group (negative PID)
-		return core.ResultOf(true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL))
+		if r := processKillGroup(p.cmd.Process.Pid); !r.OK {
+			return r
+		}
+		return core.Ok(true)
 	}
 	return core.ResultOf(true, p.cmd.Process.Kill())
 }
@@ -188,7 +190,10 @@ func (p *ManagedProcess) killTree() core.Result {
 		return core.Ok(false)
 	}
 
-	return core.ResultOf(true, syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL))
+	if r := processKillGroup(p.cmd.Process.Pid); !r.OK {
+		return r
+	}
+	return core.Ok(true)
 }
 
 // Shutdown gracefully stops the process: SIGTERM, then SIGKILL after grace period.
@@ -236,9 +241,9 @@ func (p *ManagedProcess) terminate() core.Result {
 
 	pid := p.cmd.Process.Pid
 	if p.killGroup {
-		pid = -pid
+		return processSignalGroup(pid, syscall.SIGTERM)
 	}
-	return core.ResultOf(nil, syscall.Kill(pid, syscall.SIGTERM))
+	return processSignal(pid, syscall.SIGTERM)
 }
 
 // Signal sends a signal to the process.
@@ -266,11 +271,11 @@ func (p *ManagedProcess) Signal(sig syscall.Signal) core.Result {
 	}
 
 	if sig == 0 {
-		return core.ResultOf(nil, syscall.Kill(-cmd.Process.Pid, 0))
+		return processSignalGroup(cmd.Process.Pid, 0)
 	}
 
-	if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
-		return core.Fail(err)
+	if r := processSignalGroup(cmd.Process.Pid, sig); !r.OK {
+		return r
 	}
 
 	// Some shells briefly ignore or defer the signal while they are still
@@ -286,7 +291,7 @@ func (p *ManagedProcess) Signal(sig syscall.Signal) core.Result {
 			case <-done:
 				return
 			case <-ticker.C:
-				if err := syscall.Kill(-pid, sig); err != nil {
+				if r := processSignalGroup(pid, sig); !r.OK {
 					return
 				}
 			}
@@ -296,7 +301,7 @@ func (p *ManagedProcess) Signal(sig syscall.Signal) core.Result {
 		case <-done:
 			return
 		default:
-			if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+			if r := processKillGroup(pid); !r.OK {
 				return
 			}
 		}

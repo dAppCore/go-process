@@ -265,7 +265,7 @@ func testError(value any) (error, bool) {
 		if err, ok := v.Value.(error); ok {
 			return err, true
 		}
-		return core.NewError(v.Error()), true
+		return core.E("testError", v.Error(), nil), true
 	case error:
 		return v, true
 	default:

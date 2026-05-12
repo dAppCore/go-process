@@ -29,7 +29,7 @@ func resultError(r core.Result) (err error) {
 	if err, ok := r.Value.(error); ok {
 		return err
 	}
-	return core.NewError(r.Error())
+	return core.E("resultError", r.Error(), nil)
 }
 
 func resultBytes(r core.Result) ([]byte, error) {

@@ -597,7 +597,7 @@ func TestService_Signal(t *testing.T) {
 				},
 			},
 		} {
-			for _, sig := range []syscall.Signal{syscall.SIGKILL, syscall.SIGSTOP} {
+			for _, sig := range testUncatchableSignals() {
 				t.Run(tc.name+"/"+strconv.Itoa(int(sig)), func(t *testing.T) {
 					err := tc.send(sig)
 					requireError(t, err)
