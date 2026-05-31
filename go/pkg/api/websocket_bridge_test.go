@@ -79,7 +79,7 @@ func TestWebsocketBridge_callExternalHub_Ugly(t *testing.T) {
 // which the bridge must reject without calling them.
 type wrongArityHub struct{ called bool }
 
-func (w *wrongArityHub) Broadcast()                                    { w.called = true }
+func (w *wrongArityHub) Broadcast()                                     { w.called = true }
 func (w *wrongArityHub) SendToChannel(_ string, _ externalEvent, _ int) { w.called = true }
 
 func TestWebsocketBridge_callExternalHub_WrongArity_Ugly(t *testing.T) {
@@ -148,10 +148,10 @@ func TestWebsocketBridge_setAnyField_Ugly(t *testing.T) {
 		N    int
 	}
 	v := reflect.New(reflect.TypeOf(holder{})).Elem()
-	setAnyField(v, "Missing", "x")            // unknown field
-	setAnyField(v, "Data", nil)               // nil value is ignored
-	setAnyField(v, "Data", map[string]int{})  // assignable to any
-	setAnyField(v, "N", 5)                     // convertible into int
+	setAnyField(v, "Missing", "x")           // unknown field
+	setAnyField(v, "Data", nil)              // nil value is ignored
+	setAnyField(v, "Data", map[string]int{}) // assignable to any
+	setAnyField(v, "N", 5)                   // convertible into int
 	got := v.Interface().(holder)
 	assertNotNil(t, got.Data)
 	assertEqual(t, 5, got.N)
