@@ -59,6 +59,8 @@ type Options struct {
 
 // NewService creates a process service factory for Core registration.
 //
+// Usage example:
+//
 //	core, _ := core.New(
 //	    core.WithName("process", process.NewService(process.Options{})),
 //	)
@@ -171,9 +173,9 @@ func (s *Service) StartWithOptions(ctx context.Context, opts RunOptions) core.Re
 		cmd.Env = append(cmd.Environ(), opts.Env...)
 	}
 
-	// Put every subprocess in its own process group so shutdown can terminate
-	// the full tree without affecting the parent process.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Put every subprocess in its own process group where the platform supports
+	// it so shutdown can terminate the full tree without affecting the parent.
+	applyProcessGroup(cmd)
 
 	// Set up pipes
 	stdout, err := cmd.StdoutPipe()
@@ -467,8 +469,11 @@ func (s *Service) KillPID(pid int) core.Result {
 		return core.Ok(nil)
 	}
 
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		return core.Fail(core.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err))
+	if r := processSignal(pid, syscall.SIGKILL); !r.OK {
+		if err, ok := r.Value.(error); ok {
+			return core.Fail(core.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), err))
+		}
+		return core.Fail(core.E("Service.KillPID", core.Sprintf("failed to signal pid %d", pid), nil))
 	}
 
 	return core.Ok(nil)
@@ -510,16 +515,18 @@ func (s *Service) SignalPID(pid int, sig syscall.Signal) core.Result {
 		return proc.Signal(sig)
 	}
 
-	if err := syscall.Kill(pid, sig); err != nil {
-		return core.Fail(core.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err))
+	if r := processSignal(pid, sig); !r.OK {
+		if err, ok := r.Value.(error); ok {
+			return core.Fail(core.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), err))
+		}
+		return core.Fail(core.E("Service.SignalPID", core.Sprintf("failed to signal pid %d", pid), nil))
 	}
 
 	return core.Ok(nil)
 }
 
 func validateCatchableSignals(sig syscall.Signal) core.Result {
-	switch sig {
-	case syscall.SIGKILL, syscall.SIGSTOP:
+	if signalCannotBeCaught(sig) {
 		return core.Fail(core.E(
 			"Service.validateCatchableSignals",
 			core.Sprintf("signal %d cannot be caught", int(sig)),
@@ -975,8 +982,9 @@ func classifyProcessExit(err error) processExit {
 		Sys() any
 	}
 	if core.As(err, &exitErr) {
-		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			signalName := ws.Signal().String()
+		status := exitErr.Sys()
+		if exitWasSignaled(status) {
+			signalName := exitSignalName(status)
 			if signalName == "" {
 				signalName = "signal"
 			}

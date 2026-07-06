@@ -29,6 +29,16 @@ cleanup. Higher-level packages build on the same primitives: `Runner` executes
 dependent command pipelines, `Daemon` manages PID files and health probes, and
 `pkg/api` mounts the service into Gin routes.
 
+## Windows Status
+
+Windows builds are supported at Phase 1 compile compatibility. Direct PID
+signals and process-group signals use best-effort stubs where Windows has no
+POSIX signal primitive, and `KillGroup` falls back to killing the process-group
+leader only.
+
+Full descendant-tree lifecycle management on Windows requires a Phase 2 Job
+Object implementation.
+
 ## Quick Start
 
 ```go

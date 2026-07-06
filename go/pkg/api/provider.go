@@ -156,9 +156,8 @@ func (p *ProcessProvider) stopDaemon(c *gin.Context) {
 		return
 	}
 
-	// Send SIGTERM to the process.
-	if err := syscall.Kill(entry.PID, syscall.SIGTERM); err != nil {
-		c.JSON(http.StatusInternalServerError, fail("signal_failed", err.Error()))
+	if result := signalPID(entry.PID, syscall.SIGTERM); !result.OK {
+		c.JSON(http.StatusInternalServerError, fail("signal_failed", result.Error()))
 		return
 	}
 
@@ -646,7 +645,7 @@ func PIDAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	return syscall.Kill(pid, syscall.Signal(0)) == nil
+	return pidAlive(pid)
 }
 
 // intParam parses a URL param as int, returning 0 on failure.
@@ -694,16 +693,8 @@ func parseSignal(value string) core.Result {
 		return core.Ok(syscall.SIGQUIT)
 	case "SIGHUP", "HUP":
 		return core.Ok(syscall.SIGHUP)
-	case "SIGSTOP", "STOP":
-		return core.Ok(syscall.SIGSTOP)
-	case "SIGCONT", "CONT":
-		return core.Ok(syscall.SIGCONT)
-	case "SIGUSR1", "USR1":
-		return core.Ok(syscall.SIGUSR1)
-	case "SIGUSR2", "USR2":
-		return core.Ok(syscall.SIGUSR2)
 	default:
-		return core.Fail(core.E("ProcessProvider.parseSignal", "unsupported signal", nil))
+		return parsePlatformSignal(trimmed)
 	}
 }
 
