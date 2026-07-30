@@ -1,0 +1,75 @@
+version: "2"
+run:
+  go: "1.26"
+linters:
+  enable:
+    - depguard
+    - gocritic
+  disable:
+    - exhaustive
+    - wrapcheck
+  settings:
+    depguard:
+      rules:
+        legacy-module-paths:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: forge.lthn.ai/
+              desc: use dappco.re/ module paths instead
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test and Example bodies drop error returns on purpose — an Example
+      # that checked every Close would document the checking, not the API it
+      # exists to show. errcheck reported 47 of these and not one was a
+      # defect, which is the level of noise that trains people to skim a
+      # lint report. Production code is still checked.
+      #
+      # This pairs with the CI job no longer passing --tests=false: `unused`
+      # needs to see the test files to be correct (the WebSocket hub in
+      # pkg/api is constructed only by provider_test.go, and excluding tests
+      # made all 19 of its symbols look dead), but including them is only
+      # affordable if errcheck stops shouting about them.
+      - path: _test\.go
+        linters:
+          - errcheck
+      # test_helpers_test.go is a complete assertion vocabulary, copied
+      # per-package on purpose (there is a second copy in package process).
+      # A kit like that is meant to be whole, so `unused` flagging the eight
+      # entries package api has not needed yet is describing the design
+      # rather than a defect — and the fix it implies, deleting them from one
+      # copy, is what would actually cause harm by making the two diverge.
+      # Scoped to this filename: unused elsewhere in tests still reports.
+      - path: test_helpers_test\.go
+        linters:
+          - unused
+      # This package rejects a nil Context deliberately — ErrRunnerContextRequired
+      # and its siblings exist for it — so the tests that prove it have to pass
+      # one. All 22 reports sit in a test that names the behaviour
+      # (TestCommand_NilContextRejected, TestDaemon_RunNilContextFails) or in the
+      # Bad/Ugly arm of an AX-7 triplet, where the error path is the case under
+      # test. Taking SA1012's advice would replace the input with a valid Context
+      # and quietly turn each of them into a test of the happy path.
+      # Narrow on purpose: SA1012 only, test files only — every other
+      # staticcheck report here still fails the build.
+      - path: _test\.go
+        text: SA1012
+        linters:
+          - staticcheck
+issues:
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -1415,11 +1415,26 @@ func TestService_Service_List_Bad(t *testing.T) {
 	assertEqual(t, 0, len(procs))
 }
 
+// Ugly: the caller owns what List hands back. Mutating it — overwriting an
+// element, or appending through a shared backing array — must not reach the
+// service's own map. The previous version of this test ran against an empty
+// service, so the append it made allocated a fresh array and could not have
+// touched anything either way; it asserted the invariant without exercising it.
 func TestService_Service_List_Ugly(t *testing.T) {
 	svc, _ := newTestService(t)
+	proc, err := resultValue[*Process](svc.Start(context.Background(), "echo", "hello"))
+	requireNoError(t, err)
+	<-proc.Done()
+
 	procs := svc.List()
-	procs = append(procs, &Process{ID: "mutated"})
-	assertEmpty(t, svc.List())
+	requireLen(t, procs, 1)
+	procs[0] = &Process{ID: "mutated"}
+	procs = append(procs, &Process{ID: "extra"})
+	assertLen(t, procs, 2)
+
+	again := svc.List()
+	requireLen(t, again, 1)
+	assertEqual(t, proc.ID, again[0].ID)
 }
 
 func TestService_Service_Running_Good(t *testing.T) {

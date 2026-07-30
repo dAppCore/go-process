@@ -45,11 +45,17 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
+      # --tests=false is deliberately absent. It hid the test files from every
+      # linter, and `unused` reads "no caller in the files I can see" as dead:
+      # the WebSocket hub in pkg/api is built only by provider_test.go, so all
+      # 19 of its symbols were reported unused and the suggested fix was to
+      # delete code the tests depend on. What the tests need excluded is now
+      # scoped per-rule in .golangci.yml.
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           working-directory: go
-          args: --timeout=5m --tests=false
+          args: --timeout=5m
 
   sonarcloud:
     name: SonarCloud

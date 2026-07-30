@@ -88,6 +88,30 @@ type RunAllResult struct {
 	Skipped  int           `json:"skipped"`
 }
 
+// tally counts Results into the Passed, Failed and Skipped totals.
+//
+// Example:
+//
+//	aggResult := &RunAllResult{Results: results, Duration: time.Since(start)}
+//	aggResult.tally()
+//
+// Each of the three run modes built its aggregate with the same hand-written
+// loop, so a change to what counts as passed had to be made in three places
+// to stay true. Skipped is tested before Passed because a skipped spec has
+// exit code 0 and no error, and so satisfies Passed too.
+func (r *RunAllResult) tally() {
+	for _, res := range r.Results {
+		switch {
+		case res.Skipped:
+			r.Skipped++
+		case res.Passed():
+			r.Passed++
+		default:
+			r.Failed++
+		}
+	}
+}
+
 // Success returns true when no spec failed.
 //
 // Example:
@@ -217,15 +241,7 @@ func (r *Runner) RunAll(ctx context.Context, specs []RunSpec) core.Result {
 		Duration: time.Since(start),
 	}
 
-	for _, res := range results {
-		if res.Skipped {
-			aggResult.Skipped++
-		} else if res.Passed() {
-			aggResult.Passed++
-		} else {
-			aggResult.Failed++
-		}
-	}
+	aggResult.tally()
 
 	return core.Ok(aggResult)
 }
@@ -331,15 +347,7 @@ func (r *Runner) RunSequential(ctx context.Context, specs []RunSpec) core.Result
 		Duration: time.Since(start),
 	}
 
-	for _, res := range results {
-		if res.Skipped {
-			aggResult.Skipped++
-		} else if res.Passed() {
-			aggResult.Passed++
-		} else {
-			aggResult.Failed++
-		}
-	}
+	aggResult.tally()
 
 	return core.Ok(aggResult)
 }
@@ -381,15 +389,7 @@ func (r *Runner) RunParallel(ctx context.Context, specs []RunSpec) core.Result {
 		Duration: time.Since(start),
 	}
 
-	for _, res := range results {
-		if res.Skipped {
-			aggResult.Skipped++
-		} else if res.Passed() {
-			aggResult.Passed++
-		} else {
-			aggResult.Failed++
-		}
-	}
+	aggResult.tally()
 
 	return core.Ok(aggResult)
 }
