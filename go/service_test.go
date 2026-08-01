@@ -508,8 +508,7 @@ func TestService_Kill(t *testing.T) {
 	t.Run("kills running process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		proc, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)
@@ -778,8 +777,7 @@ func TestService_OnShutdown(t *testing.T) {
 	t.Run("kills all running processes", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		proc1, err := resultValue[*Process](svc.Start(ctx, "sleep", "60"))
 		requireNoError(t, err)

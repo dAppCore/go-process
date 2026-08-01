@@ -91,7 +91,7 @@ func TestWebsocketBridge_callExternalHub_WrongArity_Ugly(t *testing.T) {
 
 func TestWebsocketBridge_hubMessageValue_Assignable_Good(t *testing.T) {
 	// When the target type is hubMessage itself, the value is returned as-is.
-	target := reflect.TypeOf(hubMessage{})
+	target := reflect.TypeFor[hubMessage]()
 	msg := hubMessage{Type: typeEvent, Channel: "c"}
 	got, ok := hubMessageValue(target, msg)
 	requireTrue(t, ok)
@@ -100,7 +100,7 @@ func TestWebsocketBridge_hubMessageValue_Assignable_Good(t *testing.T) {
 
 func TestWebsocketBridge_hubMessageValue_FieldCopy_Good(t *testing.T) {
 	// A foreign struct target triggers the field-copy path.
-	target := reflect.TypeOf(externalEvent{})
+	target := reflect.TypeFor[externalEvent]()
 	now := time.Now()
 	msg := hubMessage{
 		Type:      typeEvent,
@@ -121,7 +121,7 @@ func TestWebsocketBridge_hubMessageValue_FieldCopy_Good(t *testing.T) {
 
 func TestWebsocketBridge_hubMessageValue_NonStruct_Bad(t *testing.T) {
 	// A non-struct, non-convertible target is rejected.
-	target := reflect.TypeOf("")
+	target := reflect.TypeFor[string]()
 	_, ok := hubMessageValue(target, hubMessage{Type: typeEvent})
 	assertFalse(t, ok)
 }
@@ -133,7 +133,7 @@ func TestWebsocketBridge_setStringField_Ugly(t *testing.T) {
 		Name string
 		Age  int
 	}
-	v := reflect.New(reflect.TypeOf(holder{})).Elem()
+	v := reflect.New(reflect.TypeFor[holder]()).Elem()
 	setStringField(v, "Missing", "x") // unknown field
 	setStringField(v, "Age", "x")     // wrong kind
 	setStringField(v, "Name", "ok")   // valid
@@ -147,7 +147,7 @@ func TestWebsocketBridge_setAnyField_Ugly(t *testing.T) {
 		Data any
 		N    int
 	}
-	v := reflect.New(reflect.TypeOf(holder{})).Elem()
+	v := reflect.New(reflect.TypeFor[holder]()).Elem()
 	setAnyField(v, "Missing", "x")           // unknown field
 	setAnyField(v, "Data", nil)              // nil value is ignored
 	setAnyField(v, "Data", map[string]int{}) // assignable to any
@@ -163,7 +163,7 @@ func TestWebsocketBridge_setTimeField_Ugly(t *testing.T) {
 		Name string
 	}
 	now := time.Now()
-	v := reflect.New(reflect.TypeOf(holder{})).Elem()
+	v := reflect.New(reflect.TypeFor[holder]()).Elem()
 	setTimeField(v, "Missing", now) // unknown field
 	setTimeField(v, "Name", now)    // not assignable from time.Time
 	setTimeField(v, "When", now)    // valid

@@ -322,7 +322,7 @@ func parseStringSliceOption(opts core.Options, key string) core.Result {
 
 	anyList, ok := r.Value.([]any)
 	if !ok {
-		if alt, ok := r.Value.([]interface{}); ok {
+		if alt, ok := r.Value.([]any); ok {
 			anyList = alt
 		} else {
 			return core.Fail(core.E("process action", core.Sprintf("%s must be an array", key), nil))

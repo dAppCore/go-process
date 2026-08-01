@@ -440,8 +440,7 @@ func TestDaemon_Daemon_Run_Bad(t *testing.T) {
 
 func TestDaemon_Daemon_Run_Ugly(t *testing.T) {
 	d := NewDaemon(DaemonOptions{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	result := d.Run(ctx)
 	assertError(t, result)
 }

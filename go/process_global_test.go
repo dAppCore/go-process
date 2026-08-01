@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"slices"
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 	"syscall"
@@ -120,14 +121,12 @@ func TestGlobal_ConcurrentDefault(t *testing.T) {
 	requireNoError(t, err)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			s := Default()
 			assertNotNil(t, s)
 			assertEqual(t, svc, s)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -141,7 +140,7 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 	}()
 
 	var services []*Service
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		svc := newGlobalTestService(t)
 		services = append(services, svc)
 	}
@@ -159,13 +158,7 @@ func TestGlobal_ConcurrentSetDefault(t *testing.T) {
 	final := Default()
 	assertNotNil(t, final)
 
-	found := false
-	for _, svc := range services {
-		if svc == final {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(services, final)
 	assertTrue(t, found, "Default should be one of the set services")
 }
 
@@ -186,10 +179,8 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 	var processes []*Process
 	var procMu sync.Mutex
 
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 20 {
+		wg.Go(func() {
 			result := Start(context.Background(), "echo", "concurrent")
 			if result.OK {
 				proc := result.Value.(*Process)
@@ -197,16 +188,14 @@ func TestGlobal_ConcurrentOperations(t *testing.T) {
 				processes = append(processes, proc)
 				procMu.Unlock()
 			}
-		}()
+		})
 	}
 
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			_ = List()
 			_ = Running()
-		}()
+		})
 	}
 
 	wg.Wait()

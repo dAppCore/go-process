@@ -338,7 +338,7 @@ func callExternalHub(hub any, method string, channel string, msg hubMessage) {
 }
 
 func hubMessageValue(target reflect.Type, msg hubMessage) (reflect.Value, bool) {
-	source := reflect.TypeOf(hubMessage{})
+	source := reflect.TypeFor[hubMessage]()
 	value := reflect.ValueOf(msg)
 	if value.Type().AssignableTo(target) {
 		return value, true

@@ -69,8 +69,7 @@ func TestProcessProviderListDaemonsBroadcastsStarted(t *testing.T) {
 	}))
 
 	hub := newHub()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go hub.run(ctx)
 
 	p := NewProvider(registry, nil, hub)
@@ -633,8 +632,7 @@ func TestProcessProviderSignalProcessInvalidSignal(t *testing.T) {
 func TestProcessProviderBroadcastsProcessEvents(t *testing.T) {
 	svc := newTestProcessService(t)
 	hub := newHub()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go hub.run(ctx)
 
 	_ = NewProvider(nil, svc, hub)
@@ -679,8 +677,7 @@ func TestProcessProviderBroadcastsProcessEvents(t *testing.T) {
 func TestProcessProviderBroadcastsKilledEvents(t *testing.T) {
 	svc := newTestProcessService(t)
 	hub := newHub()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go hub.run(ctx)
 
 	_ = NewProvider(nil, svc, hub)

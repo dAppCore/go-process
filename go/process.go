@@ -286,7 +286,7 @@ func (p *ManagedProcess) Signal(sig syscall.Signal) core.Result {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			select {
 			case <-done:
 				return

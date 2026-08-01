@@ -164,8 +164,7 @@ func TestProcess_Kill(t *testing.T) {
 	t.Run("terminates running process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "60"))
 
@@ -229,8 +228,7 @@ func TestProcess_Signal(t *testing.T) {
 	t.Run("sends signal to running process", func(t *testing.T) {
 		svc, _ := newTestService(t)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		proc := requireResultValue[*Process](t, svc.Start(ctx, "sleep", "60"))
 

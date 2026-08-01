@@ -115,7 +115,7 @@ func TestActionsParse_parseStringSliceOption_Good(t *testing.T) {
 	assertEqual(t, []string{"x", "y"}, r.Value.([]string))
 
 	// []interface{} alias of strings is converted.
-	r = parseStringSliceOption(opts("args", []interface{}{"p"}), "args")
+	r = parseStringSliceOption(opts("args", []any{"p"}), "args")
 	requireTrue(t, r.OK)
 	assertEqual(t, []string{"p"}, r.Value.([]string))
 }
