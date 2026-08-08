@@ -4,6 +4,7 @@ import (
 	"context"
 
 	core "dappco.re/go"
+	"dappco.re/go/process/internal/lookpath"
 	goio "io"
 )
 
@@ -298,7 +299,7 @@ func (c *Cmd) logError(msg string, failure core.Result) {
 // "git" is reported as `exec: "C:\...\some work dir\git"` — a confusing error
 // naming a path nobody asked for, in place of the honest "not found on PATH".
 func commandContext(ctx context.Context, name string, arg ...string) core.Result {
-	resolved := lookPath(name)
+	resolved := lookpath.Look(name)
 	if !resolved.OK {
 		return resolved
 	}
@@ -306,157 +307,4 @@ func commandContext(ctx context.Context, name string, arg ...string) core.Result
 		Path: resolved.Value.(string),
 		Args: append([]string{name}, arg...),
 	})
-}
-
-// defaultPathExt is the extension list Windows itself assumes when %PATHEXT%
-// is unset.
-const defaultPathExt = ".COM;.EXE;.BAT;.CMD"
-
-// lookPath resolves file to a runnable path, searching PATH when file carries
-// no directory component.
-//
-// On Windows a command is named without its extension — "git", not "git.exe" —
-// so every candidate is also tried with each %PATHEXT% suffix. Without that,
-// no Windows executable is ever found by its bare name.
-func lookPath(file string) core.Result {
-	return lookPathWith(file, executableExtensions())
-}
-
-// lookPathWith is lookPath with the extension list supplied rather than read
-// from the environment. Taking it as an argument is what lets the Windows
-// resolution rules be pinned on a POSIX runner — the tests drive it with a
-// fixture PATH and a fake %PATHEXT%, so no Windows box is needed to prove the
-// logic and the CI lane is left to prove only the wiring.
-func lookPathWith(file string, extensions []string) core.Result {
-	if file == "" {
-		return core.Fail(core.E("lookPath", "executable file not found in PATH", nil))
-	}
-	if containsSeparator(file) {
-		if path, ok := firstExecutable(file, extensions); ok {
-			return core.Ok(path)
-		}
-		return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found", file), nil))
-	}
-
-	for _, dir := range core.Split(core.Getenv("PATH"), string(core.PathListSeparator)) {
-		if dir == "" {
-			dir = "."
-		}
-		if path, ok := firstExecutable(core.PathJoin(dir, file), extensions); ok {
-			return core.Ok(path)
-		}
-	}
-	return core.Fail(core.E("lookPath", core.Sprintf("executable file %q not found in PATH", file), nil))
-}
-
-// firstExecutable returns the first of base's candidate spellings that names a
-// runnable file.
-func firstExecutable(base string, extensions []string) (string, bool) {
-	for _, candidate := range executableCandidates(base, extensions) {
-		if isExecutableWith(candidate, extensions) {
-			return candidate, true
-		}
-	}
-	return "", false
-}
-
-// executableCandidates returns the spellings of base to try, in order. With no
-// extensions in play — every POSIX case — base stands alone. On Windows a base
-// that already ends in a listed extension also stands alone; anything else is
-// tried once per extension, so "git" becomes "git.com", "git.exe" and so on.
-func executableCandidates(base string, extensions []string) []string {
-	if len(extensions) == 0 || hasExecutableExtension(base, extensions) {
-		return []string{base}
-	}
-	candidates := make([]string, 0, len(extensions))
-	for _, extension := range extensions {
-		candidates = append(candidates, base+extension)
-	}
-	return candidates
-}
-
-// hasExecutableExtension reports whether base already ends in one of the
-// listed extensions. Windows filenames are case-insensitive, so the comparison
-// is too.
-func hasExecutableExtension(base string, extensions []string) bool {
-	lowered := core.Lower(base)
-	for _, extension := range extensions {
-		if core.HasSuffix(lowered, extension) {
-			return true
-		}
-	}
-	return false
-}
-
-// executableExtensions returns the %PATHEXT% list, or nil off Windows where a
-// command name is used exactly as written.
-func executableExtensions() []string {
-	if string(core.PathSeparator) != `\` {
-		return nil
-	}
-	return parsePathExt(core.Getenv("PATHEXT"))
-}
-
-// parsePathExt normalises a %PATHEXT% value into lower-cased, dot-prefixed
-// extensions, dropping blanks and duplicates. An unset or unusable value falls
-// back to the set Windows assumes, so a stripped environment still resolves
-// the common executables.
-func parsePathExt(value string) []string {
-	extensions := make([]string, 0, 8)
-	seen := make(map[string]bool, 8)
-	for _, field := range core.Split(value, ";") {
-		extension := core.Lower(core.Trim(field))
-		if extension == "" || extension == "." {
-			continue
-		}
-		if !core.HasPrefix(extension, ".") {
-			extension = "." + extension
-		}
-		if seen[extension] {
-			continue
-		}
-		seen[extension] = true
-		extensions = append(extensions, extension)
-	}
-	if len(extensions) == 0 && value != defaultPathExt {
-		return parsePathExt(defaultPathExt)
-	}
-	return extensions
-}
-
-// containsSeparator reports whether file carries a directory component under
-// either convention. Windows accepts '/' as well as '\', so a name spelled
-// "bin/tool" there is a path to check directly, not a name to hunt on PATH.
-func containsSeparator(file string) bool {
-	if core.Contains(file, "/") {
-		return true
-	}
-	separator := string(core.PathSeparator)
-	return separator != "/" && core.Contains(file, separator)
-}
-
-func isExecutable(path string) bool {
-	return isExecutableWith(path, executableExtensions())
-}
-
-// isExecutableWith applies the platform's own rule for "this can be run".
-//
-// POSIX asks the mode bits. Windows has no execute bit — os.Stat synthesises
-// 0666, or 0444 for a read-only file — so mode&0111 is never set there and a
-// mode test rejects every file, git.exe included. Under a non-empty extension
-// list the question becomes whether the suffix is one %PATHEXT% names, which
-// is what Windows itself keys on.
-func isExecutableWith(path string, extensions []string) bool {
-	stat := core.Stat(path)
-	if !stat.OK {
-		return false
-	}
-	info, ok := stat.Value.(core.FsFileInfo)
-	if !ok || info.IsDir() {
-		return false
-	}
-	if len(extensions) > 0 {
-		return hasExecutableExtension(path, extensions)
-	}
-	return info.Mode()&0111 != 0
 }
