@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	core "dappco.re/go"
+	"dappco.re/go/process/internal/lookpath"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.
@@ -47,7 +48,7 @@ func (p *Program) Find() core.Result {
 	if target == "" {
 		return core.Fail(core.E("Program.Find", "program name is empty", nil))
 	}
-	result := lookPath(target)
+	result := lookpath.Look(target)
 	if !result.OK {
 		return core.Fail(core.E("Program.Find", core.Sprintf("%q: not found in PATH", target), ErrProgramNotFound))
 	}

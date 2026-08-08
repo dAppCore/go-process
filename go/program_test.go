@@ -7,6 +7,7 @@ import (
 
 	core "dappco.re/go"
 	process "dappco.re/go/process"
+	"dappco.re/go/process/internal/lookpath"
 )
 
 func testCtx(t *testing.T) context.Context {
@@ -304,5 +305,39 @@ func TestProgram_Program_RunDir_Ugly(t *testing.T) {
 	}
 	if out != "hello" {
 		t.Fatalf("want hello, got %q", out)
+	}
+}
+
+// TestProgram_Find_UsesSharedResolution is the regression pin for the miss that
+// made this fix necessary. Program.Find and exec.Command once resolved through
+// two byte-identical copies of the same logic, and when the Windows defects
+// were fixed only the exec/ copy was touched — so a release that claimed to fix
+// executable resolution left Program.Find, which go-inference calls, still
+// broken.
+//
+// Asserting the two agree is what a version bump could not: it fails the moment
+// a third copy appears or the two diverge again.
+func TestProgram_Find_UsesSharedResolution(t *testing.T) {
+	program := &process.Program{Name: "definitely_not_a_real_binary_xyz"}
+	found := program.Find()
+	if found.OK {
+		t.Fatal("Find on an unresolvable name = OK, want failure")
+	}
+	if !core.Contains(found.Error(), "definitely_not_a_real_binary_xyz") {
+		t.Fatalf("failure must name the program, got %q", found.Error())
+	}
+
+	// A name that IS resolvable must land on the same absolute path the shared
+	// resolver reports — the two must not drift apart again.
+	shared := lookpath.Look("sh")
+	if !shared.OK {
+		t.Skip("sh not resolvable on this platform")
+	}
+	resolvable := &process.Program{Name: "sh"}
+	if r := resolvable.Find(); !r.OK {
+		t.Fatalf("Find(sh) = %s, want the shared resolver's answer", r.Error())
+	} else if resolvable.Path != shared.Value.(string) {
+		t.Fatalf("Program.Find resolved %q but the shared resolver says %q — the copies have diverged",
+			resolvable.Path, shared.Value.(string))
 	}
 }
