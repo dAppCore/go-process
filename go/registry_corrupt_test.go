@@ -3,7 +3,7 @@ package process
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestRegistryCorrupt_Get_PrunesCorruptJSON_Ugly(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 // HealthCheck is a function that returns a successful Result when the service is healthy.

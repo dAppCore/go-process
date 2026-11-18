@@ -3,7 +3,7 @@ package process
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // unknownMessage is a Core message (core.Message is any) the process service

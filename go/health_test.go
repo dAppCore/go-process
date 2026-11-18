@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestHealthServer_Endpoints(t *testing.T) {

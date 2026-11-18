@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	process "dappco.re/go/process"
+	process "github.com/dappcore/go-process/go"
 )
 
 func TestPlatformUnix_signalPID_Good(t *testing.T) {

@@ -3,8 +3,8 @@ package command
 import (
 	"context"
 
-	core "dappco.re/go"
-	"dappco.re/go/process/internal/lookpath"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/go-process/go/internal/lookpath"
 	goio "io"
 )
 

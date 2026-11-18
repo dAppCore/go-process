@@ -1,5 +1,5 @@
 # api
-**Import:** `dappco.re/go/core/process/pkg/api`
+**Import:** `github.com/dappcore/go-process/go/pkg/api`
 **Files:** 2
 
 ## Types

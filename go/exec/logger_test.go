@@ -3,7 +3,7 @@ package command_test
 import (
 	"testing"
 
-	command "dappco.re/go/process/exec"
+	command "github.com/dappcore/go-process/go/exec"
 )
 
 func TestLogger_NopLogger_Debug_Good(t *testing.T) {

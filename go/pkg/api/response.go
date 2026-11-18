@@ -2,7 +2,7 @@
 
 package api
 
-import core "dappco.re/go"
+import core "github.com/dappcore/go"
 
 type apierr struct {
 	Code    string `json:"code"`

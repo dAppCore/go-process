@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func testUncatchableSignals() []syscall.Signal {

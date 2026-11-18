@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // opts builds a core.Options from alternating key/value pairs for tests.

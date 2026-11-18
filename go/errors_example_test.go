@@ -1,8 +1,8 @@
 package process_test
 
 import (
-	. "dappco.re/go"
-	process "dappco.re/go/process"
+	. "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 )
 
 func ExampleServiceError() {

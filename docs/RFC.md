@@ -1,11 +1,11 @@
 # go-process API Contract — RFC Specification
 
-> `dappco.re/go/core/process` — Managed process execution for the Core ecosystem.
+> `github.com/dappcore/go-process/go` — Managed process execution for the Core ecosystem.
 > This package is the ONLY package that imports `os/exec`. Everything else uses
 > `c.Process()` which delegates to Actions registered by this package.
 
 **Status:** v0.8.0
-**Module:** `dappco.re/go/core/process`
+**Module:** `github.com/dappcore/go-process/go`
 **Depends on:** core/go v0.8.0
 
 ---

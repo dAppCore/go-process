@@ -5,8 +5,8 @@ import (
 	"syscall"
 	"time"
 
-	. "dappco.re/go"
-	process "dappco.re/go/process"
+	. "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 )
 
 func exampleManagedProcess(command string, args ...string) *process.ManagedProcess {

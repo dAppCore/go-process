@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go"
-	process "dappco.re/go/process"
-	"dappco.re/go/process/internal/lookpath"
+	core "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
+	"github.com/dappcore/go-process/go/internal/lookpath"
 )
 
 func testCtx(t *testing.T) context.Context {

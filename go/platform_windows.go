@@ -4,7 +4,7 @@ package process
 
 import "syscall"
 
-import core "dappco.re/go"
+import core "github.com/dappcore/go"
 
 // processSignal reports success for positive PIDs on Windows, where POSIX
 // signals are not available through syscall.

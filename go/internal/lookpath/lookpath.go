@@ -17,7 +17,7 @@
 //     spelled "bin/tool" was hunted on PATH instead of checked directly
 package lookpath
 
-import core "dappco.re/go"
+import core "github.com/dappcore/go"
 
 // defaultPathExt is the extension list Windows itself assumes when %PATHEXT%
 // is unset.

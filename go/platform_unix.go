@@ -4,7 +4,7 @@ package process
 
 import "syscall"
 
-import core "dappco.re/go"
+import core "github.com/dappcore/go"
 
 // processSignal sends sig to pid.
 func processSignal(pid int, sig syscall.Signal) core.Result {

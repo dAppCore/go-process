@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	framework "dappco.re/go"
+	framework "github.com/dappcore/go"
 )
 
 func newTestRunner(t *testing.T) *Runner {

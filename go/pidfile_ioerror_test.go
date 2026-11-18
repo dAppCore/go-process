@@ -3,7 +3,7 @@ package process
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestPidfileIOError_Acquire_InvalidContent_Ugly(t *testing.T) {

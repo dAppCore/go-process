@@ -3,8 +3,8 @@ package process_test
 import (
 	"context"
 
-	. "dappco.re/go"
-	process "dappco.re/go/process"
+	. "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 )
 
 func ExampleNewRunner() {

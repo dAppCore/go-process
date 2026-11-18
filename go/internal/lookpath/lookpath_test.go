@@ -5,7 +5,7 @@ package lookpath
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestExecInternal_lookPath_Good(t *testing.T) {
