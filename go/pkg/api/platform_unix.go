@@ -5,7 +5,7 @@ package api
 import (
 	"syscall"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func signalPID(pid int, sig syscall.Signal) core.Result {

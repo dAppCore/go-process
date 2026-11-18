@@ -3,7 +3,7 @@ package process
 import (
 	"testing"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 func TestPIDFile_Acquire_Good(t *testing.T) {

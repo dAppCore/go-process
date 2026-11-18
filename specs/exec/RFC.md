@@ -1,5 +1,5 @@
 # exec
-**Import:** `dappco.re/go/core/process/exec`
+**Import:** `github.com/dappcore/go-process/go/exec`
 **Files:** 3
 
 ## Types

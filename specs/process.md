@@ -1,5 +1,5 @@
 # process
-**Import:** `dappco.re/go/core/process`
+**Import:** `github.com/dappcore/go-process/go`
 **Files:** 11
 
 ## Types

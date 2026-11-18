@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	. "dappco.re/go"
-	process "dappco.re/go/process"
+	. "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 )
 
 func ExampleNewDaemon() {

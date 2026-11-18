@@ -5,10 +5,10 @@ description: Process management with Core IPC integration for Go applications.
 
 # go-process
 
-`dappco.re/go/core/process` is a process management library that provides
+`github.com/dappcore/go-process/go` is a process management library that provides
 spawning, monitoring, and controlling external processes with real-time output
 streaming via the Core ACTION (IPC) system. It integrates directly with the
-[Core DI framework](https://dappco.re/go/core) as a first-class service.
+[Core DI framework](https://github.com/dappcore/go) as a first-class service.
 
 ## Features
 
@@ -28,8 +28,8 @@ streaming via the Core ACTION (IPC) system. It integrates directly with the
 ```go
 import (
     "context"
-    "dappco.re/go/core"
-    "dappco.re/go/core/process"
+    "github.com/dappcore/go"
+    "github.com/dappcore/go-process/go"
 )
 
 // Create a Core instance with the process service registered.
@@ -108,7 +108,7 @@ fmt.Println(r.OK) // true
 
 | Field | Value |
 |-------|-------|
-| Module path | `dappco.re/go/core/process` |
+| Module path | `github.com/dappcore/go-process/go` |
 | Go version | 1.26.0 |
 | Licence | EUPL-1.2 |
 
@@ -116,7 +116,7 @@ fmt.Println(r.OK) // true
 
 | Module | Purpose |
 |--------|---------|
-| `dappco.re/go/core` | Core DI framework (`ServiceRuntime`, `Core.ACTION`, lifecycle interfaces) |
+| `github.com/dappcore/go` | Core DI framework (`ServiceRuntime`, `Core.ACTION`, lifecycle interfaces) |
 | `github.com/stretchr/testify` | Test assertions (test-only) |
 
 The package has no other runtime dependencies beyond the Go standard library

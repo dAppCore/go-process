@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`dappco.re/go/process` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events are broadcast via Core IPC actions.
+`github.com/dappcore/go-process/go` is the process management framework for CoreGO. It handles process execution (spawn, monitor, stream, kill), daemon lifecycle (PID files, health checks, graceful shutdown, registry), and pipeline orchestration (parallel, sequential, or DAG-ordered multi-process runs). All process events are broadcast via Core IPC actions.
 
 ## Repo Layout
 
 ```text
 core/go-process/
-├── go/                   ← primary Go module root (dappco.re/go/process)
+├── go/                   ← primary Go module root (github.com/dappcore/go-process/go)
 │   ├── go.mod            ← kept at module root to preserve import path
 │   ├── go.sum
 │   ├── *.go
@@ -90,8 +90,8 @@ Builder-pattern wrapper around `os/exec` with structured logging via a pluggable
 
 ## Dependencies
 
-- `dappco.re/go/core` — Core DI framework, IPC actions, `ServiceRuntime`
-- `dappco.re/go/core/io` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
+- `github.com/dappcore/go` — Core DI framework, IPC actions, `ServiceRuntime`
+- `github.com/dappcore/go-io/go` — Filesystem abstraction (`coreio.Local`) used by PIDFile and Registry
 - `github.com/stretchr/testify` — test assertions (require/assert)
 
 ## Testing

@@ -5,7 +5,7 @@ import (
 	"syscall"
 	"time"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 // DaemonEntry records a running daemon in the registry.

@@ -1,9 +1,9 @@
-module dappco.re/go/process
+module github.com/dappcore/go-process/go
 
 go 1.26.2
 
 require (
-	dappco.re/go v0.12.0
+	github.com/dappcore/go v0.13.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/websocket v1.5.3
 )

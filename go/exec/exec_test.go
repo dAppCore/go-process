@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go"
-	command "dappco.re/go/process/exec"
+	core "github.com/dappcore/go"
+	command "github.com/dappcore/go-process/go/exec"
 )
 
 // mockLogger captures log calls for testing

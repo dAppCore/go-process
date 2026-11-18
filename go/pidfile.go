@@ -6,7 +6,7 @@ import (
 	"sync"
 	"syscall"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 // PIDFile manages a process ID file for single-instance enforcement.

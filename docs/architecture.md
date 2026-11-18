@@ -293,12 +293,12 @@ File naming convention: `{code}-{daemon}.json` (slashes replaced with dashes).
 
 ## exec Sub-Package
 
-The `exec` package (`dappco.re/go/core/process/exec`) provides a fluent
+The `exec` package (`github.com/dappcore/go-process/go/exec`) provides a fluent
 wrapper around `os/exec` for simple, one-shot commands that do not need Core
 integration:
 
 ```go
-import "dappco.re/go/core/process/exec"
+import "github.com/dappcore/go-process/go/exec"
 
 // Fluent API
 err := exec.Command(ctx, "go", "build", "./...").

@@ -3,8 +3,8 @@ package command_test
 import (
 	"context"
 
-	. "dappco.re/go"
-	command "dappco.re/go/process/exec"
+	. "github.com/dappcore/go"
+	command "github.com/dappcore/go-process/go/exec"
 )
 
 func ExampleCommand() {

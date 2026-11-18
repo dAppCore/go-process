@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	framework "dappco.re/go"
+	framework "github.com/dappcore/go"
 )
 
 func TestGlobal_DefaultNotInitialized(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"syscall"
 	"time"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 // --- ACTION messages (broadcast via Core.ACTION) ---

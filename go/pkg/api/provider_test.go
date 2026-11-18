@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go"
-	process "dappco.re/go/process"
+	core "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )

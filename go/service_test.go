@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	framework "dappco.re/go"
+	framework "github.com/dappcore/go"
 )
 
 func newTestService(t *testing.T) (*Service, *framework.Core) {

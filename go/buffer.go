@@ -4,7 +4,7 @@ import (
 	// Note: AX-6 — internal concurrency primitive; structural per RFC §2
 	"sync"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // RingBuffer is a fixed-size circular buffer that overwrites old data.

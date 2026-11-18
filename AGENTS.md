@@ -7,7 +7,7 @@ provider: a change is complete only when every counter is zero and the verdict i
 
 ## Repository Shape
 
-The root package `dappco.re/go/process` contains the service, process model,
+The root package `github.com/dappcore/go-process/go` contains the service, process model,
 daemon support, PID-file handling, ring buffer, program helper, and pipeline
 runner. The `exec` subpackage provides a small command wrapper with logging.
 `pkg/api` exposes process and daemon operations through Gin routes and WebSocket
@@ -20,7 +20,7 @@ files. Example output should be real, stable stdout printed with Core helpers.
 
 ## Local Rules
 
-Use `dappco.re/go` wrappers for banned stdlib conveniences such as formatting,
+Use `github.com/dappcore/go` wrappers for banned stdlib conveniences such as formatting,
 JSON, path, filesystem, strings, bytes, and environment operations. Result values
 must be inspected with `OK` or converted deliberately at API boundaries. Avoid
 discarding process, filesystem, and shutdown results in production code.

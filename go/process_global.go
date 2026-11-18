@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 )
 
 // Global default service used by package-level helpers.

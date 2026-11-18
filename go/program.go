@@ -4,8 +4,8 @@ import (
 	"context"
 	"unicode"
 
-	core "dappco.re/go"
-	"dappco.re/go/process/internal/lookpath"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/go-process/go/internal/lookpath"
 )
 
 // ErrProgramNotFound is returned when Find cannot locate the binary on PATH.

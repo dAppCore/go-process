@@ -3,7 +3,7 @@ package process
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestActions_TaskProcessWaitError_Error_Good(t *testing.T) {

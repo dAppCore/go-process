@@ -18,7 +18,7 @@
 
 `go-process` is the process-management service for Core applications. It wraps
 external command execution, lifecycle tracking, output capture, daemon PID files,
-health endpoints, and REST/WebSocket provider integration around the `dappco.re/go`
+health endpoints, and REST/WebSocket provider integration around the `github.com/dappcore/go`
 runtime conventions.
 
 The package is intended for applications that need to start and observe local

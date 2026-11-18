@@ -1,7 +1,7 @@
 package process
 
 import (
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // ServiceError wraps a service-level failure with a message string.

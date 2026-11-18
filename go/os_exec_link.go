@@ -3,8 +3,8 @@ package process
 import (
 	"context"
 
-	core "dappco.re/go"
-	"dappco.re/go/process/internal/lookpath"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/go-process/go/internal/lookpath"
 )
 
 // commandContext resolves name to a concrete executable and builds the handle

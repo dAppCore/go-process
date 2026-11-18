@@ -1,7 +1,7 @@
 # RFC — Windows support for go-process
 
 **Status:** draft · **Author:** Cladius · **Date:** 2026-05-12
-**Triggered by:** Lethean Desktop (`lthn/desktop`) Windows cross-compile blocked at `dappco.re/go/process` syscall references. See parent: [`lthn/desktop` Windows build audit](https://github.com/LetheanNetwork/desktop/issues).
+**Triggered by:** Lethean Desktop (`lthn/desktop`) Windows cross-compile blocked at `github.com/dappcore/go-process/go` syscall references. See parent: [`lthn/desktop` Windows build audit](https://github.com/LetheanNetwork/desktop/issues).
 
 ## Problem
 
@@ -101,7 +101,7 @@ Existing tests should continue to pass on Unix. For Windows:
 1. `GOOS=windows GOARCH=amd64 go build ./...` succeeds with `CGO_ENABLED=0` (no `syscall.Kill` / `Setpgid` errors).
 2. `GOOS=windows go vet ./...` clean.
 3. `go test ./...` passes on Linux and Darwin (existing behaviour preserved).
-4. Lethean Desktop's `wails3 build GOOS=windows` reaches the next blocker (which is `dappco.re/go/io` — separate RFC) without choking on this package.
+4. Lethean Desktop's `wails3 build GOOS=windows` reaches the next blocker (which is `github.com/dappcore/go-io/go` — separate RFC) without choking on this package.
 5. README gains a "Windows status" section: Phase 1 stubs ship; Job Object lifecycle is Phase 2 (see §6).
 
 ## §6 Phase 2 — real Job Object lifecycle

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"dappco.re/go"
+	"github.com/dappcore/go"
 	// Note: AX-6 intrinsic — Reader/Writer interfaces are structural process-pipe contracts; core types do not replace stdlib stream boundaries.
 	goio "io"
 )

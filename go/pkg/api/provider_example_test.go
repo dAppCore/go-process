@@ -1,8 +1,8 @@
 package api
 
 import (
-	. "dappco.re/go"
-	process "dappco.re/go/process"
+	. "github.com/dappcore/go"
+	process "github.com/dappcore/go-process/go"
 	"github.com/gin-gonic/gin"
 )
 
