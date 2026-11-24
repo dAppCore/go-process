@@ -42,8 +42,15 @@ func signalCannotBeCaught(sig syscall.Signal) bool {
 	return sig == syscall.SIGKILL
 }
 
-// applyProcessGroup is a no-op until Windows Job Object lifecycle lands.
+// createNoWindow is CREATE_NO_WINDOW: the child gets no console of its own.
+const createNoWindow = 0x08000000
+
+// applyProcessGroup starts the child without a console window. Its output is
+// always piped back to the service, so a console would only be an empty
+// black window flashing up over a GUI app (-H windowsgui) for every command.
+// Process-group lifecycle (Job Objects) is still to come on Windows.
 func applyProcessGroup(cmd *core.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 }
 
 // exitWasSignaled is always false on Windows.

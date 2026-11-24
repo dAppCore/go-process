@@ -26,8 +26,8 @@ func TestPlatformWindowsSignalHelpers(t *testing.T) {
 
 	cmd := &core.Cmd{}
 	applyProcessGroup(cmd)
-	if cmd.SysProcAttr != nil {
-		t.Fatalf("applyProcessGroup configured SysProcAttr on Windows")
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.HideWindow || cmd.SysProcAttr.CreationFlags&createNoWindow == 0 {
+		t.Fatalf("applyProcessGroup should start children without a console window: %+v", cmd.SysProcAttr)
 	}
 
 	if exitWasSignaled(nil) {
